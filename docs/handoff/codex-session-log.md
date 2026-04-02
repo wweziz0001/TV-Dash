@@ -1,5 +1,108 @@
 # Codex Session Log
 
+## `2026-04-03T00:57:40+03:00`
+
+### Objective
+
+Add flexible channel ingest so TV-Dash can treat both real master playlists and manually entered quality variants as one logical channel with selectable qualities.
+
+### Work Completed
+
+- created the requested working branch `007-channel-ingest-master-or-manual-quality-variants`
+- extended shared channel contracts and Prisma schema with:
+  - `sourceMode`
+  - `ChannelQualityVariant`
+  - mode-aware validation for master-playlist vs manual-variant payloads
+- added backend persistence and mapping for manual quality variants while preserving existing logical-channel CRUD
+- implemented real synthetic master playlist generation for manual-variant channels at:
+  - `GET /api/streams/channels/:channelId/master`
+- updated stream behavior so:
+  - real master channels continue working as before
+  - manual-variant channels return one generated manifest
+  - proxy mode rewrites manual variant URLs to signed proxy asset paths
+  - direct mode leaves manual variant URLs upstream-facing after the synthetic master is generated
+- updated player-facing playback URL selection so manual-variant channels always resolve through the backend master path
+- updated quality option labeling so HLS level names from generated manifests can surface cleaner labels in the UI
+- reworked the admin channel form so operators can:
+  - choose source mode explicitly
+  - enter one real master playlist URL
+  - or add, remove, and reorder manual quality rows with optional metadata
+- updated admin stream testing and preview behavior:
+  - master mode tests the upstream master
+  - manual mode tests each active variant playlist
+  - saved manual-variant channels preview through the generated synthetic master
+- added backend and frontend coverage for:
+  - schema validation
+  - synthetic master generation
+  - stream routing for manual variants
+  - admin form mode switching
+  - payload building for both ingest modes
+  - playback URL selection for manual-variant channels
+
+### Files Added Or Changed
+
+- shared contracts and database:
+  - `packages/shared/src/index.ts`
+  - `apps/api/prisma/schema.prisma`
+  - `apps/api/prisma/migrations/202604030001_channel_manual_variants/migration.sql`
+  - `apps/api/prisma/seed.ts`
+- backend channel/stream implementation:
+  - `apps/api/src/modules/channels/*`
+  - `apps/api/src/modules/streams/stream.service.ts`
+  - `apps/api/src/modules/streams/synthetic-master.ts`
+- frontend admin/player integration:
+  - `apps/web/src/components/channels/channel-admin-form.tsx`
+  - `apps/web/src/pages/admin-channels-page.tsx`
+  - `apps/web/src/services/api.ts`
+  - `apps/web/src/types/api.ts`
+  - `apps/web/src/player/quality-options.ts`
+- tests:
+  - `apps/api/src/modules/channels/channel-input.test.ts`
+  - `apps/api/src/modules/channels/channel.routes.test.ts`
+  - `apps/api/src/modules/streams/stream.routes.test.ts`
+  - `apps/api/src/modules/streams/synthetic-master.test.ts`
+  - `apps/web/src/components/channels/channel-admin-form.test.ts`
+  - `apps/web/src/components/channels/channel-admin-form-fields.test.tsx`
+  - `apps/web/src/services/api.test.ts`
+  - `apps/web/src/player/quality-options.test.ts`
+- docs:
+  - `docs/architecture/player-architecture.md`
+  - `docs/architecture/api-boundaries.md`
+  - `docs/architecture/testing-strategy.md`
+  - `docs/standards/player-hls-standards.md`
+  - `docs/standards/prisma-database-standards.md`
+  - `docs/standards/testing-standards.md`
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- The cleanest seam for manual variants was the existing backend master-playlist endpoint, not a player-side special case.
+- Manual variants stay one logical channel by generating a real HLS master playlist instead of exposing one channel row per quality.
+- Synthetic master metadata uses explicit admin values first, then predictable fallbacks derived from labels like `low`, `medium`, `high`, and `720p`.
+- Manual-variant playback still respects `DIRECT` vs `PROXY` mode:
+  - `DIRECT` only synthesizes the top-level master
+  - `PROXY` owns variant and segment fetching too
+- New unsaved manual-variant channels are not previewable yet because the synthetic master is generated from persisted channel data on the server.
+
+### Verification Run
+
+- `npm run db:generate -w apps/api`
+- `npm run lint -w apps/api`
+- `npm run lint -w apps/web`
+- `npm run test -w apps/api`
+- `npm run test -w apps/web`
+
+### Remaining Risk
+
+- Direct manual-variant playback still depends on browser access to each upstream variant playlist and segment URL; operators must choose proxy mode when providers require custom headers or referrer handling.
+- Synthetic master fallback metadata is intentionally conservative; some providers may still benefit from more precise bandwidth/resolution data to improve automatic adaptation decisions.
+- New unsaved manual-variant channels cannot be previewed until after the first save.
+
+### Exact Suggested Next Task
+
+Add a small operator assist layer for manual variants: prefill common low/medium/high or resolution ladders, warn when direct mode is combined with custom upstream headers, and add route-level React coverage for the full admin channel workflow.
+
 ## `2026-04-02T23:27:35+03:00`
 
 ### Objective

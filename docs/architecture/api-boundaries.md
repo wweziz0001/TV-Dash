@@ -78,7 +78,7 @@ Repositories must not:
 - `auth`
   - login and current-user session lookup
 - `channels`
-  - logical channel catalog CRUD, browse lookups, proxy-mode metadata, and channel-to-EPG mapping fields
+  - logical channel catalog CRUD, browse lookups, channel ingest-mode metadata, manual quality variants, proxy-mode metadata, and channel-to-EPG mapping fields
 - `groups`
   - channel grouping/catalog structure
 - `epg`
@@ -95,10 +95,11 @@ Repositories must not:
 ## Stream Proxy Foundation Rules
 
 - Public playback uses one of two contracts:
-  - direct: the channel response may expose `masterHlsUrl`
-  - proxy: the channel response exposes a stable API playback path instead of the upstream URL
+  - direct master: the channel response may expose `masterHlsUrl`
+  - generated/proxy master: the player uses a stable API playback path instead of the upstream URL
 - Stream proxy routes currently own:
   - channel master playlist lookup
+  - synthetic master playlist generation for manual-variant channels
   - upstream request header/referrer/user-agent application
   - playlist rewriting for nested playlists, key URIs, and segments
   - short-lived signed asset tokens

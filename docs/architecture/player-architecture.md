@@ -47,7 +47,9 @@ That does not belong in:
 
 ## Quality Switching Rules
 
-- TV-Dash stores one master playlist URL per logical channel.
+- TV-Dash stores one logical playback source per channel, backed by either:
+  - one real master playlist URL
+  - or manual variant playlists that the backend exposes as a synthetic master playlist
 - Quality options are derived at runtime from manifest levels.
 - `AUTO` must always remain available.
 - Manual selection is resolved through player helpers, not inline page logic.
@@ -65,6 +67,7 @@ That does not belong in:
 ## Playback URL Selection Rules
 
 - Public channel payloads may intentionally omit `masterHlsUrl` when `playbackMode` is `PROXY`.
+- Manual-variant channels should resolve playback through the backend stream path so HLS.js receives the generated synthetic master playlist.
 - Page code should resolve playback URLs through a small service/helper seam rather than hard-coding `/api/streams/...` paths inline.
 - The player should receive a final URL or `null`; it should not know how channel proxy mode is decided.
 - Admin-only flows may still use the raw upstream URL for diagnostics and preview/testing.

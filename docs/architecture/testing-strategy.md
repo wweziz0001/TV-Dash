@@ -9,7 +9,7 @@ As of `2026-04-02`, TV-Dash has:
 - representative tests for:
   - API health server boot path
   - channel, group, favorite, layout, and stream route validation/contract behavior via Fastify `inject`
-  - HLS master playlist parsing
+  - HLS master playlist parsing plus synthetic master generation for manual variants
   - player retry timer cleanup and source replacement behavior
   - quality option resolution
   - multi-view tile defaults, audio ownership, layout hydration, and tile-state pruning
