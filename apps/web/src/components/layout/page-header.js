@@ -1,0 +1,4 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+export function PageHeader({ eyebrow, title, description, actions, children, }) {
+    return (_jsxs("section", { className: "rounded-[2rem] border border-slate-800/80 bg-slate-950/60 p-6 shadow-glow backdrop-blur", children: [_jsxs("div", { className: "flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between", children: [_jsxs("div", { children: [_jsx("p", { className: "text-xs uppercase tracking-[0.32em] text-accent/80", children: eyebrow }), _jsx("h1", { className: "mt-3 text-3xl font-bold text-white", children: title }), _jsx("p", { className: "mt-3 max-w-3xl text-sm leading-6 text-slate-400", children: description })] }), actions ? _jsx("div", { className: "flex flex-wrap gap-3", children: actions }) : null] }), children ? _jsx("div", { className: "mt-5", children: children }) : null] }));
+}

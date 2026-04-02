@@ -1,0 +1,12 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { Heart, LayoutTemplate, PlayCircle } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Panel } from "@/components/ui/panel";
+import { cn } from "@/lib/utils";
+export function ChannelCard({ channel, isFavorite, onToggleFavorite, }) {
+    return (_jsxs(Panel, { className: "flex h-full flex-col gap-4 p-4", children: [_jsxs("div", { className: "flex items-start justify-between gap-3", children: [_jsxs("div", { className: "flex items-center gap-3", children: [_jsx("div", { className: "flex h-14 w-20 items-center justify-center overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-950", children: channel.logoUrl ? (_jsx("img", { alt: channel.name, className: "h-full w-full object-cover", src: channel.logoUrl })) : (_jsx("span", { className: "text-xs uppercase tracking-[0.28em] text-slate-500", children: "TV" })) }), _jsxs("div", { children: [_jsx("p", { className: "text-base font-semibold text-white", children: channel.name }), _jsx("p", { className: "text-sm text-slate-400", children: channel.group?.name ?? "Ungrouped" })] })] }), _jsx("button", { className: cn("rounded-2xl border px-3 py-2 transition", isFavorite
+                            ? "border-amber-400/30 bg-amber-500/10 text-amber-200"
+                            : "border-slate-700/70 bg-slate-950/70 text-slate-400 hover:text-white"), onClick: () => onToggleFavorite(channel), type: "button", children: _jsx(Heart, { className: cn("h-4 w-4", isFavorite && "fill-current") }) })] }), _jsxs("div", { className: "flex flex-wrap gap-2", children: [_jsx(Badge, { className: channel.isActive ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : "", children: channel.isActive ? "Active" : "Inactive" }), _jsx(Badge, { children: channel.slug })] }), _jsxs("div", { className: "mt-auto flex flex-wrap gap-3", children: [_jsx(Link, { className: "flex-1", to: `/watch/${channel.slug}`, children: _jsxs(Button, { className: "w-full", children: [_jsx(PlayCircle, { className: "h-4 w-4" }), "Watch"] }) }), _jsx(Link, { className: "flex-1", to: `/multiview?channels=${channel.id}`, children: _jsxs(Button, { className: "w-full", variant: "secondary", children: [_jsx(LayoutTemplate, { className: "h-4 w-4" }), "Multi-View"] }) })] })] }));
+}
