@@ -1,5 +1,87 @@
 # Codex Session Log
 
+## `2026-04-03T02:42:00+03:00`
+
+### Objective
+
+Improve the admin UX for manual channel quality variant entry so repeated ingest work feels compact, faster, and less error-prone without changing the core master-vs-manual feature behavior.
+
+### Work Completed
+
+- created the requested working branch `008-improve-manual-quality-variant-admin-ux`
+- extracted channel admin form state and validation helpers into a pure module so manual-variant behavior can be tested independently from the JSX form shell
+- rebuilt the manual-variant editor into a compact operational row layout with:
+  - denser field sizing
+  - better alignment
+  - a table-like desktop header
+  - row-level action buttons for move, duplicate, and remove
+  - section summary pills for mode, row count, active count, and validation state
+- added faster admin helpers for repeated entry:
+  - preset row buttons for `1080p`, `720p`, `480p`
+  - quick `low/medium/high` ladder insertion
+  - duplicate-row behavior that copies metadata but clears the URL to avoid an immediate duplicate URL failure
+  - explicit auto-sort for known qualities that normalizes labels and re-numbers sort order low-to-high
+- added safe assist behavior for manual rows:
+  - normalize label synonyms such as `720`, `FULL HD`, `med`, and `hi`
+  - infer blank labels from URL patterns like `720`, `1080`, `low`, `medium`, or `high`
+  - infer blank labels from entered resolution metadata where possible
+  - prefill safe width/height/bandwidth defaults for known labels when those fields are blank
+- improved manual validation UX:
+  - row-level inline status chips for ready/incomplete/error state
+  - clearer messages for missing or invalid playlist URLs
+  - inline duplicate-label and duplicate-sort-order feedback before save
+  - save mutation now validates the form client-side before the API request is sent
+  - direct manual playback with custom upstream headers/referrer now shows a focused warning about proxy mode requirements
+- added frontend regression coverage for:
+  - preset-row insertion
+  - duplicate-row behavior
+  - auto-sort behavior
+  - label normalization and URL/metadata inference helpers
+  - duplicate validation feedback
+  - final payload correctness for normalized manual variants
+
+### Files Added Or Changed
+
+- admin form UX and helpers:
+  - `apps/web/src/components/channels/channel-admin-form.tsx`
+  - `apps/web/src/components/channels/channel-admin-form-state.ts`
+  - `apps/web/src/components/channels/channel-manual-variants.ts`
+  - `apps/web/src/components/channels/channel-manual-variants-editor.tsx`
+  - `apps/web/src/pages/admin-channels-page.tsx`
+- tests:
+  - `apps/web/src/components/channels/channel-admin-form.test.tsx`
+  - `apps/web/src/components/channels/channel-admin-form-state.test.ts`
+  - `apps/web/src/components/channels/channel-manual-variants.test.ts`
+- docs:
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- The form stayed inside the existing admin page, but the new branch-heavy behavior was extracted into dedicated state/helper modules so the large page file did not absorb more manual-variant policy.
+- Smart behavior stays explicit and safe:
+  - only blank labels are inferred
+  - only blank metadata fields are autofilled
+  - sort-order automation is explicit through an `Auto-sort` action instead of hidden background reordering
+- Duplicate-row behavior intentionally clears the URL while keeping the label and metadata shape so operators can branch one row into another without creating an immediate duplicate URL conflict.
+- Validation remains schema-backed through `channelInputSchema`, but common operator mistakes now map to clearer frontend wording before the request is submitted.
+
+### Verification Run
+
+- `npm run lint -w apps/web`
+- `npm run test -w apps/web`
+- `npm run build -w apps/web`
+
+### Remaining Risk
+
+- The manual-variant editor is much faster now, but ordering is still button-driven rather than drag-and-drop for larger ladders.
+- There is still no unsaved synthetic master preview; operators can see row order and metadata state, but not the final manifest text before first save.
+- Route-level coverage for the full admin channels page is still missing; the new coverage focuses on the extracted helper and form seams instead.
+
+### Exact Suggested Next Task
+
+Add either a lightweight unsaved synthetic master preview or a bulk-paste/manual-import parser for quality rows, then decide whether drag-and-drop ordering is worth the extra complexity compared with the current compact button-driven workflow.
+
 ## `2026-04-03T00:57:40+03:00`
 
 ### Objective

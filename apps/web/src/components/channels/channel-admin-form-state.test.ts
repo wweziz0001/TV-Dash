@@ -5,9 +5,10 @@ import {
   createEmptyManualVariantFormValue,
   formatHeadersJson,
   parseHeadersJson,
-} from "./channel-admin-form";
+  validateChannelForm,
+} from "./channel-admin-form-state";
 
-describe("channel admin form helpers", () => {
+describe("channel admin form state", () => {
   it("builds a persisted master-playlist payload with upstream headers and EPG mapping", () => {
     expect(
       buildChannelInput({
@@ -47,7 +48,7 @@ describe("channel admin form helpers", () => {
     });
   });
 
-  it("builds a manual-variant payload without leaking a master URL", () => {
+  it("builds a normalized manual-variant payload without leaking a master URL", () => {
     expect(
       buildChannelInput({
         name: "Al Alam",
@@ -58,17 +59,17 @@ describe("channel admin form helpers", () => {
         masterHlsUrl: "",
         manualVariants: [
           {
-            label: "low",
+            label: "medium",
             sortOrder: 0,
-            playlistUrl: "https://example.com/live/low/index.m3u8",
+            playlistUrl: "https://example.com/live/medium/index.m3u8",
             width: "",
-            height: "360",
+            height: "540",
             bandwidth: "",
             codecs: "",
             isActive: true,
           },
           {
-            label: "high",
+            label: "FULL HD",
             sortOrder: 1,
             playlistUrl: "https://example.com/live/high/index.m3u8",
             width: "1920",
@@ -96,17 +97,17 @@ describe("channel admin form helpers", () => {
       masterHlsUrl: null,
       manualVariants: [
         {
-          label: "low",
+          label: "medium",
           sortOrder: 0,
-          playlistUrl: "https://example.com/live/low/index.m3u8",
+          playlistUrl: "https://example.com/live/medium/index.m3u8",
           width: null,
-          height: 360,
+          height: 540,
           bandwidth: null,
           codecs: null,
           isActive: true,
         },
         {
-          label: "high",
+          label: "1080p",
           sortOrder: 1,
           playlistUrl: "https://example.com/live/high/index.m3u8",
           width: 1920,
@@ -125,6 +126,52 @@ describe("channel admin form helpers", () => {
       epgSourceId: null,
       epgChannelId: null,
     });
+  });
+
+  it("returns practical validation feedback for manual-variant mistakes", () => {
+    const validation = validateChannelForm({
+      name: "Ops Feed",
+      slug: "ops-feed",
+      logoUrl: "",
+      groupId: "",
+      sourceMode: "MANUAL_VARIANTS",
+      masterHlsUrl: "",
+      manualVariants: [
+        {
+          label: "720p",
+          sortOrder: 0,
+          playlistUrl: "https://example.com/live/720/index.m3u8",
+          width: "",
+          height: "",
+          bandwidth: "",
+          codecs: "",
+          isActive: true,
+        },
+        {
+          label: "720",
+          sortOrder: 0,
+          playlistUrl: "",
+          width: "",
+          height: "",
+          bandwidth: "",
+          codecs: "",
+          isActive: true,
+        },
+      ],
+      isActive: true,
+      sortOrder: 0,
+      playbackMode: "DIRECT",
+      upstreamUserAgent: "",
+      upstreamReferrer: "",
+      upstreamHeadersText: "",
+      epgSourceId: "",
+      epgChannelId: "",
+    });
+
+    expect(validation.isValid).toBe(false);
+    expect(validation.issuesByPath["manualVariants.1.label"]).toEqual(["Manual variant labels must be unique"]);
+    expect(validation.issuesByPath["manualVariants.1.sortOrder"]).toEqual(["Manual variant sort orders must be unique"]);
+    expect(validation.issuesByPath["manualVariants.1.playlistUrl"]).toEqual(["Playlist URL is required"]);
   });
 
   it("hydrates form state from the admin channel config response", () => {
