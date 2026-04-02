@@ -11,7 +11,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16),
   API_PORT: z.coerce.number().int().positive().default(4000),
   CLIENT_URL: z.string().url().default("http://localhost:5173"),
+  CLIENT_URLS: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);
-
