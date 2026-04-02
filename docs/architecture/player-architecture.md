@@ -25,10 +25,14 @@ That does not belong in:
   - React wrapper around one `<video>` element and one HLS.js instance
 - `player/quality-options.ts`
   - converts manifest levels into UI options and resolves manual/auto selection
+- `player/playback-recovery.ts`
+  - classifies fatal HLS failures into bounded retry, media recovery, or terminal error states
 - `player/layouts.ts`
   - static supported layout definitions
 - `player/multiview-layout.ts`
   - tile defaults, resize policy, and single-audio enforcement
+- `player/multiview-state.ts`
+  - multiview layout serialization, hydration, and per-tile state reset helpers
 
 ## HLS.js Integration Rules
 
@@ -63,9 +67,10 @@ That does not belong in:
 
 ## Retry and Reconnect Policy
 
-- fatal network errors trigger reconnect attempts
-- fatal media errors trigger media recovery
+- fatal network errors trigger up to `3` bounded reconnect attempts at escalating delays
+- fatal media errors trigger one explicit `recoverMediaError()` attempt before surfacing failure
 - unrecoverable failures surface a retry UI
+- successful recovery clears retry counters and publishes a visible recovered state
 
 Do not add silent infinite retry loops. Any retry policy change must consider multi-view bandwidth pressure.
 
@@ -74,12 +79,14 @@ Do not add silent infinite retry loops. Any retry policy change must consider mu
 - single-view playback may request unmuted autoplay, but browser policy can still block audio
 - multi-view defaults keep only the first tile unmuted
 - selecting another active audio tile must mute all others
+- when a muted/background tile changes source, its preferred quality should reset to low-bias startup behavior unless the operator explicitly selects another manual level
 
 ## Multi-View Scaling Policy
 
 - supported layouts are defined centrally in `player/layouts.ts`
 - tile counts come from layout definitions, not inline page conditionals
 - background tiles should prefer lower startup quality where possible
+- saved layout hydration should restore tile order and focus state without leaking stale per-tile quality metadata
 - any layout above current supported sizes must be evaluated for:
   - CPU/GPU impact
   - network concurrency

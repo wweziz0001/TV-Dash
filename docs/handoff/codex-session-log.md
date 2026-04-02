@@ -1,5 +1,75 @@
 # Codex Session Log
 
+## `2026-04-02T21:45:25+03:00`
+
+### Objective
+
+Harden playback reliability, stabilize multi-view lifecycle behavior, tighten touched API contract validation, and add regression coverage for the most failure-prone paths.
+
+### Work Completed
+
+- created the requested working branch `004-hardening-playback-multiview-and-tests`
+- hardened `HlsPlayer` retry handling with bounded network reconnects, single media recovery, clearer buffering/retrying/error states, and stale-timer cleanup on source replacement
+- normalized quality option handling to drop malformed levels, deduplicate identical variants, and support explicit highest/lowest resolution requests safely
+- added multiview state helpers for layout serialization, hydration, tile-channel replacement, and pruning tile-scoped UI state when layouts shrink
+- updated the multiview page to reset stale per-tile quality metadata on channel changes, persist focused-tile state, surface tile playback status more clearly, and key player instances safely by tile/source
+- tightened touched API routes with route-edge validation for ids and channel list filters plus deliberate `404`/`409` mappings for common Prisma write failures
+- added Fastify inject regression tests for channel/group/favorite/layout/stream contract behavior and jsdom component tests for HlsPlayer retry/cleanup behavior
+- updated player/testing architecture docs and the handoff summary to reflect the new hardening rules
+
+### Files Added Or Changed
+
+- frontend player hardening:
+  - `apps/web/src/player/hls-player.tsx`
+  - `apps/web/src/player/playback-recovery.ts`
+  - `apps/web/src/player/quality-options.ts`
+  - `apps/web/src/player/multiview-layout.ts`
+  - `apps/web/src/player/multiview-state.ts`
+  - `apps/web/src/pages/channel-watch-page.tsx`
+  - `apps/web/src/pages/multiview-page.tsx`
+- frontend regression tests:
+  - `apps/web/src/player/*.test.ts[x]`
+  - `apps/web/src/test/setup.ts`
+  - `apps/web/vite.config.ts`
+- backend validation and tests:
+  - `apps/api/src/app/prisma-errors.ts`
+  - `apps/api/src/app/request-schemas.ts`
+  - `apps/api/src/app/test-support.ts`
+  - `apps/api/src/modules/*/*.routes.ts`
+  - `apps/api/src/modules/*/*.routes.test.ts`
+- docs:
+  - `docs/architecture/player-architecture.md`
+  - `docs/architecture/testing-strategy.md`
+  - `docs/standards/player-hls-standards.md`
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- TV-Dash now uses a bounded fatal recovery policy of `3` network retries and `1` media recovery attempt before surfacing a retry UI.
+- Multi-view source changes reset background-tile quality bias back to `LOWEST` unless the operator explicitly reselects a manual level.
+- Saved layout config now intentionally stores focused-tile metadata alongside active audio ownership so operational context survives layout saves.
+- Touched CRUD routes now validate ids/query parameters at the route edge instead of copying legacy casts forward.
+
+### Verification Run
+
+- `npm run lint -w apps/web`
+- `npm run test -w apps/web`
+- `npm run lint -w apps/api`
+- `npm run test -w apps/api`
+
+### Remaining Risk
+
+- Full database-backed CRUD integration coverage is still missing; the new API tests validate contracts with mocked persistence, not real Prisma/database behavior.
+- Route-level UI regression coverage for favorites toggling and saved-layout application is still missing.
+- The player bundle warning remains; lazy loading is still the next performance-focused frontend task.
+
+### Exact Suggested Next Task
+
+Add isolated database-backed Fastify integration tests for auth/channels/groups/favorites/layouts, then add route-level React tests for saved-layout application and favorites toggling so the most important operator flows are covered end-to-end at the page boundary.
+
+---
+
 ## `2026-04-02T21:21:28+03:00`
 
 ### Objective
