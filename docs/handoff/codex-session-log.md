@@ -1,5 +1,106 @@
 # Codex Session Log
 
+## `2026-04-02T22:29:00+03:00`
+
+### Objective
+
+Add a real stream proxy/gateway foundation, support upstream request configuration, and lay the first production-ready XMLTV/EPG groundwork without destabilizing the current MVP.
+
+### Work Completed
+
+- created the requested working branch `005-stream-proxy-and-epg-foundation`
+- extended the shared contracts and Prisma schema to support:
+  - channel playback mode
+  - upstream user-agent/referrer/header configuration
+  - EPG source configuration
+  - channel-to-EPG mapping
+- added a stream proxy foundation with:
+  - `/api/streams/channels/:channelId/master`
+  - `/api/streams/channels/:channelId/asset?token=...`
+  - upstream request header/referrer/user-agent application
+  - playlist rewriting for nested playlists, keys, and segments
+  - short-lived signed asset tokens
+- added an `epg` backend module with:
+  - EPG source CRUD
+  - XMLTV preview endpoint
+  - on-demand XMLTV fetch and in-memory cache
+  - now/next lookup endpoint
+- updated public/admin channel mapping so proxy-mode channels hide raw upstream URLs from public responses while admin config endpoints still expose them
+- extended the admin channel UI for playback mode, upstream request configuration, and EPG mapping
+- added a dedicated admin EPG source page with XMLTV preview
+- updated single-view and multi-view playback to use proxy-aware playback URL resolution
+- added migration, seed updates, backend tests, and frontend helper tests for the new platform foundation
+
+### Files Added Or Changed
+
+- shared/API contracts:
+  - `packages/shared/src/index.ts`
+  - `apps/web/src/types/api.ts`
+  - `apps/web/src/services/api.ts`
+- database:
+  - `apps/api/prisma/schema.prisma`
+  - `apps/api/prisma/migrations/202604020002_stream_proxy_and_epg_foundation/migration.sql`
+  - `apps/api/prisma/seed.ts`
+- backend proxy/epg foundation:
+  - `apps/api/src/app/upstream-request.ts`
+  - `apps/api/src/modules/channels/*`
+  - `apps/api/src/modules/streams/*`
+  - `apps/api/src/modules/epg/*`
+  - `apps/api/src/app/build-server.ts`
+- frontend admin/playback integration:
+  - `apps/web/src/components/channels/channel-admin-form.tsx`
+  - `apps/web/src/pages/admin-channels-page.tsx`
+  - `apps/web/src/pages/admin-epg-sources-page.tsx`
+  - `apps/web/src/pages/channel-watch-page.tsx`
+  - `apps/web/src/pages/multiview-page.tsx`
+  - `apps/web/src/app/router.tsx`
+  - `apps/web/src/components/layout/app-shell.tsx`
+- tests:
+  - `apps/api/src/modules/channels/channel.routes.test.ts`
+  - `apps/api/src/modules/streams/playlist-rewrite.test.ts`
+  - `apps/api/src/modules/streams/proxy-token.test.ts`
+  - `apps/api/src/modules/streams/stream.routes.test.ts`
+  - `apps/api/src/modules/epg/xmltv-parser.test.ts`
+  - `apps/api/src/modules/epg/epg.routes.test.ts`
+  - `apps/web/src/components/channels/channel-admin-form.test.ts`
+  - `apps/web/src/services/api.test.ts`
+- docs:
+  - `docs/architecture/player-architecture.md`
+  - `docs/architecture/api-boundaries.md`
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- Proxy mode is now a real channel-level contract, not a UI-only flag.
+- Public channel payloads intentionally hide `masterHlsUrl` when proxy mode is enabled.
+- Stream proxy asset URLs are signed and short-lived to avoid exposing arbitrary upstream fetching.
+- Upstream request headers are normalized in one shared helper and reused by both streams and XMLTV fetching.
+- XMLTV support is intentionally phased:
+  - source config and channel mapping are first-class now
+  - now/next works from on-demand fetch plus in-memory cache
+  - durable programme ingestion remains future work
+
+### Verification Run
+
+- `npm run lint -w apps/api`
+- `npm run test -w apps/api`
+- `npm run lint -w apps/web`
+- `npm run test -w apps/web`
+
+### Remaining Risk
+
+- The proxy foundation still buffers upstream asset bodies in memory instead of true streaming passthrough.
+- XMLTV data is not persisted yet; guide lookups still depend on on-demand upstream access and process-local cache.
+- Frontend route-level tests for admin channel and EPG workflows are still missing.
+- Full database-backed integration coverage for the new backend modules is still missing.
+
+### Exact Suggested Next Task
+
+Implement true streaming passthrough for proxied HLS assets, then add a background XMLTV ingestion/cache pipeline so now/next and future guide screens do not depend on live upstream fetches.
+
+---
+
 ## `2026-04-02T21:45:25+03:00`
 
 ### Objective

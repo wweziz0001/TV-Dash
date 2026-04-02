@@ -52,9 +52,17 @@ That does not belong in:
 ## State Ownership Rules
 
 - Route pages own page orchestration and persistence payload assembly.
+- Frontend service helpers may choose the playback URL contract (`DIRECT` upstream URL vs `PROXY` gateway path), but they do not own HLS lifecycle behavior.
 - `HlsPlayer` owns playback lifecycle and emits status/quality callbacks upward.
 - Multi-view pages own which tile is selected, saved, or displayed.
 - Shared quality and tile decision logic lives in pure player helpers.
+
+## Playback URL Selection Rules
+
+- Public channel payloads may intentionally omit `masterHlsUrl` when `playbackMode` is `PROXY`.
+- Page code should resolve playback URLs through a small service/helper seam rather than hard-coding `/api/streams/...` paths inline.
+- The player should receive a final URL or `null`; it should not know how channel proxy mode is decided.
+- Admin-only flows may still use the raw upstream URL for diagnostics and preview/testing.
 
 ## Tile Lifecycle Rules
 

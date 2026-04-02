@@ -69,11 +69,12 @@ tests/
 ## Key Backend Modules
 
 - `auth`: login and current user lookup
-- `channels`: logical channel catalog CRUD and browse lookups
+- `channels`: logical channel catalog CRUD, browse lookups, playback-mode metadata, and channel-to-EPG linking
+- `epg`: EPG source CRUD, XMLTV preview/loading, and now/next lookup
 - `groups`: category/group CRUD
 - `favorites`: per-user pinned channels
 - `layouts`: saved multi-view walls
-- `streams`: HLS metadata and stream test endpoints
+- `streams`: HLS metadata, stream test endpoints, and proxy gateway foundation
 - `health`: readiness endpoint
 
 ## Database Overview
@@ -85,6 +86,7 @@ Main models:
 - `User`
 - `ChannelGroup`
 - `Channel`
+- `EpgSource`
 - `Favorite`
 - `SavedLayout`
 - `SavedLayoutItem`
@@ -92,9 +94,11 @@ Main models:
 Key relationship rules:
 
 - a channel optionally belongs to a group
+- a channel may optionally point to one EPG source and one EPG channel id
+- channels may play either in `DIRECT` or `PROXY` mode
 - favorites are per-user per-channel
 - saved layouts are per-user and contain ordered tile items
-- each logical channel stores one master HLS URL
+- each logical channel stores one master HLS URL plus optional upstream request metadata
 
 ## Player Architecture Overview
 
@@ -115,18 +119,23 @@ Key relationship rules:
 - Cross-app contracts go in `packages/shared`; app-local types stay local.
 - Frontend request payloads should use shared DTO types instead of `unknown` or ad-hoc object shapes.
 - Saved layout config is now modeled as real JSON in shared contracts, not as an unbounded `any` record.
+- Proxy playback URL selection happens in frontend service helpers, not inside the player lifecycle code.
+- Public channel responses may intentionally hide raw upstream stream URLs when proxy mode is enabled.
 
 ## Testing Status
 
 Current automated coverage includes:
 
 - API health boot/injection test
-- Fastify inject coverage for channels, groups, favorites, layouts, and stream validation/error contracts
+- Fastify inject coverage for channels, groups, favorites, layouts, streams, and EPG route contracts
 - HLS master playlist parsing test
+- HLS playlist rewrite and proxy token tests
+- XMLTV parser and now/next lookup tests
 - HlsPlayer component coverage for bounded retry timers and source replacement cleanup
 - player quality option resolution tests
 - multi-view tile default/audio ownership tests
 - multi-view layout serialization, hydration, and tile-scoped state reset tests
+- channel admin form and playback URL helper tests
 
 Mandatory verification commands:
 
@@ -144,21 +153,38 @@ Optional but recommended for risky changes:
 - Fastify route tests still mock persistence; isolated database-backed CRUD coverage is the next backend confidence step.
 - Route-level UI regression coverage for favorites and saved-layout application is still missing on the frontend.
 - Admin reorder remains sort-order based rather than drag-and-drop.
-- `admin-channels-page.tsx`, `multiview-page.tsx`, and `player/hls-player.tsx` are still valid but near the current complexity ceiling defined in the standards docs.
+- The proxy foundation currently buffers upstream asset bodies in memory instead of true streaming passthrough.
+- XMLTV data is loaded on demand into process memory only; there is no background ingestion job or durable programme storage yet.
+- Proxy playback is intentionally exposed through unauthenticated asset paths because the current HLS client stack does not inject bearer headers into playlist/segment requests.
+- `admin-channels-page.tsx`, `admin-epg-sources-page.tsx`, `multiview-page.tsx`, and `player/hls-player.tsx` are still valid but near the current complexity ceiling defined in the standards docs.
 
-## Hardening Summary
+## Proxy And EPG Foundation Summary
 
-- Playback startup now resets stale tile quality metadata, bounds fatal retries, and surfaces buffering/retrying/recovered states more clearly.
-- Multi-view layout changes now prune removed tile state, persist focused-tile metadata, and reset background tile quality bias safely when the source changes.
-- Touched CRUD endpoints now validate ids/query parameters at the route edge and map common Prisma not-found/duplicate failures to stable HTTP responses.
+- Channels now support real playback mode and upstream request configuration:
+  - `playbackMode`
+  - `upstreamUserAgent`
+  - `upstreamReferrer`
+  - `upstreamHeaders`
+- The backend now exposes a real stream proxy foundation:
+  - `GET /api/streams/channels/:channelId/master`
+  - `GET /api/streams/channels/:channelId/asset?token=...`
+  - master playlists are rewritten to signed asset URLs
+  - upstream request headers/referrer/user-agent are applied centrally
+- Public channel payloads now hide the upstream URL when proxy mode is enabled, while admin config endpoints still expose the raw URL for diagnostics.
+- TV-Dash now has first-class EPG source configuration plus channel-to-guide linking through `epgSourceId` and `epgChannelId`.
+- The backend can preview XMLTV channel ids and serve real now/next responses from on-demand XMLTV fetches.
+- Admin UI now includes:
+  - expanded channel controls for proxy mode, upstream headers, and EPG mapping
+  - a dedicated EPG source management page with XMLTV preview
+- Tests now cover proxy rewriting/token behavior, XMLTV parsing, EPG routes, proxy routes, and frontend helper logic for the new contracts.
 
 ## Next Recommended Priorities
 
-1. Add isolated database-backed Fastify integration tests for auth, channels, groups, favorites, and layouts to complement the new mocked route-contract coverage.
-2. Add route-level React tests for multiview saved-layout application and favorites toggling in the single-view page.
-3. Add route-level lazy loading to reduce the large player bundle warning.
-4. Consider extracting one more seam out of `multiview-page.tsx` if future behavior adds another major branch of UI state.
-5. Consider an ADR if a future session wants to extract shared backend runtime code into packages.
+1. Complete the next stream proxy milestone by switching asset delivery from buffered fetches to streaming passthrough and validating more HLS edge cases around large segment traffic.
+2. Add a real background XMLTV ingestion/caching job so now/next and future guide views do not depend on on-demand source fetches.
+3. Add isolated database-backed Fastify integration tests for channels, EPG sources, proxy routes, and saved layouts to complement the mocked route-contract coverage.
+4. Add route-level React tests for admin channel/EPG flows plus favorites and saved-layout application.
+5. Add route-level lazy loading to reduce the large player bundle warning.
 
 ## Exact Local Commands
 
