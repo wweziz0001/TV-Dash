@@ -101,7 +101,6 @@ export function MultiviewTileCard({
           <div className="flex flex-wrap items-center gap-1.5">
             <p className="truncate text-[13px] font-semibold text-white">{channel?.name ?? `Tile ${tileIndex + 1}`}</p>
             <Badge className={statusBadgeClassName} size="sm">{playerStatus}</Badge>
-            {isFocused ? <Badge className="text-cyan-100" size="sm">Focus</Badge> : null}
             {tile.isMuted ? <Badge size="sm">Muted</Badge> : <Badge className="text-emerald-200" size="sm">Audio</Badge>}
           </div>
           <p className="mt-0.5 truncate text-[11px] text-slate-400">
