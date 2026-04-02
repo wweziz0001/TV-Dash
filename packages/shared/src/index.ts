@@ -61,6 +61,7 @@ export const channelInputSchema = z
       .string()
       .trim()
       .max(160)
+      .nullable()
       .optional()
       .transform((value) => value || null),
   })

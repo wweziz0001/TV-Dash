@@ -97,6 +97,8 @@ describe("channelRoutes", () => {
         upstreamHeaders: {
           "x-token": "abc",
         },
+        epgSourceId: null,
+        epgChannelId: null,
       },
     });
 
@@ -230,6 +232,8 @@ describe("channelRoutes", () => {
         sortOrder: 2,
         playbackMode: "DIRECT",
         upstreamHeaders: {},
+        epgSourceId: null,
+        epgChannelId: null,
       },
     });
 
