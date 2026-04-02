@@ -1,5 +1,82 @@
 # Codex Session Log
 
+## `2026-04-02T23:27:35+03:00`
+
+### Objective
+
+Correct the oversized operator UI pass by reducing wasted margins, oversized controls, and chrome-heavy viewer layouts so TV-Dash behaves more like a live monitoring console.
+
+### Work Completed
+
+- created the requested working branch `006-fix-operator-ux-density-and-screen-usage`
+- tightened shared operator UI density by:
+  - shrinking shared button, badge, input, select, panel, and page-header sizing
+  - narrowing the desktop app shell and reducing outer gutters while widening the usable workspace
+  - making the desktop navigation rail smaller and sticky to free more horizontal space for content
+- reworked the single-view watch page to be more video-first:
+  - larger viewport-height player area
+  - compact sticky side rail instead of a roomy secondary column
+  - tighter playback, guide, and metadata panels
+- reworked multiview to use screen space more efficiently:
+  - wall moved higher on the page
+  - focused-tile details and saved layouts moved into a narrow right rail
+  - tile chrome compressed substantially so the stream remains dominant
+  - tile controls now lean icon-first where repeated operator actions are obvious
+- tightened browse/dashboard density with:
+  - smaller filter controls
+  - denser favorites strip
+  - more aggressive large-screen channel grid usage
+- tightened channel picker and guide cards so supporting UI no longer feels oversized beside the playback surfaces
+- kept playback behavior unchanged while compacting `HlsPlayer` overlays and retry/error chrome
+
+### Files Added Or Changed
+
+- shared density and layout primitives:
+  - `apps/web/src/components/ui/button.tsx`
+  - `apps/web/src/components/ui/input.tsx`
+  - `apps/web/src/components/ui/select.tsx`
+  - `apps/web/src/components/ui/badge.tsx`
+  - `apps/web/src/components/ui/panel.tsx`
+  - `apps/web/src/components/layout/page-header.tsx`
+  - `apps/web/src/components/layout/app-shell.tsx`
+- operator-facing pages and supporting UI:
+  - `apps/web/src/pages/channel-watch-page.tsx`
+  - `apps/web/src/pages/multiview-page.tsx`
+  - `apps/web/src/pages/dashboard-page.tsx`
+  - `apps/web/src/components/channels/channel-card.tsx`
+  - `apps/web/src/components/channels/channel-guide-card.tsx`
+  - `apps/web/src/components/channels/channel-picker-dialog.tsx`
+  - `apps/web/src/player/multiview-tile-card.tsx`
+  - `apps/web/src/player/hls-player.tsx`
+- docs:
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- The fastest way to correct the oversized feel was to tighten shared primitives first so the whole operator surface could converge on one density strategy.
+- Viewer and multiview screens now explicitly prioritize stream area over decorative framing or large action clusters.
+- Multiview keeps the same workflows from the previous milestone, but secondary information now lives in a compact right rail instead of pushing the live wall lower on the page.
+- Icon-first controls are acceptable inside multiview tiles because those actions are repeated constantly and already have surrounding context.
+
+### Verification Run
+
+- `npm run lint -w apps/web`
+- `npm run test -w apps/web`
+- `npm run build -w apps/web`
+
+### Remaining Risk
+
+- There is still no route-level React coverage for the full watch and multiview pages, so the density/layout changes rely on manual structural review plus the existing helper/component tests.
+- Admin screens still use the older roomier layout language in places and have not yet received the same density correction pass.
+- The player chunk warning remains unchanged.
+
+### Exact Suggested Next Task
+
+Apply the same compact operator density system to the admin pages, then add route-level React coverage for the watch and multiview pages so future UX corrections can move faster with less regression risk.
+
+---
+
 ## `2026-04-02T22:52:22+03:00`
 
 ### Objective
