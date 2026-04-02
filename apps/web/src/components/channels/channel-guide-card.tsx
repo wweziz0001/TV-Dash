@@ -26,30 +26,30 @@ export function ChannelGuideCard({
 
   if (variant === "compact") {
     return (
-      <div className={cn("rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3", className)}>
-        <div className="flex items-start justify-between gap-3">
+      <div className={cn("rounded-xl border border-slate-800/80 bg-slate-950/70 p-2.5", className)}>
+        <div className="flex items-start justify-between gap-2">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.26em] text-slate-500">Now / Next</p>
-            <p className="mt-2 text-sm font-semibold text-white">
+            <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Now / Next</p>
+            <p className="mt-1.5 text-[13px] font-semibold leading-[1.15rem] text-white">
               {state.kind === "ready" ? state.now?.title ?? state.next?.title ?? "Schedule ready" : state.message}
             </p>
             {state.kind === "ready" && state.next ? (
-              <p className="mt-1 text-xs text-slate-400">Next: {state.next.title}</p>
+              <p className="mt-1 text-[11px] text-slate-400">Next: {state.next.title}</p>
             ) : (
-              <p className="mt-1 text-xs text-slate-500">{state.message}</p>
+              <p className="mt-1 text-[11px] text-slate-500">{state.message}</p>
             )}
           </div>
           <GuideStateIcon kind={state.kind} />
         </div>
         {state.kind === "ready" && state.progressPercent !== null ? (
-          <div className="mt-3">
-            <div className="h-1.5 rounded-full bg-slate-800">
+          <div className="mt-2">
+            <div className="h-1 rounded-full bg-slate-800">
               <div
                 className="h-full rounded-full bg-cyan-300 transition-[width]"
                 style={{ width: `${state.progressPercent}%` }}
               />
             </div>
-            {state.now ? <p className="mt-2 text-[11px] text-slate-500">{formatProgrammeTime(state.now)}</p> : null}
+            {state.now ? <p className="mt-1.5 text-[10px] text-slate-500">{formatProgrammeTime(state.now)}</p> : null}
           </div>
         ) : null}
       </div>
@@ -57,47 +57,47 @@ export function ChannelGuideCard({
   }
 
   return (
-    <div className={cn("space-y-3", className)}>
-      <div className="rounded-2xl border border-slate-800/80 bg-slate-950/80 p-4">
-        <div className="flex items-start justify-between gap-3">
+    <div className={cn("space-y-2.5", className)}>
+      <div className="rounded-xl border border-slate-800/80 bg-slate-950/80 p-3">
+        <div className="flex items-start justify-between gap-2">
           <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Now</p>
-            <p className="mt-2 font-semibold text-white">
+            <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Now</p>
+            <p className="mt-1.5 text-sm font-semibold text-white">
               {state.kind === "ready" ? state.now?.title ?? "No programme in progress" : state.message}
             </p>
             {state.kind === "ready" && state.now?.subtitle ? (
-              <p className="mt-1 text-sm text-slate-400">{state.now.subtitle}</p>
+              <p className="mt-1 text-[13px] text-slate-400">{state.now.subtitle}</p>
             ) : null}
             {state.kind === "ready" && state.now ? (
-              <p className="mt-3 text-xs text-slate-500">{formatProgrammeTime(state.now)}</p>
+              <p className="mt-2 text-[11px] text-slate-500">{formatProgrammeTime(state.now)}</p>
             ) : (
-              <p className="mt-3 text-xs text-slate-500">{state.message}</p>
+              <p className="mt-2 text-[11px] text-slate-500">{state.message}</p>
             )}
           </div>
           <GuideStateIcon kind={state.kind} />
         </div>
         {state.kind === "ready" && state.progressPercent !== null ? (
-          <div className="mt-4">
-            <div className="h-2 rounded-full bg-slate-800">
+          <div className="mt-3">
+            <div className="h-1.5 rounded-full bg-slate-800">
               <div className="h-full rounded-full bg-cyan-300" style={{ width: `${state.progressPercent}%` }} />
             </div>
-            <p className="mt-2 text-xs text-slate-500">{state.progressPercent}% through the current programme</p>
+            <p className="mt-1.5 text-[11px] text-slate-500">{state.progressPercent}% through the current programme</p>
           </div>
         ) : null}
       </div>
 
-      <div className="rounded-2xl border border-slate-800/80 bg-slate-950/80 p-4">
-        <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Next</p>
-        <p className="mt-2 font-semibold text-white">
+      <div className="rounded-xl border border-slate-800/80 bg-slate-950/80 p-3">
+        <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Next</p>
+        <p className="mt-1.5 text-sm font-semibold text-white">
           {state.kind === "ready" ? state.next?.title ?? "No upcoming programme published" : state.message}
         </p>
         {state.kind === "ready" && state.next?.subtitle ? (
-          <p className="mt-1 text-sm text-slate-400">{state.next.subtitle}</p>
+          <p className="mt-1 text-[13px] text-slate-400">{state.next.subtitle}</p>
         ) : null}
         {state.kind === "ready" && state.next ? (
-          <p className="mt-3 text-xs text-slate-500">{formatProgrammeTime(state.next)}</p>
+          <p className="mt-2 text-[11px] text-slate-500">{formatProgrammeTime(state.next)}</p>
         ) : (
-          <p className="mt-3 text-xs text-slate-500">
+          <p className="mt-2 text-[11px] text-slate-500">
             {state.kind === "unconfigured"
               ? "Link an XMLTV source to surface programme data here."
               : "TV-Dash keeps the view useful even when schedule data is partial or unavailable."}

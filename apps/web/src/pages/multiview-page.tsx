@@ -14,6 +14,7 @@ import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { isEditableKeyboardTarget } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
+import type { PlayerStatus } from "@/player/hls-player";
 import { getLayoutDefinition, layoutDefinitions } from "@/player/layouts";
 import { enforceSingleActiveAudio, resizeTiles, type TileState } from "@/player/multiview-layout";
 import { getLayoutTypeForShortcut, getWrappedTileIndex } from "@/player/multiview-shortcuts";
@@ -31,7 +32,6 @@ import {
 import { MultiviewTileCard } from "@/player/multiview-tile-card";
 import { defaultQualityOptions } from "@/player/quality-options";
 import { api, getChannelPlaybackUrl } from "@/services/api";
-import type { PlayerStatus } from "@/player/hls-player";
 import type { QualityOption } from "@/types/api";
 
 export function MultiViewPage() {
@@ -288,40 +288,43 @@ export function MultiViewPage() {
   }, [focusedTileIndex, tiles.length]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
+        density="compact"
         eyebrow="Multi-View"
         title="Operator wall"
-        description="Swap tiles quickly, keep one live audio owner, load saved walls, and work from a focused tile without losing situational awareness."
+        description="Swap tiles quickly, keep one live audio owner, and keep the wall itself as the primary surface."
         actions={
           <>
-            <Button onClick={() => saveMutation.mutate("create")}>
+            <Button onClick={() => saveMutation.mutate("create")} size="sm">
               <Save className="h-4 w-4" />
               Save as new
             </Button>
             <Button
               disabled={!selectedLayoutId}
               onClick={() => saveMutation.mutate("update")}
+              size="sm"
               variant="secondary"
             >
               <Save className="h-4 w-4" />
               Update selected
             </Button>
-            <Button disabled={!selectedLayoutId} onClick={() => deleteMutation.mutate()} variant="secondary">
+            <Button disabled={!selectedLayoutId} onClick={() => deleteMutation.mutate()} size="sm" variant="secondary">
               <Trash2 className="h-4 w-4" />
               Delete
             </Button>
           </>
         }
       >
-        <div className="grid gap-4 xl:grid-cols-[0.45fr_0.25fr_0.3fr]">
-          <Input onChange={(event) => setLayoutName(event.target.value)} placeholder="Layout name" value={layoutName} />
+        <div className="grid gap-3 xl:grid-cols-[0.46fr_0.24fr_0.3fr]">
+          <Input onChange={(event) => setLayoutName(event.target.value)} placeholder="Layout name" uiSize="sm" value={layoutName} />
           <Select
             onChange={(event) => {
               if (event.target.value) {
                 applySavedLayout(event.target.value);
               }
             }}
+            uiSize="sm"
             value={selectedLayoutId ?? ""}
           >
             <option value="">Load saved layout</option>
@@ -331,22 +334,23 @@ export function MultiViewPage() {
               </option>
             ))}
           </Select>
-          <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 px-4 py-3">
-            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Current wall</p>
-            <p className="mt-2 text-sm font-semibold text-white">
+          <div className="rounded-xl border border-slate-800/80 bg-slate-950/70 px-3 py-2.5">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Current wall</p>
+            <p className="mt-1 text-[13px] font-semibold text-white">
               {layoutDefinition.label} · {layoutDefinition.tileCount} tiles
             </p>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-0.5 text-[10px] text-slate-500">
               {selectedLayout ? `Editing saved layout: ${selectedLayout.name}` : "Working in an unsaved operator draft"}
             </p>
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap gap-1.5">
           {layoutDefinitions.map((layout) => (
             <Button
               key={layout.type}
               onClick={() => updateLayoutType(layout.type)}
+              size="sm"
               variant={layout.type === layoutType ? "primary" : "secondary"}
             >
               <LayoutTemplate className="h-4 w-4" />
@@ -356,65 +360,163 @@ export function MultiViewPage() {
         </div>
       </PageHeader>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Panel>
-          <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
+        <Panel className="p-2.5" density="compact">
+          <div className="mb-2 flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Focused Tile</p>
-              <h2 className="mt-2 text-2xl font-semibold text-white">
-                {focusedChannel?.name ?? `Tile ${focusedTileIndex + 1}`}
-              </h2>
-              <p className="mt-2 text-sm text-slate-400">
-                Tile {focusedTileIndex + 1} of {tiles.length} · {focusedChannel?.group?.name ?? "Awaiting channel assignment"}
+              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Live wall</p>
+              <p className="mt-0.5 text-[13px] text-slate-400">
+                {tiles.filter((tile) => tile.channelId).length} active feed(s) · focus tile {focusedTileIndex + 1}
               </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => openTilePicker(focusedTileIndex)} variant="secondary">
-                Assign / Replace
-              </Button>
-              <Button onClick={() => handleAudioToggle(focusedTileIndex)} variant={focusedTile?.isMuted ? "secondary" : "primary"}>
-                {focusedTile?.isMuted ? "Muted" : "Audio live"}
-              </Button>
             </div>
           </div>
 
-          <div className="mt-5 grid gap-4 lg:grid-cols-[0.55fr_0.45fr]">
-            <ChannelGuideCard
-              guide={focusedGuide}
-              hasEpgSource={Boolean(focusedChannel?.epgSource)}
-              isLoading={nowNextQuery.isLoading}
-              variant="detailed"
-            />
+          <div className={cn("grid gap-3", layoutDefinition.containerClassName)}>
+            {tiles.map((tile, index) => {
+              const channel = tile.channelId ? channelMap.get(tile.channelId) ?? null : null;
+              const qualityOptions = qualityOptionsByTile[index] ?? [...defaultQualityOptions];
+              const playerStatus = playerStatusByTile[index] ?? (channel ? "loading" : "idle");
 
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
-                <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Focused Tile Status</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="rounded-full border border-slate-700/80 bg-slate-900/80 px-3 py-1 text-xs text-slate-200">
-                    {playerStatusByTile[focusedTileIndex] ?? (focusedChannel ? "loading" : "idle")}
-                  </span>
-                  <span className="rounded-full border border-slate-700/80 bg-slate-900/80 px-3 py-1 text-xs text-slate-200">
-                    {focusedTile?.preferredQuality ?? "AUTO"}
-                  </span>
-                  <span className="rounded-full border border-slate-700/80 bg-slate-900/80 px-3 py-1 text-xs text-slate-200">
-                    {focusedTile?.isMuted ? "Muted tile" : "Audio owner"}
-                  </span>
+              return (
+                <div
+                  key={index}
+                  className="min-h-0"
+                  ref={(element) => {
+                    tileRefs.current[index] = element;
+                  }}
+                >
+                  <MultiviewTileCard
+                    channel={channel}
+                    guide={channel ? nowNextByChannelId.get(channel.id) : null}
+                    guideLoading={nowNextQuery.isLoading}
+                    isDragging={draggedTileIndex === index}
+                    isDragTarget={dragTargetTileIndex === index && draggedTileIndex !== index}
+                    isFocused={focusedTileIndex === index}
+                    isPickerTarget={pickerTileIndex === index}
+                    layoutDefinition={layoutDefinition}
+                    onClear={() => handleChannelChange(index, null)}
+                    onDragEnd={() => {
+                      setDraggedTileIndex(null);
+                      setDragTargetTileIndex(null);
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      if (draggedTileIndex !== null) {
+                        setDragTargetTileIndex(index);
+                      }
+                    }}
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", String(index));
+                      setDraggedTileIndex(index);
+                      setDragTargetTileIndex(index);
+                      setFocusedTileIndex(index);
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      const sourceIndex =
+                        draggedTileIndex ?? Number.parseInt(event.dataTransfer.getData("text/plain"), 10);
+
+                      if (Number.isInteger(sourceIndex)) {
+                        handleTileSwap(sourceIndex, index);
+                      }
+
+                      setDraggedTileIndex(null);
+                      setDragTargetTileIndex(null);
+                    }}
+                    onFocus={() => setFocusedTileIndex(index)}
+                    onFullscreen={() => tileRefs.current[index]?.requestFullscreen?.()}
+                    onOpenPicker={() => openTilePicker(index)}
+                    onPreferredQualityChange={(value) =>
+                      setTiles((current) => setTilePreferredQuality(current, index, value))
+                    }
+                    onQualityOptionsChange={(options) =>
+                      setQualityOptionsByTile((current) => setTileQualityOptions(current, index, options))
+                    }
+                    onSelectedQualityChange={(selectedQuality) =>
+                      setTiles((current) => setTilePreferredQuality(current, index, selectedQuality))
+                    }
+                    onStatusChange={(nextStatus) =>
+                      setPlayerStatusByTile((current) => ({
+                        ...current,
+                        [index]: nextStatus,
+                      }))
+                    }
+                    onToggleAudio={() => handleAudioToggle(index)}
+                    playerStatus={playerStatus}
+                    qualityOptions={qualityOptions}
+                    src={channel ? getChannelPlaybackUrl(channel) : null}
+                    tile={tile}
+                    tileIndex={index}
+                  />
                 </div>
-                <p className="mt-3 text-sm text-slate-400">
-                  Drag tiles to swap positions, use the picker to replace sources quickly, and keep the selected tile as your control surface.
+              );
+            })}
+          </div>
+        </Panel>
+
+        <div className="space-y-3 xl:sticky xl:top-3 xl:self-start">
+          <Panel density="compact">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Focused Tile</p>
+                <h2 className="mt-1 text-base font-semibold text-white">
+                  {focusedChannel?.name ?? `Tile ${focusedTileIndex + 1}`}
+                </h2>
+                <p className="mt-1 text-[13px] text-slate-400">
+                  Tile {focusedTileIndex + 1} of {tiles.length} · {focusedChannel?.group?.name ?? "Awaiting channel assignment"}
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
-                <div className="flex items-center gap-3">
-                  <Keyboard className="h-5 w-5 text-accent" />
+              <div className="flex flex-wrap gap-1.5">
+                <Button onClick={() => openTilePicker(focusedTileIndex)} size="sm" variant="secondary">
+                  Assign
+                </Button>
+                <Button
+                  onClick={() => handleAudioToggle(focusedTileIndex)}
+                  size="sm"
+                  variant={focusedTile?.isMuted ? "secondary" : "primary"}
+                >
+                  {focusedTile?.isMuted ? "Muted" : "Audio live"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-3">
+              <ChannelGuideCard
+                guide={focusedGuide}
+                hasEpgSource={Boolean(focusedChannel?.epgSource)}
+                isLoading={nowNextQuery.isLoading}
+                variant="detailed"
+              />
+
+              <div className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-3">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Focused Tile Status</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <span className="rounded-full border border-slate-700/80 bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200">
+                    {playerStatusByTile[focusedTileIndex] ?? (focusedChannel ? "loading" : "idle")}
+                  </span>
+                  <span className="rounded-full border border-slate-700/80 bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200">
+                    {focusedTile?.preferredQuality ?? "AUTO"}
+                  </span>
+                  <span className="rounded-full border border-slate-700/80 bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200">
+                    {focusedTile?.isMuted ? "Muted tile" : "Audio owner"}
+                  </span>
+                </div>
+                <p className="mt-2 text-[12px] text-slate-400">
+                  Drag tiles to swap positions, replace the focused source quickly, and keep most of the screen on the live wall.
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-3">
+                <div className="flex items-center gap-2.5">
+                  <Keyboard className="h-4 w-4 text-accent" />
                   <div>
-                    <p className="font-semibold text-white">Operator shortcuts</p>
-                    <p className="text-sm text-slate-400">A small set of commands for high-frequency wall work.</p>
+                    <p className="text-sm font-semibold text-white">Operator shortcuts</p>
+                    <p className="text-[12px] text-slate-400">Compact, high-frequency controls.</p>
                   </div>
                 </div>
-                <div className="mt-4 space-y-2 text-sm text-slate-300">
+                <div className="mt-3 space-y-1.5 text-[12px] text-slate-300">
                   <p>
                     <span className="font-mono text-cyan-200">[</span> / <span className="font-mono text-cyan-200">]</span> focus previous or next tile
                   </p>
@@ -436,140 +538,58 @@ export function MultiViewPage() {
                 </div>
               </div>
             </div>
-          </div>
-        </Panel>
+          </Panel>
 
-        <Panel>
-          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Saved Layouts</p>
-          {savedLayouts.length ? (
-            <div className="mt-4 space-y-3">
-              {savedLayouts.map((layout) => {
-                const filledTileCount = layout.items.filter((item) => item.channelId).length;
-                const previewNames = layout.items
-                  .filter((item) => item.channel)
-                  .slice(0, 3)
-                  .map((item) => item.channel?.name ?? "Unassigned")
-                  .join(" · ");
+          <Panel density="compact">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Saved Layouts</p>
+            {savedLayouts.length ? (
+              <div className="mt-3 space-y-2.5">
+                {savedLayouts.map((layout) => {
+                  const filledTileCount = layout.items.filter((item) => item.channelId).length;
+                  const previewNames = layout.items
+                    .filter((item) => item.channel)
+                    .slice(0, 3)
+                    .map((item) => item.channel?.name ?? "Unassigned")
+                    .join(" · ");
 
-                return (
-                  <div
-                    key={layout.id}
-                    className={cn(
-                      "rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4",
-                      layout.id === selectedLayoutId && "border-cyan-300/60 bg-cyan-500/5",
-                    )}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-white">{layout.name}</p>
-                        <p className="mt-1 text-sm text-slate-400">
-                          {layout.layoutType} · {filledTileCount} populated tile(s)
-                        </p>
+                  return (
+                    <div
+                      key={layout.id}
+                      className={cn(
+                        "rounded-xl border border-slate-800/80 bg-slate-950/70 p-3",
+                        layout.id === selectedLayoutId && "border-cyan-300/60 bg-cyan-500/5",
+                      )}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2.5">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{layout.name}</p>
+                          <p className="mt-0.5 text-[12px] text-slate-400">
+                            {layout.layoutType} · {filledTileCount} populated tile(s)
+                          </p>
+                        </div>
+                        <Button onClick={() => applySavedLayout(layout.id)} size="sm" variant="secondary">
+                          Apply
+                        </Button>
                       </div>
-                      <Button onClick={() => applySavedLayout(layout.id)} variant="secondary">
-                        Apply
-                      </Button>
+                      <p className="mt-2 text-[12px] text-slate-300">
+                        {previewNames || "Saved empty tile placeholders for a draft wall."}
+                      </p>
+                      <p className="mt-1.5 text-[10px] text-slate-500">Updated {formatTimestamp(layout.updatedAt)}</p>
                     </div>
-                    <p className="mt-3 text-sm text-slate-300">{previewNames || "Saved empty tile placeholders for a draft wall."}</p>
-                    <p className="mt-2 text-xs text-slate-500">Updated {formatTimestamp(layout.updatedAt)}</p>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="mt-4 rounded-[1.75rem] border border-dashed border-slate-700/80 bg-slate-950/60 p-6">
-              <p className="text-lg font-semibold text-white">No saved layouts yet.</p>
-              <p className="mt-2 text-sm text-slate-400">
-                Build a wall, name it, and save it as a reusable operator preset for recurring monitoring setups.
-              </p>
-            </div>
-          )}
-        </Panel>
-      </div>
-
-      <Panel>
-        <div className={cn("grid gap-4", layoutDefinition.containerClassName)}>
-          {tiles.map((tile, index) => {
-            const channel = tile.channelId ? channelMap.get(tile.channelId) ?? null : null;
-            const qualityOptions = qualityOptionsByTile[index] ?? [...defaultQualityOptions];
-            const playerStatus = playerStatusByTile[index] ?? (channel ? "loading" : "idle");
-
-            return (
-              <div
-                key={index}
-                ref={(element) => {
-                  tileRefs.current[index] = element;
-                }}
-              >
-                <MultiviewTileCard
-                  channel={channel}
-                  guide={channel ? nowNextByChannelId.get(channel.id) : null}
-                  guideLoading={nowNextQuery.isLoading}
-                  isDragging={draggedTileIndex === index}
-                  isDragTarget={dragTargetTileIndex === index && draggedTileIndex !== index}
-                  isFocused={focusedTileIndex === index}
-                  isPickerTarget={pickerTileIndex === index}
-                  layoutDefinition={layoutDefinition}
-                  onClear={() => handleChannelChange(index, null)}
-                  onDragEnd={() => {
-                    setDraggedTileIndex(null);
-                    setDragTargetTileIndex(null);
-                  }}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    if (draggedTileIndex !== null) {
-                      setDragTargetTileIndex(index);
-                    }
-                  }}
-                  onDragStart={(event) => {
-                    event.dataTransfer.effectAllowed = "move";
-                    event.dataTransfer.setData("text/plain", String(index));
-                    setDraggedTileIndex(index);
-                    setDragTargetTileIndex(index);
-                    setFocusedTileIndex(index);
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    const sourceIndex =
-                      draggedTileIndex ?? Number.parseInt(event.dataTransfer.getData("text/plain"), 10);
-
-                    if (Number.isInteger(sourceIndex)) {
-                      handleTileSwap(sourceIndex, index);
-                    }
-
-                    setDraggedTileIndex(null);
-                    setDragTargetTileIndex(null);
-                  }}
-                  onFocus={() => setFocusedTileIndex(index)}
-                  onFullscreen={() => tileRefs.current[index]?.requestFullscreen?.()}
-                  onOpenPicker={() => openTilePicker(index)}
-                  onPreferredQualityChange={(value) =>
-                    setTiles((current) => setTilePreferredQuality(current, index, value))
-                  }
-                  onQualityOptionsChange={(options) =>
-                    setQualityOptionsByTile((current) => setTileQualityOptions(current, index, options))
-                  }
-                  onSelectedQualityChange={(selectedQuality) =>
-                    setTiles((current) => setTilePreferredQuality(current, index, selectedQuality))
-                  }
-                  onStatusChange={(nextStatus) =>
-                    setPlayerStatusByTile((current) => ({
-                      ...current,
-                      [index]: nextStatus,
-                    }))
-                  }
-                  onToggleAudio={() => handleAudioToggle(index)}
-                  playerStatus={playerStatus}
-                  qualityOptions={qualityOptions}
-                  src={channel ? getChannelPlaybackUrl(channel) : null}
-                  tile={tile}
-                  tileIndex={index}
-                />
+                  );
+                })}
               </div>
-            );
-          })}
+            ) : (
+              <div className="mt-3 rounded-xl border border-dashed border-slate-700/80 bg-slate-950/60 p-4">
+                <p className="text-base font-semibold text-white">No saved layouts yet.</p>
+                <p className="mt-1.5 text-[13px] text-slate-400">
+                  Build a wall, name it, and save it as a reusable operator preset for recurring monitoring setups.
+                </p>
+              </div>
+            )}
+          </Panel>
         </div>
-      </Panel>
+      </div>
 
       <ChannelPickerDialog
         allowClear={pickerTileIndex !== null}

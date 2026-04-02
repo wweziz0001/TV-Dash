@@ -19,10 +19,10 @@ export function ChannelCard({
   onToggleFavorite: (channel: Channel) => void;
 }) {
   return (
-    <Panel className="flex h-full flex-col gap-4 p-4">
-      <div className="flex items-start justify-between gap-3">
+    <Panel className="flex h-full flex-col gap-3 p-3" density="compact">
+      <div className="flex items-start justify-between gap-2.5">
         <div className="flex items-center gap-3">
-          <div className="flex h-14 w-20 items-center justify-center overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-950">
+          <div className="flex h-11 w-16 items-center justify-center overflow-hidden rounded-xl border border-slate-800/80 bg-slate-950">
             {channel.logoUrl ? (
               <img alt={channel.name} className="h-full w-full object-cover" src={channel.logoUrl} />
             ) : (
@@ -30,13 +30,13 @@ export function ChannelCard({
             )}
           </div>
           <div>
-            <p className="text-base font-semibold text-white">{channel.name}</p>
-            <p className="text-sm text-slate-400">{channel.group?.name ?? "Ungrouped"}</p>
+            <p className="text-sm font-semibold text-white">{channel.name}</p>
+            <p className="text-[13px] text-slate-400">{channel.group?.name ?? "Ungrouped"}</p>
           </div>
         </div>
         <button
           className={cn(
-            "rounded-2xl border px-3 py-2 transition",
+            "rounded-xl border px-2 py-1.5 transition",
             isFavorite
               ? "border-amber-400/30 bg-amber-500/10 text-amber-200"
               : "border-slate-700/70 bg-slate-950/70 text-slate-400 hover:text-white",
@@ -48,26 +48,26 @@ export function ChannelCard({
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Badge className={channel.isActive ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : ""}>
+      <div className="flex flex-wrap gap-1.5">
+        <Badge className={channel.isActive ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : ""} size="sm">
           {channel.isActive ? "Active" : "Inactive"}
         </Badge>
-        <Badge>{channel.slug}</Badge>
-        <Badge>{channel.playbackMode === "PROXY" ? "Proxy" : "Direct"}</Badge>
-        {channel.epgSource ? <Badge>{channel.epgSource.name}</Badge> : null}
+        <Badge size="sm">{channel.slug}</Badge>
+        <Badge size="sm">{channel.playbackMode === "PROXY" ? "Proxy" : "Direct"}</Badge>
+        {channel.epgSource ? <Badge size="sm">{channel.epgSource.name}</Badge> : null}
       </div>
 
       <ChannelGuideCard guide={guide} hasEpgSource={Boolean(channel.epgSource)} />
 
-      <div className="mt-auto flex flex-wrap gap-3">
+      <div className="mt-auto flex flex-wrap gap-2">
         <Link className="flex-1" to={`/watch/${channel.slug}`}>
-          <Button className="w-full">
+          <Button className="w-full" size="sm">
             <PlayCircle className="h-4 w-4" />
             Watch
           </Button>
         </Link>
         <Link className="flex-1" to={`/multiview?channels=${channel.id}`}>
-          <Button className="w-full" variant="secondary">
+          <Button className="w-full" size="sm" variant="secondary">
             <LayoutTemplate className="h-4 w-4" />
             Multi-View
           </Button>
