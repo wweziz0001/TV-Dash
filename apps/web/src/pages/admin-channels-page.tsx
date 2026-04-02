@@ -2,15 +2,15 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, PlayCircle, TestTube2 } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { HlsPlayer } from "@/components/player/hls-player";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
-import { api } from "@/lib/api";
-import type { Channel, QualityOption, StreamTestResult } from "@/lib/types";
+import { HlsPlayer } from "@/player/hls-player";
+import { api } from "@/services/api";
+import type { Channel, QualityOption, StreamTestResult } from "@/types/api";
 
 const emptyForm = {
   name: "",

@@ -10,8 +10,9 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { Navigate, useLocation } from "react-router-dom";
 import { toast } from "react-hot-toast";
-import { api, getStoredToken, setStoredToken } from "@/lib/api";
-import type { User } from "@/lib/types";
+import { api } from "@/services/api";
+import type { User } from "@/types/api";
+import { getStoredToken, setStoredToken } from "./token-storage";
 
 interface AuthContextValue {
   token: string | null;
@@ -145,4 +146,3 @@ export function RequireAdmin({ children }: PropsWithChildren) {
 
   return <>{children}</>;
 }
-

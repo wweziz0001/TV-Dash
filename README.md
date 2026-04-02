@@ -23,13 +23,18 @@ TV-Dash is a self-hosted IPTV and Web TV control surface built for operators who
 ## Workspace Layout
 
 ```text
+docs/
+  architecture/  Repository policy, structure, API, player, and testing docs
+  decisions/     ADR-style decision records
+  runbooks/      Local development and release procedures
+  handoff/       Current-state context for future Codex sessions
 apps/
-  api/        Fastify API, Prisma schema, migrations, seed data
-  web/        React/Vite operator UI and admin experience
+  api/           Fastify API, Prisma schema, migrations, seed data
+  web/           React/Vite operator UI and admin experience
 packages/
-  shared/     Shared Zod schemas and TypeScript contracts
-docs/         Handoff and session documentation
-scripts/      Local smoke test helper
+  shared/        Shared Zod schemas and TypeScript contracts
+scripts/         Local smoke test helper
+tests/           Reserved for future cross-workspace regression suites
 ```
 
 ## Local Run
@@ -43,7 +48,11 @@ scripts/      Local smoke test helper
    - `npm run db:seed`
 4. Start the apps:
    - `npm run dev`
-5. Optional smoke test against a running API:
+5. Verify locally:
+   - `npm run lint`
+   - `npm run test`
+   - `npm run build`
+6. Optional smoke test against a running API:
    - `npm run smoke:test`
 
 ## Seeded Accounts
@@ -59,5 +68,10 @@ scripts/      Local smoke test helper
 
 ## More Detail
 
-- [docs/codex-handoff.md](docs/codex-handoff.md)
-- [docs/codex-session-log.md](docs/codex-session-log.md)
+- [docs/architecture/project-structure.md](docs/architecture/project-structure.md)
+- [docs/architecture/development-policy.md](docs/architecture/development-policy.md)
+- [docs/architecture/testing-strategy.md](docs/architecture/testing-strategy.md)
+- [docs/architecture/player-architecture.md](docs/architecture/player-architecture.md)
+- [docs/architecture/api-boundaries.md](docs/architecture/api-boundaries.md)
+- [docs/handoff/codex-handoff.md](docs/handoff/codex-handoff.md)
+- [docs/handoff/codex-session-log.md](docs/handoff/codex-session-log.md)
