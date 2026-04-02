@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search, Sparkles, Star } from "lucide-react";
 import { toast } from "react-hot-toast";
@@ -18,6 +18,7 @@ export function DashboardPage() {
   const [search, setSearch] = useState("");
   const [groupId, setGroupId] = useState("ALL");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const deferredSearch = useDeferredValue(search);
 
   const channelsQuery = useQuery({
     queryKey: ["channels", token],
@@ -71,14 +72,33 @@ export function DashboardPage() {
         return false;
       }
 
-      if (!search.trim()) {
+      if (!deferredSearch.trim()) {
         return true;
       }
 
-      const term = search.trim().toLowerCase();
+      const term = deferredSearch.trim().toLowerCase();
       return channel.name.toLowerCase().includes(term) || channel.slug.toLowerCase().includes(term);
     });
-  }, [channelsQuery.data, favoriteIds, groupId, search, showFavoritesOnly]);
+  }, [channelsQuery.data, deferredSearch, favoriteIds, groupId, showFavoritesOnly]);
+
+  const nowNextQuery = useQuery({
+    queryKey: ["dashboard-now-next", token, groupId, showFavoritesOnly, deferredSearch],
+    queryFn: async () => {
+      const channelIds = filteredChannels.map((channel) => channel.id);
+
+      if (!token || !channelIds.length) {
+        return [];
+      }
+
+      return (await api.getNowNext(channelIds, token)).items;
+    },
+    enabled: Boolean(token && filteredChannels.length),
+  });
+
+  const nowNextByChannelId = useMemo(
+    () => new Map((nowNextQuery.data ?? []).map((item) => [item.channelId, item])),
+    [nowNextQuery.data],
+  );
 
   return (
     <div className="space-y-6">
@@ -116,6 +136,9 @@ export function DashboardPage() {
             <div>
               <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Visible</p>
               <p className="text-sm font-semibold text-white">{filteredChannels.length} channels</p>
+              <p className="text-xs text-slate-500">
+                {nowNextQuery.isLoading ? "Refreshing guide context..." : "Guide context follows the visible list."}
+              </p>
             </div>
           </Panel>
         </div>
@@ -143,13 +166,21 @@ export function DashboardPage() {
             ))}
           </div>
         </Panel>
-      ) : null}
+      ) : (
+        <Panel>
+          <p className="text-lg font-semibold text-white">No favorites pinned yet.</p>
+          <p className="mt-2 text-sm text-slate-400">
+            Star the channels you switch to most often and they will stay one click away for this operator account.
+          </p>
+        </Panel>
+      )}
 
       <section className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
         {filteredChannels.map((channel) => (
           <ChannelCard
             key={channel.id}
             channel={channel}
+            guide={nowNextByChannelId.get(channel.id)}
             isFavorite={favoriteIds.has(channel.id)}
             onToggleFavorite={(selectedChannel) =>
               favoriteMutation.mutate({

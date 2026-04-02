@@ -5,6 +5,8 @@ import {
   pruneTileScopedState,
   replaceTileChannel,
   serializeMultiviewLayout,
+  swapTileScopedState,
+  swapTiles,
 } from "./multiview-state";
 
 describe("serializeMultiviewLayout", () => {
@@ -100,6 +102,35 @@ describe("pruneTileScopedState", () => {
     expect(pruneTileScopedState({ 0: "ok", 1: "loading", 3: "error" }, 2)).toEqual({
       0: "ok",
       1: "loading",
+    });
+  });
+});
+
+describe("swapTiles", () => {
+  it("swaps tile positions without mutating the rest of the wall", () => {
+    expect(
+      swapTiles(
+        [
+          { channelId: "a", preferredQuality: "AUTO", isMuted: false },
+          { channelId: "b", preferredQuality: "LOWEST", isMuted: true },
+          { channelId: "c", preferredQuality: "LOWEST", isMuted: true },
+        ],
+        0,
+        2,
+      ),
+    ).toEqual([
+      { channelId: "c", preferredQuality: "LOWEST", isMuted: true },
+      { channelId: "b", preferredQuality: "LOWEST", isMuted: true },
+      { channelId: "a", preferredQuality: "AUTO", isMuted: false },
+    ]);
+  });
+});
+
+describe("swapTileScopedState", () => {
+  it("swaps keyed tile metadata alongside a drag-and-drop reassignment", () => {
+    expect(swapTileScopedState({ 0: "playing", 2: "error" }, 0, 2)).toEqual({
+      0: "error",
+      2: "playing",
     });
   });
 });

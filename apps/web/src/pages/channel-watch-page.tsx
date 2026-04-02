@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Heart, LayoutTemplate, Tv } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { Heart, LayoutTemplate, Search, Tv } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
+import { ChannelGuideCard } from "@/components/channels/channel-guide-card";
+import { ChannelPickerDialog } from "@/components/channels/channel-picker-dialog";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
+import { isEditableKeyboardTarget } from "@/lib/keyboard";
 import { HlsPlayer, type PlayerStatus } from "@/player/hls-player";
 import { defaultQualityOptions } from "@/player/quality-options";
 import { api, getChannelPlaybackUrl } from "@/services/api";
@@ -15,11 +18,13 @@ import type { QualityOption } from "@/types/api";
 
 export function ChannelWatchPage() {
   const { slug = "" } = useParams();
+  const navigate = useNavigate();
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const [qualities, setQualities] = useState<QualityOption[]>([...defaultQualityOptions]);
   const [selectedQuality, setSelectedQuality] = useState("AUTO");
   const [playerStatus, setPlayerStatus] = useState<PlayerStatus>("idle");
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const channelQuery = useQuery({
     queryKey: ["channel", slug, token],
@@ -30,6 +35,12 @@ export function ChannelWatchPage() {
   const favoritesQuery = useQuery({
     queryKey: ["favorites", token],
     queryFn: async () => (await api.listFavorites(token!)).favorites,
+    enabled: Boolean(token),
+  });
+
+  const channelsQuery = useQuery({
+    queryKey: ["channels", token],
+    queryFn: async () => (await api.listChannels(token)).channels,
     enabled: Boolean(token),
   });
 
@@ -75,6 +86,24 @@ export function ChannelWatchPage() {
     setPlayerStatus("idle");
   }, [slug]);
 
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (isEditableKeyboardTarget(event.target)) {
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPickerOpen(true);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
   if (!channelQuery.data) {
     return (
       <Panel>
@@ -95,6 +124,10 @@ export function ChannelWatchPage() {
         description="Real HLS playback with manual quality switching, optional proxy delivery, and live now/next guide context."
         actions={
           <>
+            <Button onClick={() => setPickerOpen(true)} variant="secondary">
+              <Search className="h-4 w-4" />
+              Quick switch
+            </Button>
             <Button
               onClick={() => favoriteMutation.mutate(isFavorite)}
               variant={isFavorite ? "primary" : "secondary"}
@@ -160,30 +193,13 @@ export function ChannelWatchPage() {
 
           <Panel>
             <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Now / Next</p>
-            {!channel.epgSource ? (
-              <p className="mt-4 text-sm text-slate-400">No EPG source is linked to this channel yet.</p>
-            ) : nowNextQuery.isLoading ? (
-              <p className="mt-4 text-sm text-slate-400">Loading current programme data...</p>
-            ) : nowNext?.status === "READY" ? (
-              <div className="mt-4 space-y-3">
-                <div className="rounded-2xl border border-slate-800/80 bg-slate-950/80 p-4">
-                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Now</p>
-                  <p className="mt-2 font-semibold text-white">{nowNext.now?.title ?? "Unknown programme"}</p>
-                  {nowNext.now?.subtitle ? <p className="mt-1 text-sm text-slate-400">{nowNext.now.subtitle}</p> : null}
-                </div>
-                <div className="rounded-2xl border border-slate-800/80 bg-slate-950/80 p-4">
-                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Next</p>
-                  <p className="mt-2 font-semibold text-white">{nowNext.next?.title ?? "No upcoming programme"}</p>
-                  {nowNext.next?.subtitle ? <p className="mt-1 text-sm text-slate-400">{nowNext.next.subtitle}</p> : null}
-                </div>
-              </div>
-            ) : (
-              <p className="mt-4 text-sm text-slate-400">
-                {nowNext?.status === "SOURCE_ERROR"
-                  ? "The linked EPG source could not be read right now."
-                  : "No guide data is currently available for this channel mapping."}
-              </p>
-            )}
+            <ChannelGuideCard
+              className="mt-4"
+              guide={nowNext}
+              hasEpgSource={Boolean(channel.epgSource)}
+              isLoading={nowNextQuery.isLoading}
+              variant="detailed"
+            />
           </Panel>
 
           <Panel>
@@ -206,6 +222,27 @@ export function ChannelWatchPage() {
           </Panel>
         </div>
       </div>
+
+      <ChannelPickerDialog
+        allowClear={false}
+        channels={channelsQuery.data ?? []}
+        description="Search the full channel list and jump straight into another live feed without leaving the player."
+        nowNextByChannelId={undefined}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(channelId) => {
+          const nextChannel = (channelsQuery.data ?? []).find((entry) => entry.id === channelId);
+
+          if (!nextChannel) {
+            return;
+          }
+
+          setPickerOpen(false);
+          navigate(`/watch/${nextChannel.slug}`);
+        }}
+        open={pickerOpen}
+        selectedChannelId={channel.id}
+        title="Quick channel switch"
+      />
     </div>
   );
 }

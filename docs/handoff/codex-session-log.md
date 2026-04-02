@@ -1,5 +1,83 @@
 # Codex Session Log
 
+## `2026-04-02T22:52:22+03:00`
+
+### Objective
+
+Improve operator UX, multiview workflows, and guide presentation so TV-Dash feels meaningfully faster and clearer for day-to-day monitoring work.
+
+### Work Completed
+
+- created the requested working branch `006-operator-ux-polish-and-guide-experience`
+- reworked multiview around a focused-tile operator workflow with:
+  - drag-to-swap tile reassignment
+  - searchable tile replacement via a channel picker dialog
+  - clearer focused, muted, loading, retrying, failed, and picker-selected tile treatment
+  - a focused-tile side panel with now/next context and status detail
+  - practical keyboard shortcuts for tile focus, audio ownership, picker open, fullscreen, clear, and layout switching
+- improved saved layout ergonomics by separating:
+  - `Save as new`
+  - `Update selected`
+  - `Load saved layout`
+  - `Delete`
+- improved guide presentation by surfacing resilient now/next context in:
+  - dashboard channel cards
+  - multiview tile cards and focused-tile panel
+  - single-view now/next panel
+- added a searchable quick channel switcher to single-view plus `Ctrl/Cmd + K`
+- tightened shared UI support by forwarding refs through the shared `Input` component for picker focus management
+- added frontend regression coverage for guide-state logic, picker search/selection behavior, multiview shortcut helpers, and tile swap metadata behavior
+
+### Files Added Or Changed
+
+- frontend operator workflow and guide UX:
+  - `apps/web/src/pages/dashboard-page.tsx`
+  - `apps/web/src/pages/channel-watch-page.tsx`
+  - `apps/web/src/pages/multiview-page.tsx`
+  - `apps/web/src/components/channels/channel-card.tsx`
+  - `apps/web/src/components/channels/channel-guide-card.tsx`
+  - `apps/web/src/components/channels/channel-guide-state.ts`
+  - `apps/web/src/components/channels/channel-picker-dialog.tsx`
+  - `apps/web/src/player/multiview-tile-card.tsx`
+  - `apps/web/src/player/multiview-shortcuts.ts`
+  - `apps/web/src/player/multiview-state.ts`
+  - `apps/web/src/lib/keyboard.ts`
+  - `apps/web/src/components/ui/input.tsx`
+- tests:
+  - `apps/web/src/components/channels/channel-guide-state.test.ts`
+  - `apps/web/src/components/channels/channel-picker-dialog.test.tsx`
+  - `apps/web/src/player/multiview-shortcuts.test.ts`
+  - `apps/web/src/player/multiview-state.test.ts`
+- docs:
+  - `docs/architecture/player-architecture.md`
+  - `docs/architecture/testing-strategy.md`
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- The cleanest reassign workflow for the current codebase is native drag-to-swap plus focused-tile quick replace, not a heavier drag-and-drop framework.
+- Multi-view hotkeys stay intentionally small and page-local instead of growing into a global command system.
+- Guide UI must stay useful when XMLTV is missing or temporarily unavailable, so every surface now renders deliberate fallback copy instead of blank space.
+- Playback URL selection still belongs in the page/service seam; player-facing tile UI receives a final `src` instead of deciding proxy vs direct mode itself.
+
+### Verification Run
+
+- `npm run lint -w apps/web`
+- `npm run test -w apps/web`
+
+### Remaining Risk
+
+- Full route-level React coverage for the multiview page still does not exist; the new tests focus on the most reusable workflow seams rather than the whole page orchestrator.
+- Guide freshness still depends on on-demand XMLTV source reads and process-local caching.
+- Keyboard support improves focus and assignment speed, but tile reordering is still mouse-first.
+
+### Exact Suggested Next Task
+
+Add route-level React coverage for multiview drag/swap and keyboard flows, then build a background XMLTV ingestion/cache layer so guide context is faster and more reliable across the dashboard and wall views.
+
+---
+
 ## `2026-04-02T22:29:00+03:00`
 
 ### Objective
