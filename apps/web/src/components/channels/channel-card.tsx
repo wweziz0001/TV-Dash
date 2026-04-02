@@ -1,17 +1,20 @@
 import { Heart, LayoutTemplate, PlayCircle } from "lucide-react";
 import { Link } from "react-router-dom";
+import { ChannelGuideCard } from "@/components/channels/channel-guide-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
-import type { Channel } from "@/types/api";
+import type { Channel, ChannelNowNext } from "@/types/api";
 import { cn } from "@/lib/utils";
 
 export function ChannelCard({
   channel,
+  guide,
   isFavorite,
   onToggleFavorite,
 }: {
   channel: Channel;
+  guide?: ChannelNowNext | null;
   isFavorite: boolean;
   onToggleFavorite: (channel: Channel) => void;
 }) {
@@ -53,6 +56,8 @@ export function ChannelCard({
         <Badge>{channel.playbackMode === "PROXY" ? "Proxy" : "Direct"}</Badge>
         {channel.epgSource ? <Badge>{channel.epgSource.name}</Badge> : null}
       </div>
+
+      <ChannelGuideCard guide={guide} hasEpgSource={Boolean(channel.epgSource)} />
 
       <div className="mt-auto flex flex-wrap gap-3">
         <Link className="flex-1" to={`/watch/${channel.slug}`}>
