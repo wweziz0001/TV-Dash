@@ -121,6 +121,15 @@ export function MultiViewPage() {
 
   const channelMap = useMemo(() => new Map(channels.map((channel) => [channel.id, channel])), [channels]);
 
+  function updateLayoutType(nextValue: string) {
+    const nextLayout = layoutDefinitions.find((layout) => layout.type === nextValue);
+    if (!nextLayout) {
+      return;
+    }
+
+    setLayoutType(nextLayout.type);
+  }
+
   function applySavedLayout(layoutId: string) {
     const layout = savedLayouts.find((entry) => entry.id === layoutId);
     if (!layout) {
@@ -164,7 +173,7 @@ export function MultiViewPage() {
       >
         <div className="grid gap-4 xl:grid-cols-[0.5fr_0.25fr_0.25fr]">
           <Input onChange={(event) => setLayoutName(event.target.value)} placeholder="Layout name" value={layoutName} />
-          <Select onChange={(event) => setLayoutType(event.target.value as LayoutType)} value={layoutType}>
+          <Select onChange={(event) => updateLayoutType(event.target.value)} value={layoutType}>
             {layoutDefinitions.map((layout) => (
               <option key={layout.type} value={layout.type}>
                 {layout.label} · {layout.description}

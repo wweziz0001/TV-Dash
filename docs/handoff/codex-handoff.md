@@ -11,6 +11,22 @@ TV-Dash is a self-hosted IPTV/Web TV operations platform. Operators manage logic
 - Frontend keeps app bootstrap in `app`, route screens in `pages`, shared UI in `components`, auth in `features`, request logic in `services`, and player-specific code in `player`
 - Shared API validation contracts live in `packages/shared`
 
+## Standards Rulebook
+
+Repository-specific engineering standards now live under `docs/standards/`.
+
+Key references:
+
+- `docs/standards/coding-standards.md`
+- `docs/standards/naming-conventions.md`
+- `docs/standards/react-typescript-standards.md`
+- `docs/standards/backend-api-standards.md`
+- `docs/standards/prisma-database-standards.md`
+- `docs/standards/player-hls-standards.md`
+- `docs/standards/testing-standards.md`
+
+Future sessions should read those before making structural, player, API, or naming changes. They are the active engineering rulebook for TV-Dash.
+
 ## Stack
 
 - Frontend: React 18, TypeScript, Vite, Tailwind CSS, React Query, HLS.js
@@ -95,6 +111,8 @@ Key relationship rules:
 - Frontend services own HTTP requests.
 - Frontend player behavior stays inside `src/player`.
 - Cross-app contracts go in `packages/shared`; app-local types stay local.
+- Frontend request payloads should use shared DTO types instead of `unknown` or ad-hoc object shapes.
+- Saved layout config is now modeled as real JSON in shared contracts, not as an unbounded `any` record.
 
 ## Testing Status
 
@@ -121,13 +139,15 @@ Optional but recommended for risky changes:
 - CRUD-heavy API integration tests against an isolated database are not built yet.
 - Player component-level UI tests are not built yet.
 - Admin reorder remains sort-order based rather than drag-and-drop.
+- `admin-channels-page.tsx`, `multiview-page.tsx`, and `player/hls-player.tsx` are still valid but near the current complexity ceiling defined in the standards docs.
 
 ## Next Recommended Priorities
 
 1. Add Fastify integration tests for auth, channels, favorites, and layouts with isolated test data.
 2. Add route-level lazy loading to reduce the large player bundle warning.
-3. Add player/component regression tests around selector UI and saved-layout application.
-4. Consider an ADR if a future session wants to extract shared backend runtime code into packages.
+3. Add player/component regression tests around selector UI, retry UI, and saved-layout application.
+4. Upgrade touched backend routes from simple param/query casts to explicit route-edge validation as those modules evolve.
+5. Consider an ADR if a future session wants to extract shared backend runtime code into packages.
 
 ## Exact Local Commands
 

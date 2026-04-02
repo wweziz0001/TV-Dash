@@ -1,10 +1,10 @@
-import type { LayoutType } from "@tv-dash/shared";
+import type { LayoutType, SavedLayoutConfig, UserRole } from "@tv-dash/shared";
 
 export interface User {
   id: string;
   email: string;
   username: string;
-  role: "ADMIN" | "USER";
+  role: UserRole;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -57,7 +57,7 @@ export interface SavedLayout {
   userId: string;
   name: string;
   layoutType: LayoutType;
-  configJson: Record<string, unknown>;
+  configJson: SavedLayoutConfig;
   items: SavedLayoutItem[];
   createdAt: string;
   updatedAt: string;

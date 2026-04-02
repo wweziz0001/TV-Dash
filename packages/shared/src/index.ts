@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
 export const userRoleSchema = z.enum(["ADMIN", "USER"]);
 
 export const layoutTypeSchema = z.enum([
@@ -44,10 +46,18 @@ export const savedLayoutItemInputSchema = z.object({
   isMuted: z.boolean().default(true),
 });
 
+export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(jsonValueSchema), z.record(jsonValueSchema)]),
+);
+
+export const jsonObjectSchema = z.record(jsonValueSchema);
+
+export const savedLayoutConfigSchema = jsonObjectSchema;
+
 export const savedLayoutInputSchema = z.object({
   name: z.string().min(2).max(100),
   layoutType: layoutTypeSchema,
-  configJson: z.record(z.any()).default({}),
+  configJson: savedLayoutConfigSchema.default({}),
   items: z.array(savedLayoutItemInputSchema).min(1).max(9),
 });
 
@@ -68,6 +78,7 @@ export type LoginInput = z.infer<typeof loginInputSchema>;
 export type ChannelGroupInput = z.infer<typeof channelGroupInputSchema>;
 export type ChannelInput = z.infer<typeof channelInputSchema>;
 export type FavoriteInput = z.infer<typeof favoriteInputSchema>;
+export type SavedLayoutConfig = z.infer<typeof savedLayoutConfigSchema>;
 export type SavedLayoutInput = z.infer<typeof savedLayoutInputSchema>;
 export type SavedLayoutItemInput = z.infer<typeof savedLayoutItemInputSchema>;
 export type StreamTestInput = z.infer<typeof streamTestInputSchema>;
