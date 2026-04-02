@@ -1,5 +1,6 @@
-import type { DragEvent } from "react";
+import { useState, type DragEvent } from "react";
 import {
+  CalendarClock,
   Focus,
   GripVertical,
   Maximize2,
@@ -76,6 +77,7 @@ export function MultiviewTileCard({
   onDragEnd,
 }: MultiviewTileCardProps) {
   const statusBadgeClassName = getStatusBadgeClassName(playerStatus);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   return (
     <div
@@ -126,6 +128,18 @@ export function MultiviewTileCard({
         <Button aria-label={tile.isMuted ? "Unmute tile audio" : "Mute tile audio"} onClick={onToggleAudio} size="icon-sm" type="button" variant={tile.isMuted ? "secondary" : "primary"}>
           {tile.isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
         </Button>
+        <Button
+          aria-label={isGuideOpen ? "Hide now and next guide" : "Show now and next guide"}
+          aria-pressed={isGuideOpen}
+          disabled={!channel}
+          onClick={() => setIsGuideOpen((current) => !current)}
+          size="icon-sm"
+          title={isGuideOpen ? "Hide now and next guide" : "Show now and next guide"}
+          type="button"
+          variant={isGuideOpen ? "primary" : "secondary"}
+        >
+          <CalendarClock className="h-4 w-4" />
+        </Button>
         <Button aria-label={isFocused ? "Focused tile" : "Focus tile"} onClick={onFocus} size="icon-sm" type="button" variant={isFocused ? "primary" : "secondary"}>
           <Focus className="h-4 w-4" />
         </Button>
@@ -153,14 +167,16 @@ export function MultiviewTileCard({
         </div>
       </div>
 
-      <div className="mb-2">
-        <ChannelGuideCard
-          guide={guide}
-          hasEpgSource={Boolean(channel?.epgSource)}
-          isLoading={guideLoading}
-          variant="compact"
-        />
-      </div>
+      {isGuideOpen ? (
+        <div className="mb-2">
+          <ChannelGuideCard
+            guide={guide}
+            hasEpgSource={Boolean(channel?.epgSource)}
+            isLoading={guideLoading}
+            variant="compact"
+          />
+        </div>
+      ) : null}
 
       <div className="min-h-0 flex-1">
         {channel ? (
