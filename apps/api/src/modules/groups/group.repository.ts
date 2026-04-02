@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { ChannelGroupInput } from "@tv-dash/shared";
 import { prisma } from "../../db/prisma.js";
 
 export function listGroups() {
@@ -14,13 +14,13 @@ export function listGroups() {
   });
 }
 
-export function createGroup(data: Prisma.ChannelGroupUncheckedCreateInput) {
+export function createGroup(data: ChannelGroupInput) {
   return prisma.channelGroup.create({
     data,
   });
 }
 
-export function updateGroup(id: string, data: Prisma.ChannelGroupUncheckedUpdateInput) {
+export function updateGroup(id: string, data: ChannelGroupInput) {
   return prisma.channelGroup.update({
     where: { id },
     data,

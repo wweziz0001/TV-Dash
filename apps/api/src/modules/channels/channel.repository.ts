@@ -1,3 +1,4 @@
+import type { ChannelInput } from "@tv-dash/shared";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 
@@ -7,8 +8,8 @@ interface ChannelQueryParams {
   active?: string;
 }
 
-export function mapChannelFilters(searchParams: ChannelQueryParams) {
-  const where: Record<string, unknown> = {};
+function mapChannelFilters(searchParams: ChannelQueryParams): Prisma.ChannelWhereInput {
+  const where: Prisma.ChannelWhereInput = {};
 
   if (searchParams.search) {
     where.OR = [
@@ -56,14 +57,14 @@ export function findChannelBySlug(slug: string) {
   });
 }
 
-export function createChannel(data: Prisma.ChannelUncheckedCreateInput) {
+export function createChannel(data: ChannelInput) {
   return prisma.channel.create({
     data,
     include: { group: true },
   });
 }
 
-export function updateChannel(id: string, data: Prisma.ChannelUncheckedUpdateInput) {
+export function updateChannel(id: string, data: ChannelInput) {
   return prisma.channel.update({
     where: { id },
     data,
