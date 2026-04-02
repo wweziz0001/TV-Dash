@@ -1,4 +1,4 @@
-import { channelInputSchema } from "@tv-dash/shared";
+import { channelInputSchema, channelSortOrderInputSchema } from "@tv-dash/shared";
 import type { FastifyPluginAsync } from "fastify";
 import { requireAdmin } from "../../app/auth-guards.js";
 import { getPrismaErrorCode } from "../../app/prisma-errors.js";
@@ -8,8 +8,10 @@ import {
   createChannelRecord,
   deleteChannelRecord,
   getChannelById,
+  getChannelConfigForAdmin,
   getChannelBySlug,
   listChannelCatalog,
+  updateChannelSortOrderRecord,
   updateChannelRecord,
 } from "./channel.service.js";
 
@@ -31,6 +33,21 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const channel = await getChannelById(params.id);
+
+    if (!channel) {
+      return reply.status(404).send({ message: "Channel not found" });
+    }
+
+    return { channel };
+  });
+
+  fastify.get("/channels/:id/config", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const params = parseWithSchema(idParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const channel = await getChannelConfigForAdmin(params.id);
 
     if (!channel) {
       return reply.status(404).send({ message: "Channel not found" });
@@ -64,8 +81,14 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
       const channel = await createChannelRecord(payload);
       return reply.status(201).send({ channel });
     } catch (error) {
-      if (getPrismaErrorCode(error) === "P2002") {
+      const prismaCode = getPrismaErrorCode(error);
+
+      if (prismaCode === "P2002") {
         return reply.status(409).send({ message: "Channel slug already exists" });
+      }
+
+      if (prismaCode === "P2003") {
+        return reply.status(400).send({ message: "Group or EPG source is invalid" });
       }
 
       throw error;
@@ -95,6 +118,33 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
 
       if (prismaCode === "P2002") {
         return reply.status(409).send({ message: "Channel slug already exists" });
+      }
+
+      if (prismaCode === "P2003") {
+        return reply.status(400).send({ message: "Group or EPG source is invalid" });
+      }
+
+      throw error;
+    }
+  });
+
+  fastify.put("/channels/:id/sort-order", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const params = parseWithSchema(idParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const payload = parseWithSchema(channelSortOrderInputSchema, request.body, reply);
+    if (!payload) {
+      return;
+    }
+
+    try {
+      const channel = await updateChannelSortOrderRecord(params.id, payload.sortOrder);
+      return { channel };
+    } catch (error) {
+      if (getPrismaErrorCode(error) === "P2025") {
+        return reply.status(404).send({ message: "Channel not found" });
       }
 
       throw error;

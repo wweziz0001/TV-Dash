@@ -19,3 +19,14 @@ export const channelListQuerySchema = z.object({
   groupId: z.string().uuid().optional(),
   active: z.enum(["true", "false"]).optional(),
 });
+
+export const streamProxyQuerySchema = z.object({
+  token: z.string().min(20),
+});
+
+export const epgNowNextQuerySchema = z.object({
+  channelIds: z
+    .string()
+    .transform((value) => value.split(",").map((part) => part.trim()).filter(Boolean))
+    .pipe(z.array(z.string().uuid()).min(1).max(20)),
+});

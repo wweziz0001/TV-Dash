@@ -50,6 +50,8 @@ export function ChannelCard({
           {channel.isActive ? "Active" : "Inactive"}
         </Badge>
         <Badge>{channel.slug}</Badge>
+        <Badge>{channel.playbackMode === "PROXY" ? "Proxy" : "Direct"}</Badge>
+        {channel.epgSource ? <Badge>{channel.epgSource.name}</Badge> : null}
       </div>
 
       <div className="mt-auto flex flex-wrap gap-3">

@@ -78,17 +78,43 @@ Repositories must not:
 - `auth`
   - login and current-user session lookup
 - `channels`
-  - logical channel catalog CRUD and browse lookups
+  - logical channel catalog CRUD, browse lookups, proxy-mode metadata, and channel-to-EPG mapping fields
 - `groups`
   - channel grouping/catalog structure
+- `epg`
+  - EPG source CRUD, XMLTV preview/lookup orchestration, and now/next response assembly
 - `favorites`
   - per-user pinned channels
 - `layouts`
   - per-user saved multiview walls
 - `streams`
-  - stream inspection and metadata/test endpoints
+  - stream inspection, proxy master/asset delivery, and upstream request behavior
 - `health`
   - operational readiness endpoint
+
+## Stream Proxy Foundation Rules
+
+- Public playback uses one of two contracts:
+  - direct: the channel response may expose `masterHlsUrl`
+  - proxy: the channel response exposes a stable API playback path instead of the upstream URL
+- Stream proxy routes currently own:
+  - channel master playlist lookup
+  - upstream request header/referrer/user-agent application
+  - playlist rewriting for nested playlists, key URIs, and segments
+  - short-lived signed asset tokens
+- Stream routes must not embed channel query logic inline; they depend on the channel service for stream configuration lookup.
+- Invalid or expired proxy asset tokens should fail with `400`, not a fake upstream error.
+- This milestone uses buffered upstream responses as a practical foundation. If future work adds streaming passthrough, that belongs inside the `streams` module rather than pages or generic app utilities.
+
+## EPG Foundation Rules
+
+- EPG source configuration is a first-class backend domain, not a JSON blob hidden inside channel records.
+- XMLTV fetch/parsing orchestration belongs in the `epg` service layer.
+- Channels only store linkable EPG metadata:
+  - `epgSourceId`
+  - `epgChannelId`
+- Guide payload parsing, cache policy, and now/next assembly live behind the `epg` module boundary.
+- This milestone uses on-demand XMLTV fetch plus in-memory cache. Durable storage/background ingestion remains future work and should be added inside the `epg` module, not bolted onto route handlers.
 
 ## Error Handling Rules
 
@@ -96,6 +122,8 @@ Repositories must not:
 - unauthenticated: `401`
 - forbidden/admin-only: `403`
 - missing owned resource: `404`
+- invalid or expired proxy token: `400`
 - upstream stream test failures: `502`
+- XMLTV upstream preview/fetch failures: `502`
 
 Keep those mappings stable unless the contract explicitly changes.

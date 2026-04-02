@@ -1,4 +1,10 @@
-import type { LayoutType, SavedLayoutConfig, UserRole } from "@tv-dash/shared";
+import type {
+  EpgSourceType,
+  LayoutType,
+  SavedLayoutConfig,
+  StreamPlaybackMode,
+  UserRole,
+} from "@tv-dash/shared";
 
 export interface User {
   id: string;
@@ -26,13 +32,24 @@ export interface Channel {
   name: string;
   slug: string;
   logoUrl: string | null;
-  masterHlsUrl: string;
+  masterHlsUrl: string | null;
+  playbackMode: StreamPlaybackMode;
   groupId: string | null;
   group: ChannelGroup | null;
+  epgSourceId: string | null;
+  epgChannelId: string | null;
+  epgSource: EpgSourceSummary | null;
   isActive: boolean;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ChannelConfig extends Omit<Channel, "masterHlsUrl"> {
+  masterHlsUrl: string;
+  upstreamUserAgent: string | null;
+  upstreamReferrer: string | null;
+  upstreamHeaders: Record<string, string>;
 }
 
 export interface Favorite {
@@ -75,6 +92,47 @@ export interface StreamTestResult {
   variantCount: number;
   variants: StreamVariant[];
   isMasterPlaylist: boolean;
+}
+
+export interface EpgSourceSummary {
+  id: string;
+  name: string;
+  slug: string;
+  sourceType: EpgSourceType;
+  isActive: boolean;
+}
+
+export interface EpgSource extends EpgSourceSummary {
+  url: string;
+  refreshIntervalMinutes: number;
+  requestUserAgent: string | null;
+  requestReferrer: string | null;
+  requestHeaders: Record<string, string>;
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    channels: number;
+  };
+}
+
+export interface EpgPreviewChannel {
+  id: string;
+  displayNames: string[];
+}
+
+export interface NowNextProgram {
+  title: string;
+  subtitle: string | null;
+  description: string | null;
+  start: string;
+  stop: string | null;
+}
+
+export interface ChannelNowNext {
+  channelId: string;
+  status: "READY" | "UNCONFIGURED" | "NO_DATA" | "SOURCE_ERROR";
+  now: NowNextProgram | null;
+  next: NowNextProgram | null;
 }
 
 export interface AuthResponse {

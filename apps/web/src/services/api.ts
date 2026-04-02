@@ -1,13 +1,26 @@
 import type {
   ChannelGroupInput,
   ChannelInput,
+  EpgSourceInput,
   LoginInput,
   SavedLayoutInput,
   StreamTestInput,
 } from "@tv-dash/shared";
-import type { AuthResponse, Channel, ChannelGroup, Favorite, SavedLayout, StreamTestResult, User } from "@/types/api";
+import type {
+  AuthResponse,
+  Channel,
+  ChannelConfig,
+  ChannelGroup,
+  ChannelNowNext,
+  EpgPreviewChannel,
+  EpgSource,
+  Favorite,
+  SavedLayout,
+  StreamTestResult,
+  User,
+} from "@/types/api";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api";
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api";
 
 async function request<T>(path: string, init: RequestInit = {}, token?: string | null): Promise<T> {
   const headers = new Headers(init.headers);
@@ -47,12 +60,20 @@ export const api = {
   me: (token: string) => request<{ user: User | null }>("/auth/me", { method: "GET" }, token),
   listChannels: (token: string | null, params?: URLSearchParams) =>
     request<{ channels: Channel[] }>(`/channels${params ? `?${params.toString()}` : ""}`, {}, token),
+  getChannelConfig: (id: string, token: string) =>
+    request<{ channel: ChannelConfig }>(`/channels/${id}/config`, {}, token),
   getChannelBySlug: (slug: string, token: string | null) =>
     request<{ channel: Channel }>(`/channels/slug/${slug}`, {}, token),
   createChannel: (payload: ChannelInput, token: string) =>
-    request<{ channel: Channel }>("/channels", { method: "POST", body: JSON.stringify(payload) }, token),
+    request<{ channel: ChannelConfig }>("/channels", { method: "POST", body: JSON.stringify(payload) }, token),
   updateChannel: (id: string, payload: ChannelInput, token: string) =>
-    request<{ channel: Channel }>(`/channels/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+    request<{ channel: ChannelConfig }>(`/channels/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+  updateChannelSortOrder: (id: string, sortOrder: number, token: string) =>
+    request<{ channel: Channel }>(
+      `/channels/${id}/sort-order`,
+      { method: "PUT", body: JSON.stringify({ sortOrder }) },
+      token,
+    ),
   deleteChannel: (id: string, token: string) =>
     request<void>(`/channels/${id}`, { method: "DELETE" }, token),
   listGroups: (token: string | null) => request<{ groups: ChannelGroup[] }>("/groups", {}, token),
@@ -73,8 +94,22 @@ export const api = {
   updateLayout: (id: string, payload: SavedLayoutInput, token: string) =>
     request<{ layout: SavedLayout }>(`/layouts/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
   deleteLayout: (id: string, token: string) => request<void>(`/layouts/${id}`, { method: "DELETE" }, token),
-  testStream: (url: StreamTestInput["url"], token: string) =>
-    request<{ result: StreamTestResult }>("/streams/test", { method: "POST", body: JSON.stringify({ url }) }, token),
+  listEpgSources: (token: string) => request<{ sources: EpgSource[] }>("/epg/sources", {}, token),
+  createEpgSource: (payload: EpgSourceInput, token: string) =>
+    request<{ source: EpgSource }>("/epg/sources", { method: "POST", body: JSON.stringify(payload) }, token),
+  updateEpgSource: (id: string, payload: EpgSourceInput, token: string) =>
+    request<{ source: EpgSource }>(`/epg/sources/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+  deleteEpgSource: (id: string, token: string) => request<void>(`/epg/sources/${id}`, { method: "DELETE" }, token),
+  previewEpgSourceChannels: (id: string, token: string) =>
+    request<{ source: EpgSource; channels: EpgPreviewChannel[] }>(`/epg/sources/${id}/channels`, {}, token),
+  getNowNext: (channelIds: string[], token: string) =>
+    request<{ items: ChannelNowNext[] }>(
+      `/epg/now-next?${new URLSearchParams({ channelIds: channelIds.join(",") }).toString()}`,
+      {},
+      token,
+    ),
+  testStream: (payload: StreamTestInput, token: string) =>
+    request<{ result: StreamTestResult }>("/streams/test", { method: "POST", body: JSON.stringify(payload) }, token),
   getStreamMetadata: (url: StreamTestInput["url"], token: string) =>
     request<{ result: StreamTestResult }>(
       `/streams/metadata?${new URLSearchParams({ url }).toString()}`,
@@ -82,3 +117,11 @@ export const api = {
       token,
     ),
 };
+
+export function getChannelPlaybackUrl(channel: Pick<Channel, "id" | "masterHlsUrl" | "playbackMode">) {
+  if (channel.playbackMode === "PROXY") {
+    return `${API_BASE_URL}/streams/channels/${channel.id}/master`;
+  }
+
+  return channel.masterHlsUrl;
+}

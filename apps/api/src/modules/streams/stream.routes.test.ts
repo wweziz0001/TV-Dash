@@ -17,6 +17,13 @@ const mockPrisma = {
     update: vi.fn(),
     delete: vi.fn(),
   },
+  epgSource: {
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+  },
   favorite: {
     findMany: vi.fn(),
     upsert: vi.fn(),
@@ -66,6 +73,82 @@ describe("streamRoutes", () => {
 
     expect(response.statusCode).toBe(400);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("passes configured request headers into stream inspection", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      text: vi.fn().mockResolvedValue("#EXTM3U\n"),
+      headers: {
+        get: vi.fn().mockReturnValue("application/vnd.apple.mpegurl"),
+      },
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/streams/test",
+      headers: createAuthHeaders(server),
+      payload: {
+        url: "https://example.com/live.m3u8",
+        requestUserAgent: "OpsBot/1.0",
+        requestReferrer: "https://ops.example.com/",
+        requestHeaders: {
+          "x-token": "abc",
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const [, requestInit] = fetchSpy.mock.calls[0] ?? [];
+    const headers = new Headers((requestInit as RequestInit).headers);
+
+    expect(headers.get("user-agent")).toBe("OpsBot/1.0");
+    expect(headers.get("referer")).toBe("https://ops.example.com/");
+    expect(headers.get("x-token")).toBe("abc");
+  });
+
+  it("rewrites proxied master playlists to signed asset URLs", async () => {
+    mockPrisma.channel.findUnique.mockResolvedValue({
+      id: "11111111-1111-1111-1111-111111111111",
+      name: "Pulse 24",
+      slug: "pulse-24",
+      isActive: true,
+      masterHlsUrl: "https://origin.example.com/live/master.m3u8",
+      playbackMode: "PROXY",
+      upstreamUserAgent: null,
+      upstreamReferrer: null,
+      upstreamHeaders: null,
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: vi.fn().mockResolvedValue("#EXTM3U\nvariant/high.m3u8\n"),
+        headers: {
+          get: vi.fn().mockReturnValue("application/vnd.apple.mpegurl"),
+        },
+      }),
+    );
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/streams/channels/11111111-1111-1111-1111-111111111111/master",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain("/api/streams/channels/11111111-1111-1111-1111-111111111111/asset?token=");
+  });
+
+  it("rejects invalid proxy asset tokens at the route edge", async () => {
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/streams/channels/11111111-1111-1111-1111-111111111111/asset?token=invalid.invalid-token-with-length-1234567890",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ message: "Invalid or expired proxy token" });
   });
 
   it("maps upstream failures to 502 for metadata requests", async () => {
