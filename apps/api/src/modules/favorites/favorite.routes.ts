@@ -1,6 +1,7 @@
 import { favoriteInputSchema } from "@tv-dash/shared";
 import type { FastifyPluginAsync } from "fastify";
 import { requireAuth } from "../../app/auth-guards.js";
+import { channelIdParamSchema } from "../../app/request-schemas.js";
 import { parseWithSchema } from "../../app/validation.js";
 import { listUserFavorites, removeFavorite, saveFavorite } from "./favorite.service.js";
 
@@ -21,7 +22,12 @@ export const favoriteRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.delete("/favorites/:channelId", { preHandler: [requireAuth] }, async (request, reply) => {
-    await removeFavorite(request.user.sub, (request.params as { channelId: string }).channelId);
+    const params = parseWithSchema(channelIdParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    await removeFavorite(request.user.sub, params.channelId);
     return reply.status(204).send();
   });
 };

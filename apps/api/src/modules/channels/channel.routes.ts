@@ -1,6 +1,8 @@
 import { channelInputSchema } from "@tv-dash/shared";
 import type { FastifyPluginAsync } from "fastify";
 import { requireAdmin } from "../../app/auth-guards.js";
+import { getPrismaErrorCode } from "../../app/prisma-errors.js";
+import { channelListQuerySchema, idParamSchema, slugParamSchema } from "../../app/request-schemas.js";
 import { parseWithSchema } from "../../app/validation.js";
 import {
   createChannelRecord,
@@ -12,13 +14,23 @@ import {
 } from "./channel.service.js";
 
 export const channelRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.get("/channels", async (request) => {
-    const channels = await listChannelCatalog(request.query as { search?: string; groupId?: string; active?: string });
+  fastify.get("/channels", async (request, reply) => {
+    const query = parseWithSchema(channelListQuerySchema, request.query, reply);
+    if (!query) {
+      return;
+    }
+
+    const channels = await listChannelCatalog(query);
     return { channels };
   });
 
   fastify.get("/channels/:id", async (request, reply) => {
-    const channel = await getChannelById((request.params as { id: string }).id);
+    const params = parseWithSchema(idParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const channel = await getChannelById(params.id);
 
     if (!channel) {
       return reply.status(404).send({ message: "Channel not found" });
@@ -28,7 +40,12 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get("/channels/slug/:slug", async (request, reply) => {
-    const channel = await getChannelBySlug((request.params as { slug: string }).slug);
+    const params = parseWithSchema(slugParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const channel = await getChannelBySlug(params.slug);
 
     if (!channel) {
       return reply.status(404).send({ message: "Channel not found" });
@@ -43,22 +60,62 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
       return;
     }
 
-    const channel = await createChannelRecord(payload);
-    return reply.status(201).send({ channel });
+    try {
+      const channel = await createChannelRecord(payload);
+      return reply.status(201).send({ channel });
+    } catch (error) {
+      if (getPrismaErrorCode(error) === "P2002") {
+        return reply.status(409).send({ message: "Channel slug already exists" });
+      }
+
+      throw error;
+    }
   });
 
   fastify.put("/channels/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const params = parseWithSchema(idParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
     const payload = parseWithSchema(channelInputSchema, request.body, reply);
     if (!payload) {
       return;
     }
 
-    const channel = await updateChannelRecord((request.params as { id: string }).id, payload);
-    return { channel };
+    try {
+      const channel = await updateChannelRecord(params.id, payload);
+      return { channel };
+    } catch (error) {
+      const prismaCode = getPrismaErrorCode(error);
+
+      if (prismaCode === "P2025") {
+        return reply.status(404).send({ message: "Channel not found" });
+      }
+
+      if (prismaCode === "P2002") {
+        return reply.status(409).send({ message: "Channel slug already exists" });
+      }
+
+      throw error;
+    }
   });
 
   fastify.delete("/channels/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
-    await deleteChannelRecord((request.params as { id: string }).id);
-    return reply.status(204).send();
+    const params = parseWithSchema(idParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    try {
+      await deleteChannelRecord(params.id);
+      return reply.status(204).send();
+    } catch (error) {
+      if (getPrismaErrorCode(error) === "P2025") {
+        return reply.status(404).send({ message: "Channel not found" });
+      }
+
+      throw error;
+    }
   });
 };

@@ -61,6 +61,9 @@ export function createLayout(userId: string, payload: SavedLayoutInput) {
         include: {
           channel: true,
         },
+        orderBy: {
+          tileIndex: "asc",
+        },
       },
     },
   });
