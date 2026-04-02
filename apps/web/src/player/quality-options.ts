@@ -1,13 +1,48 @@
 import type { Level } from "hls.js";
 import type { QualityOption } from "@/types/api";
 
+export const defaultQualityOptions = [{ value: "AUTO", label: "Auto", height: null }] satisfies QualityOption[];
+
+interface NormalizedQualityOption extends QualityOption {
+  bitrate: number | null;
+}
+
+function normalizePositiveNumber(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return Math.round(value);
+}
+
 export function buildQualityOptions(levels: Level[]): QualityOption[] {
-  const mapped = levels.map((level, index) => ({
-    value: String(index),
-    label: level.height ? `${level.height}p` : `${Math.round((level.bitrate ?? 0) / 1000)} kbps`,
-    height: level.height ?? null,
-    bitrate: level.bitrate ?? null,
-  }));
+  const seen = new Set<string>();
+  const mapped = levels.flatMap((level, index): NormalizedQualityOption[] => {
+    const height = normalizePositiveNumber(level.height);
+    const bitrate = normalizePositiveNumber(level.bitrate);
+
+    if (height === null && bitrate === null) {
+      return [];
+    }
+
+    const label = height !== null ? `${height}p` : `${Math.round((bitrate ?? 0) / 1000)} kbps`;
+    const dedupeKey = `${height ?? "unknown"}:${bitrate ?? "unknown"}:${label}`;
+
+    if (seen.has(dedupeKey)) {
+      return [];
+    }
+
+    seen.add(dedupeKey);
+
+    return [
+      {
+        value: String(index),
+        label,
+        height,
+        bitrate,
+      },
+    ];
+  });
 
   mapped.sort((left, right) => {
     const leftHeight = left.height ?? 0;
@@ -16,7 +51,7 @@ export function buildQualityOptions(levels: Level[]): QualityOption[] {
   });
 
   return [
-    { value: "AUTO", label: "Auto", height: null },
+    ...defaultQualityOptions,
     ...mapped.map((option) => ({
       value: option.value,
       label: option.label,
@@ -32,6 +67,21 @@ export function resolvePreferredQuality(requested: string | null | undefined, op
       level: -1,
       selectedValue: "AUTO",
     };
+  }
+
+  if (requested === "HIGHEST") {
+    const highest = options.find((option) => option.value !== "AUTO");
+    return highest
+      ? {
+          mode: "MANUAL" as const,
+          level: Number(highest.value),
+          selectedValue: highest.value,
+        }
+      : {
+          mode: "AUTO" as const,
+          level: -1,
+          selectedValue: "AUTO",
+        };
   }
 
   if (requested === "LOWEST") {

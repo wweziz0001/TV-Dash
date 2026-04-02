@@ -8,6 +8,10 @@ const currentDir = fileURLToPath(new URL(".", import.meta.url));
 export default defineConfig({
   envDir: path.resolve(currentDir, "../.."),
   plugins: [react()],
+  test: {
+    environment: "jsdom",
+    setupFiles: "./src/test/setup.ts",
+  },
   resolve: {
     alias: {
       "@": path.resolve(currentDir, "./src"),
