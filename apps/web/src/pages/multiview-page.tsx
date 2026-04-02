@@ -445,7 +445,7 @@ export function MultiViewPage() {
                     onToggleAudio={() => handleAudioToggle(index)}
                     playerStatus={playerStatus}
                     qualityOptions={qualityOptions}
-                    src={channel ? getChannelPlaybackUrl(channel) : null}
+                    src={channel ? getChannelPlaybackUrl(channel, { preferProxy: true }) : null}
                     tile={tile}
                     tileIndex={index}
                   />

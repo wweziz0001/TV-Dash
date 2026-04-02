@@ -276,7 +276,7 @@ export function HlsPlayer({
           return;
         }
 
-        const inAutoMode = selectionModeRef.current === "AUTO" || hls?.autoLevelEnabled || hls?.currentLevel === -1;
+        const inAutoMode = selectionModeRef.current === "AUTO";
         callbacksRef.current.onSelectedQualityChange?.(inAutoMode ? "AUTO" : String(data.level));
       });
 
@@ -353,7 +353,7 @@ export function HlsPlayer({
         }
       }
     };
-  }, [autoPlay, initialBias, preferredQuality, reloadKey, src]);
+  }, [autoPlay, initialBias, reloadKey, src]);
 
   useEffect(() => {
     if (!hlsRef.current) {
