@@ -10,6 +10,7 @@
     "dev": "concurrently -n shared,api,web -c magenta,cyan,green \"npm run dev -w packages/shared\" \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
     "build": "npm run build -w packages/shared && npm run build -w apps/api && npm run build -w apps/web",
     "lint": "npm run lint -w packages/shared && npm run lint -w apps/api && npm run lint -w apps/web",
+    "test": "npm run test -w apps/api && npm run test -w apps/web",
     "db:generate": "npm run db:generate -w apps/api",
     "db:migrate": "npm run db:migrate -w apps/api",
     "db:seed": "npm run db:seed -w apps/api",
