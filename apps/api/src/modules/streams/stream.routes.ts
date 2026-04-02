@@ -1,8 +1,8 @@
 import { streamTestInputSchema } from "@tv-dash/shared";
 import type { FastifyPluginAsync } from "fastify";
-import { requireAuth } from "../lib/auth.js";
-import { parseWithSchema } from "../lib/http.js";
-import { inspectStream } from "../lib/stream.js";
+import { requireAuth } from "../../app/auth-guards.js";
+import { parseWithSchema } from "../../app/validation.js";
+import { inspectStream } from "./stream.service.js";
 
 export const streamRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post("/streams/test", { preHandler: [requireAuth] }, async (request, reply) => {
@@ -38,4 +38,3 @@ export const streamRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 };
-

@@ -9,8 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
-import { api } from "@/lib/api";
-import type { Channel } from "@/lib/types";
+import { api } from "@/services/api";
+import type { Channel } from "@/types/api";
 
 export function DashboardPage() {
   const { token } = useAuth();

@@ -87,4 +87,3 @@ export interface QualityOption {
   value: string;
   height: number | null;
 }
-

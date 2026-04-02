@@ -1,8 +1,7 @@
 import { loginInputSchema } from "@tv-dash/shared";
 import type { FastifyPluginAsync } from "fastify";
-import { getAuthenticatedUser, verifyPassword } from "../lib/auth.js";
-import { parseWithSchema } from "../lib/http.js";
-import { prisma } from "../lib/prisma.js";
+import { parseWithSchema } from "../../app/validation.js";
+import { getCurrentUser, verifyLoginCredentials } from "./auth.service.js";
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post("/auth/login", async (request, reply) => {
@@ -11,11 +10,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       return;
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: payload.email.toLowerCase() },
-    });
-
-    if (!user || !(await verifyPassword(payload.password, user.passwordHash))) {
+    const user = await verifyLoginCredentials(payload.email, payload.password);
+    if (!user) {
       return reply.status(401).send({ message: "Invalid credentials" });
     }
 
@@ -37,8 +33,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get("/auth/me", { preHandler: [fastify.authenticate] }, async (request) => {
-    const user = await getAuthenticatedUser(request);
+    const user = await getCurrentUser(request.user?.sub);
     return { user };
   });
 };
-

@@ -18,4 +18,3 @@ export function parseWithSchema<TSchema extends ZodTypeAny>(
 
   return result.data;
 }
-

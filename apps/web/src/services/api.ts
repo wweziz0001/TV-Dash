@@ -1,20 +1,6 @@
-import type { AuthResponse, Channel, ChannelGroup, Favorite, SavedLayout, StreamTestResult, User } from "./types";
+import type { AuthResponse, Channel, ChannelGroup, Favorite, SavedLayout, StreamTestResult, User } from "@/types/api";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api";
-const TOKEN_STORAGE_KEY = "tv-dash-token";
-
-export function getStoredToken() {
-  return window.localStorage.getItem(TOKEN_STORAGE_KEY);
-}
-
-export function setStoredToken(token: string | null) {
-  if (!token) {
-    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
-    return;
-  }
-
-  window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
-}
 
 async function request<T>(path: string, init: RequestInit = {}, token?: string | null): Promise<T> {
   const headers = new Headers(init.headers);

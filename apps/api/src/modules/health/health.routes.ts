@@ -7,4 +7,3 @@ export const healthRoutes: FastifyPluginAsync = async (fastify) => {
     now: new Date().toISOString(),
   }));
 };
-

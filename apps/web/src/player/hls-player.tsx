@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import Hls, { type Level } from "hls.js";
+import Hls from "hls.js";
 import { AlertTriangle, LoaderCircle, RotateCcw, Signal } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { QualityOption } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import type { QualityOption } from "@/types/api";
 import { cn } from "@/lib/utils";
+import { buildQualityOptions, resolvePreferredQuality } from "./quality-options";
 
 export type PlayerStatus = "idle" | "loading" | "playing" | "error" | "reconnecting";
 
@@ -21,22 +22,7 @@ interface HlsPlayerProps {
   onStatusChange?: (status: PlayerStatus) => void;
 }
 
-function buildQualityOptions(levels: Level[]): QualityOption[] {
-  const mapped = levels.map((level, index) => ({
-    value: String(index),
-    label: level.height ? `${level.height}p` : `${Math.round((level.bitrate ?? 0) / 1000)} kbps`,
-    height: level.height ?? null,
-    bitrate: level.bitrate ?? null,
-  }));
-
-  mapped.sort((left, right) => {
-    const leftHeight = left.height ?? 0;
-    const rightHeight = right.height ?? 0;
-    return rightHeight - leftHeight || (right.bitrate ?? 0) - (left.bitrate ?? 0);
-  });
-
-  return [{ value: "AUTO", label: "Auto", height: null }, ...mapped];
-}
+const fallbackQualityOptions = [{ value: "AUTO", label: "Auto", height: null }] satisfies QualityOption[];
 
 export function HlsPlayer({
   src,
@@ -53,7 +39,7 @@ export function HlsPlayer({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
-  const qualityOptionsRef = useRef<QualityOption[]>([{ value: "AUTO", label: "Auto", height: null }]);
+  const qualityOptionsRef = useRef<QualityOption[]>(fallbackQualityOptions);
   const selectionModeRef = useRef<"AUTO" | "MANUAL">("AUTO");
   const callbacksRef = useRef({
     onQualityOptionsChange,
@@ -78,37 +64,16 @@ export function HlsPlayer({
 
   function applyPreferredQuality(requested: string | null | undefined) {
     const hls = hlsRef.current;
-    const options = qualityOptionsRef.current;
+    const resolvedSelection = resolvePreferredQuality(requested, qualityOptionsRef.current);
 
-    if (!hls || options.length <= 1) {
-      selectionModeRef.current = "AUTO";
-      callbacksRef.current.onSelectedQualityChange?.("AUTO");
+    selectionModeRef.current = resolvedSelection.mode;
+    callbacksRef.current.onSelectedQualityChange?.(resolvedSelection.selectedValue);
+
+    if (!hls) {
       return;
     }
 
-    if (!requested || requested === "AUTO") {
-      selectionModeRef.current = "AUTO";
-      hls.currentLevel = -1;
-      callbacksRef.current.onSelectedQualityChange?.("AUTO");
-      return;
-    }
-
-    if (requested === "LOWEST") {
-      selectionModeRef.current = "MANUAL";
-      const lowest = [...options].filter((option) => option.value !== "AUTO").at(-1);
-      if (lowest) {
-        hls.currentLevel = Number(lowest.value);
-        callbacksRef.current.onSelectedQualityChange?.(lowest.value);
-      }
-      return;
-    }
-
-    const option = options.find((entry) => entry.value === requested);
-    if (option) {
-      selectionModeRef.current = "MANUAL";
-      hls.currentLevel = Number(option.value);
-      callbacksRef.current.onSelectedQualityChange?.(option.value);
-    }
+    hls.currentLevel = resolvedSelection.level;
   }
 
   useEffect(() => {
@@ -203,7 +168,7 @@ export function HlsPlayer({
         setError(data.details);
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      qualityOptionsRef.current = [{ value: "AUTO", label: "Auto", height: null }];
+      qualityOptionsRef.current = fallbackQualityOptions;
       callbacksRef.current.onQualityOptionsChange?.(qualityOptionsRef.current);
       callbacksRef.current.onSelectedQualityChange?.("AUTO");
       video.src = src;

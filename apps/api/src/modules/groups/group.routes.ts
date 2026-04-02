@@ -1,22 +1,17 @@
 import { channelGroupInputSchema } from "@tv-dash/shared";
 import type { FastifyPluginAsync } from "fastify";
-import { parseWithSchema } from "../lib/http.js";
-import { prisma } from "../lib/prisma.js";
-import { requireAdmin } from "../lib/auth.js";
+import { requireAdmin } from "../../app/auth-guards.js";
+import { parseWithSchema } from "../../app/validation.js";
+import {
+  createChannelGroup,
+  deleteChannelGroup,
+  listChannelGroups,
+  updateChannelGroup,
+} from "./group.service.js";
 
 export const groupRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get("/groups", async () => {
-    const groups = await prisma.channelGroup.findMany({
-      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      include: {
-        _count: {
-          select: {
-            channels: true,
-          },
-        },
-      },
-    });
-
+    const groups = await listChannelGroups();
     return { groups };
   });
 
@@ -26,10 +21,7 @@ export const groupRoutes: FastifyPluginAsync = async (fastify) => {
       return;
     }
 
-    const group = await prisma.channelGroup.create({
-      data: payload,
-    });
-
+    const group = await createChannelGroup(payload);
     return reply.status(201).send({ group });
   });
 
@@ -39,18 +31,12 @@ export const groupRoutes: FastifyPluginAsync = async (fastify) => {
       return;
     }
 
-    const group = await prisma.channelGroup.update({
-      where: { id: (request.params as { id: string }).id },
-      data: payload,
-    });
-
+    const group = await updateChannelGroup((request.params as { id: string }).id, payload);
     return { group };
   });
 
   fastify.delete("/groups/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
-    const id = (request.params as { id: string }).id;
-    await prisma.channelGroup.delete({ where: { id } });
+    await deleteChannelGroup((request.params as { id: string }).id);
     return reply.status(204).send();
   });
 };
-

@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { useAuth } from "@/features/auth/auth-context";
-import { api } from "@/lib/api";
-import type { ChannelGroup } from "@/lib/types";
+import { api } from "@/services/api";
+import type { ChannelGroup } from "@/types/api";
 
 const emptyForm = {
   name: "",

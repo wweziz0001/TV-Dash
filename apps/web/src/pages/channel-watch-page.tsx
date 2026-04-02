@@ -3,14 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Heart, LayoutTemplate, Tv } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
-import { HlsPlayer, type PlayerStatus } from "@/components/player/hls-player";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
-import { api } from "@/lib/api";
-import type { QualityOption } from "@/lib/types";
+import { HlsPlayer, type PlayerStatus } from "@/player/hls-player";
+import { api } from "@/services/api";
+import type { QualityOption } from "@/types/api";
 
 export function ChannelWatchPage() {
   const { slug = "" } = useParams();

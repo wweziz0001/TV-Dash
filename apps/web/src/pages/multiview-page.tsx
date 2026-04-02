@@ -4,50 +4,18 @@ import { LayoutTemplate, Maximize2, Save, Trash2, Volume2, VolumeX } from "lucid
 import { useSearchParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import type { LayoutType } from "@tv-dash/shared";
-import { HlsPlayer } from "@/components/player/hls-player";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
-import { api } from "@/lib/api";
-import { getLayoutDefinition, layoutDefinitions } from "@/lib/layouts";
-import type { QualityOption, SavedLayoutItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-interface TileState {
-  channelId: string | null;
-  preferredQuality: string;
-  isMuted: boolean;
-}
-
-function buildTileDefaults(layoutType: LayoutType, seededChannelIds: string[] = []): TileState[] {
-  const tileCount = getLayoutDefinition(layoutType).tileCount;
-  return Array.from({ length: tileCount }, (_, index) => ({
-    channelId: seededChannelIds[index] ?? null,
-    preferredQuality: index === 0 ? "AUTO" : "LOWEST",
-    isMuted: index !== 0,
-  }));
-}
-
-function resizeTiles(layoutType: LayoutType, currentTiles: TileState[]) {
-  const nextCount = getLayoutDefinition(layoutType).tileCount;
-  const nextTiles = [...currentTiles];
-
-  if (nextTiles.length < nextCount) {
-    const startingIndex = nextTiles.length;
-    for (let index = startingIndex; index < nextCount; index += 1) {
-      nextTiles.push({
-        channelId: null,
-        preferredQuality: index === 0 ? "AUTO" : "LOWEST",
-        isMuted: index !== 0,
-      });
-    }
-  }
-
-  return nextTiles.slice(0, nextCount);
-}
+import { HlsPlayer } from "@/player/hls-player";
+import { getLayoutDefinition, layoutDefinitions } from "@/player/layouts";
+import { buildTileDefaults, enforceSingleActiveAudio, resizeTiles, type TileState } from "@/player/multiview-layout";
+import { api } from "@/services/api";
+import type { QualityOption, SavedLayoutItem } from "@/types/api";
 
 export function MultiViewPage() {
   const { token } = useAuth();
@@ -272,12 +240,7 @@ export function MultiViewPage() {
                   </div>
                   <Button
                     onClick={() =>
-                      setTiles((current) =>
-                        current.map((entry, tileIndex) => ({
-                          ...entry,
-                          isMuted: tileIndex === index ? !entry.isMuted : true,
-                        })),
-                      )
+                      setTiles((current) => enforceSingleActiveAudio(current, index))
                     }
                     variant={tile.isMuted ? "secondary" : "primary"}
                   >

@@ -1,7 +1,7 @@
 import fp from "fastify-plugin";
 import fastifyJwt from "@fastify/jwt";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { env } from "../lib/env.js";
+import { env } from "../../config/env.js";
 
 declare module "@fastify/jwt" {
   interface FastifyJWT {
@@ -28,4 +28,3 @@ export const authPlugin = fp(async (fastify) => {
     await request.jwtVerify();
   });
 });
-
