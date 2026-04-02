@@ -3,13 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, PlayCircle, TestTube2 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import type { StreamTestInput } from "@tv-dash/shared";
+import { ChannelAdminFormFields } from "@/components/channels/channel-admin-form";
 import {
-  ChannelAdminFormFields,
   buildChannelFormFromConfig,
-  buildChannelInput,
   emptyChannelForm,
   parseHeadersJson,
-} from "@/components/channels/channel-admin-form";
+  validateChannelForm,
+} from "@/components/channels/channel-admin-form-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -85,7 +85,18 @@ export function AdminChannelsPage() {
         throw new Error("Missing session");
       }
 
-      const payload = buildChannelInput(form);
+      const validation = validateChannelForm(form);
+
+      if (!validation.isValid || !validation.payload) {
+        const [firstIssue] = validation.issues;
+        throw new Error(
+          firstIssue
+            ? `${firstIssue.message}${validation.issues.length > 1 ? ` (${validation.issues.length} issues total)` : ""}`
+            : "Fix the highlighted form issues before saving",
+        );
+      }
+
+      const payload = validation.payload;
 
       if (editingChannelId) {
         return api.updateChannel(editingChannelId, payload, token);
