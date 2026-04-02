@@ -21,4 +21,17 @@ describe("getChannelPlaybackUrl", () => {
       }),
     ).toContain("/streams/channels/11111111-1111-1111-1111-111111111111/master");
   });
+
+  it("can prefer the API proxy path even for direct channels", () => {
+    expect(
+      getChannelPlaybackUrl(
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          masterHlsUrl: "https://example.com/live.m3u8",
+          playbackMode: "DIRECT",
+        },
+        { preferProxy: true },
+      ),
+    ).toContain("/streams/channels/11111111-1111-1111-1111-111111111111/master");
+  });
 });

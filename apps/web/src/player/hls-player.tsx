@@ -276,7 +276,7 @@ export function HlsPlayer({
           return;
         }
 
-        const inAutoMode = selectionModeRef.current === "AUTO" || hls?.autoLevelEnabled || hls?.currentLevel === -1;
+        const inAutoMode = selectionModeRef.current === "AUTO";
         callbacksRef.current.onSelectedQualityChange?.(inAutoMode ? "AUTO" : String(data.level));
       });
 
@@ -353,7 +353,7 @@ export function HlsPlayer({
         }
       }
     };
-  }, [autoPlay, initialBias, preferredQuality, reloadKey, src]);
+  }, [autoPlay, initialBias, reloadKey, src]);
 
   useEffect(() => {
     if (!hlsRef.current) {
@@ -370,16 +370,17 @@ export function HlsPlayer({
   }, []);
 
   return (
-    <div className={cn("relative h-full overflow-hidden rounded-[1.75rem] bg-black", className)}>
+    <div className={cn("relative h-full overflow-hidden rounded-[1.1rem] bg-black", className)}>
       <video ref={videoRef} className="h-full w-full object-cover" playsInline muted={muted} />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/10" />
 
-      <div className="pointer-events-none absolute left-4 top-4 flex flex-wrap items-center gap-2">
-        <Badge className="border-cyan-400/30 bg-slate-950/80 text-cyan-100">
+      <div className="pointer-events-none absolute left-2.5 top-2.5 flex flex-wrap items-center gap-1.5">
+        <Badge className="border-cyan-400/30 bg-slate-950/80 text-cyan-100" size="sm">
           <Signal className="mr-2 h-3.5 w-3.5" />
           {title}
         </Badge>
         <Badge
+          size="sm"
           className={cn(
             status === "playing" && "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
             (status === "loading" || status === "buffering") && "border-amber-400/30 bg-amber-500/10 text-amber-100",
@@ -390,15 +391,15 @@ export function HlsPlayer({
           {status}
         </Badge>
         {recoveryNotice ? (
-          <Badge className="border-emerald-400/30 bg-emerald-500/10 text-emerald-200">{recoveryNotice}</Badge>
+          <Badge className="border-emerald-400/30 bg-emerald-500/10 text-emerald-200" size="sm">{recoveryNotice}</Badge>
         ) : null}
       </div>
 
       {status === "loading" || status === "buffering" || status === "retrying" ? (
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="rounded-2xl border border-slate-700/70 bg-slate-950/80 px-4 py-3 text-sm text-slate-200">
-            <div className="flex items-center gap-2">
-              <LoaderCircle className="h-4 w-4 animate-spin" />
+          <div className="rounded-xl border border-slate-700/70 bg-slate-950/80 px-3 py-2 text-[13px] text-slate-200">
+            <div className="flex items-center gap-1.5">
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
               {statusDetail ??
                 (status === "retrying"
                   ? "Retrying stream connection..."
@@ -411,12 +412,12 @@ export function HlsPlayer({
       ) : null}
 
       {status === "error" ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/55 px-4">
-          <div className="max-w-sm rounded-[1.75rem] border border-rose-500/20 bg-slate-950/90 p-5 text-center shadow-glow">
-            <AlertTriangle className="mx-auto h-7 w-7 text-rose-300" />
-            <p className="mt-3 font-semibold text-white">Playback interrupted</p>
-            <p className="mt-2 text-sm leading-6 text-slate-400">{error ?? "The stream could not be recovered."}</p>
-            <Button className="mt-4" onClick={() => setReloadKey((value) => value + 1)} variant="secondary">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/55 px-3">
+          <div className="max-w-xs rounded-[1.25rem] border border-rose-500/20 bg-slate-950/90 p-4 text-center shadow-glow">
+            <AlertTriangle className="mx-auto h-6 w-6 text-rose-300" />
+            <p className="mt-2 font-semibold text-white">Playback interrupted</p>
+            <p className="mt-1.5 text-[13px] leading-5 text-slate-400">{error ?? "The stream could not be recovered."}</p>
+            <Button className="mt-3" onClick={() => setReloadKey((value) => value + 1)} size="sm" variant="secondary">
               <RotateCcw className="h-4 w-4" />
               Retry
             </Button>

@@ -11,6 +11,7 @@ The current operator milestone also adds:
 - searchable quick channel switching in single-view and multiview
 - now/next guide context on dashboard cards, multiview tiles, and single-view detail panels
 - clearer saved-layout save/update/load ergonomics
+- a denser operator layout pass that reduces oversized chrome and gives viewer surfaces more screen space
 
 ## Current Architecture Summary
 
@@ -195,11 +196,38 @@ Optional but recommended for risky changes:
   - `Delete` clear the focused tile
   - `Shift + 1-5` switch layout presets
 
+## Operator Density Corrections
+
+- Oversized UI problems corrected:
+  - oversized primary/secondary buttons were reduced through shared compact button sizing
+  - input/select controls were tightened for operator toolbars and pickers
+  - panel/header padding and rounded chrome were reduced across viewer-facing pages
+  - multiview tile chrome, badges, picker rows, and player overlays were compressed so streams stay dominant
+- Layout and container rules changed:
+  - `AppShell` now uses a wider `max-w-[2048px]` workspace with smaller outer gutters
+  - the left navigation rail is narrower and sticky on desktop so more width stays with the main content
+  - `PageHeader` and `Panel` now support denser operator usage patterns instead of only roomy dashboard spacing
+  - viewer-focused pages now prefer main-content-first wide layouts with compact side rails instead of evenly weighted columns
+- Pages that gained more usable video or content space:
+  - single-view watch page now gives the player a larger viewport-height footprint with a compact sticky side rail
+  - multiview now puts the wall up higher on the page and moves focused-tile/saved-layout controls into a narrow right rail
+  - dashboard/browse now uses tighter filters, denser favorites, and four-column large-screen browsing where space allows
+- Density strategy adopted:
+  - compact but readable controls
+  - smaller gutters and less decorative padding
+  - icon-first controls inside multiview where repeated actions are obvious
+  - stronger separation between primary video surfaces and secondary metadata/toolbars
+- Remaining UX refinement opportunities:
+  - admin screens still use the older roomy density in places and should get the same operator-first pass later
+  - multiview tile reordering is still mouse-first even though the rest of the tile workflow is denser and faster
+  - route-level visual regression coverage for the full watch and multiview pages is still missing
+
 ## Remaining Limitations
 
 - Guide data is still on-demand and source-backed, so partial or temporarily unavailable XMLTV sources can still leave some cards or tiles without now/next details.
 - Drag-and-drop tile swapping is mouse-first today; there is not yet a full keyboard-only tile reordering flow.
 - The quick switcher is local to the current page and does not yet expose cross-app command palette behavior.
+- The player bundle warning remains; density corrections did not address route-level code splitting yet.
 
 ## Proxy And EPG Foundation Summary
 
@@ -223,10 +251,10 @@ Optional but recommended for risky changes:
 
 ## Next Recommended Priorities
 
-1. Add route-level React tests for multiview keyboard/reassignment flows plus dashboard and single-view quick-switch/guide orchestration.
-2. Add a real background XMLTV ingestion/caching job so now/next and future guide views do not depend on on-demand source fetches.
-3. Complete the next stream proxy milestone by switching asset delivery from buffered fetches to streaming passthrough and validating more HLS edge cases around large segment traffic.
-4. Add isolated database-backed Fastify integration tests for channels, EPG sources, proxy routes, and saved layouts to complement the mocked route-contract coverage.
+1. Add route-level React tests for the denser watch and multiview layouts so critical operator surfaces have regression coverage beyond helper/component seams.
+2. Apply the same density strategy to the admin pages where controls and tables still feel roomier than the operator surfaces.
+3. Add a real background XMLTV ingestion/caching job so now/next and future guide views do not depend on on-demand source fetches.
+4. Complete the next stream proxy milestone by switching asset delivery from buffered fetches to streaming passthrough and validating more HLS edge cases around large segment traffic.
 5. Add route-level lazy loading to reduce the large player bundle warning.
 
 ## Exact Local Commands

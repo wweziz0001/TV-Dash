@@ -118,8 +118,15 @@ export const api = {
     ),
 };
 
-export function getChannelPlaybackUrl(channel: Pick<Channel, "id" | "masterHlsUrl" | "playbackMode">) {
-  if (channel.playbackMode === "PROXY") {
+interface ChannelPlaybackUrlOptions {
+  preferProxy?: boolean;
+}
+
+export function getChannelPlaybackUrl(
+  channel: Pick<Channel, "id" | "masterHlsUrl" | "playbackMode">,
+  options: ChannelPlaybackUrlOptions = {},
+) {
+  if (options.preferProxy || channel.playbackMode === "PROXY") {
     return `${API_BASE_URL}/streams/channels/${channel.id}/master`;
   }
 

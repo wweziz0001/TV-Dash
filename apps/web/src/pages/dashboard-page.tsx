@@ -101,29 +101,31 @@ export function DashboardPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
+        density="compact"
         eyebrow="Browse"
         title="Channel operations dashboard"
         description="Filter by category, jump into a single channel, or send a feed straight into a multi-view wall."
         actions={
-          <Button onClick={() => setShowFavoritesOnly((value) => !value)} variant="secondary">
+          <Button onClick={() => setShowFavoritesOnly((value) => !value)} size="sm" variant="secondary">
             <Star className="h-4 w-4" />
             {showFavoritesOnly ? "Show all channels" : "Favorites only"}
           </Button>
         }
       >
-        <div className="grid gap-4 lg:grid-cols-[1.4fr_0.7fr_0.5fr]">
+        <div className="grid gap-3 lg:grid-cols-[1.5fr_0.7fr_0.45fr]">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <Input
+              uiSize="sm"
               className="pl-11"
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search channels by name or slug"
               value={search}
             />
           </div>
-          <Select onChange={(event) => setGroupId(event.target.value)} value={groupId}>
+          <Select onChange={(event) => setGroupId(event.target.value)} uiSize="sm" value={groupId}>
             <option value="ALL">All groups</option>
             {(groupsQuery.data ?? []).map((group) => (
               <option key={group.id} value={group.id}>
@@ -131,12 +133,12 @@ export function DashboardPage() {
               </option>
             ))}
           </Select>
-          <Panel className="flex items-center gap-3 border-cyan-400/10 bg-cyan-500/5 p-3">
-            <Sparkles className="h-5 w-5 text-accent" />
+          <Panel className="flex items-center gap-2.5 border-cyan-400/10 bg-cyan-500/5 p-2.5" density="compact">
+            <Sparkles className="h-4 w-4 text-accent" />
             <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Visible</p>
-              <p className="text-sm font-semibold text-white">{filteredChannels.length} channels</p>
-              <p className="text-xs text-slate-500">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Visible</p>
+              <p className="text-[13px] font-semibold text-white">{filteredChannels.length} channels</p>
+              <p className="text-[10px] text-slate-500">
                 {nowNextQuery.isLoading ? "Refreshing guide context..." : "Guide context follows the visible list."}
               </p>
             </div>
@@ -145,19 +147,20 @@ export function DashboardPage() {
       </PageHeader>
 
       {favoritesQuery.data?.length ? (
-        <Panel>
-          <div className="flex items-center justify-between gap-4">
+        <Panel density="compact">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Favorites</p>
-              <h2 className="mt-2 text-xl font-semibold text-white">Pinned feeds for quick access</h2>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Favorites</p>
+              <h2 className="mt-1 text-base font-semibold text-white">Pinned feeds for quick access</h2>
             </div>
-            <p className="text-sm text-slate-400">{favoritesQuery.data.length} channel(s)</p>
+            <p className="text-[13px] text-slate-400">{favoritesQuery.data.length} channel(s)</p>
           </div>
-          <div className="mt-5 flex flex-wrap gap-3">
+          <div className="mt-3 flex flex-wrap gap-2">
             {favoritesQuery.data.map((favorite) => (
               <Button
                 key={favorite.id}
                 onClick={() => favoriteMutation.mutate({ channel: favorite.channel, isFavorite: true })}
+                size="sm"
                 variant="secondary"
               >
                 <Star className="h-4 w-4 text-amber-300" />
@@ -167,15 +170,15 @@ export function DashboardPage() {
           </div>
         </Panel>
       ) : (
-        <Panel>
-          <p className="text-lg font-semibold text-white">No favorites pinned yet.</p>
-          <p className="mt-2 text-sm text-slate-400">
+        <Panel density="compact">
+          <p className="text-base font-semibold text-white">No favorites pinned yet.</p>
+          <p className="mt-1.5 text-[13px] text-slate-400">
             Star the channels you switch to most often and they will stay one click away for this operator account.
           </p>
         </Panel>
       )}
 
-      <section className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {filteredChannels.map((channel) => (
           <ChannelCard
             key={channel.id}
@@ -193,9 +196,9 @@ export function DashboardPage() {
       </section>
 
       {!channelsQuery.isLoading && filteredChannels.length === 0 ? (
-        <Panel className="text-center">
-          <p className="text-lg font-semibold text-white">No channels matched the current filters.</p>
-          <p className="mt-2 text-sm text-slate-400">Try a different group, clear the search, or disable favorites-only mode.</p>
+        <Panel className="text-center" density="compact">
+          <p className="text-base font-semibold text-white">No channels matched the current filters.</p>
+          <p className="mt-1.5 text-[13px] text-slate-400">Try a different group, clear the search, or disable favorites-only mode.</p>
         </Panel>
       ) : null}
     </div>

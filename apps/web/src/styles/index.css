@@ -36,3 +36,20 @@ textarea,
 button {
   @apply outline-none;
 }
+
+select {
+  color-scheme: dark;
+}
+
+select option,
+select optgroup {
+  background-color: rgb(2 6 23);
+  color: rgb(226 232 240);
+}
+
+select option:checked,
+select option:hover,
+select option:focus {
+  background-color: rgb(8 47 73);
+  color: rgb(103 232 249);
+}

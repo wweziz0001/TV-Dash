@@ -61,11 +61,13 @@ describe("HlsPlayer", () => {
   beforeEach(() => {
     MockHls.instances = [];
     MockHls.isSupported.mockReturnValue(true);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     vi.useFakeTimers();
   });
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
   });
@@ -126,5 +128,68 @@ describe("HlsPlayer", () => {
     unmount();
 
     expect(secondInstance.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not recreate playback when only the preferred quality changes", () => {
+    const { rerender } = render(
+      <HlsPlayer preferredQuality="AUTO" src="https://example.com/a.m3u8" title="Channel A" />,
+    );
+
+    const instance = MockHls.instances[0];
+
+    act(() => {
+      instance.emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 1080 }, { height: 720 }],
+      });
+    });
+
+    act(() => {
+      rerender(<HlsPlayer preferredQuality="1" src="https://example.com/a.m3u8" title="Channel A" />);
+    });
+
+    expect(MockHls.instances).toHaveLength(1);
+    expect(instance.destroy).not.toHaveBeenCalled();
+    expect(instance.currentLevel).toBe(1);
+  });
+
+  it("keeps manual quality selection when hls reports a level switch", () => {
+    const handleSelectedQualityChange = vi.fn();
+    const { rerender } = render(
+      <HlsPlayer
+        onSelectedQualityChange={handleSelectedQualityChange}
+        preferredQuality="AUTO"
+        src="https://example.com/a.m3u8"
+        title="Channel A"
+      />,
+    );
+
+    const instance = MockHls.instances[0];
+
+    act(() => {
+      instance.emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 1080 }, { height: 720 }],
+      });
+    });
+
+    handleSelectedQualityChange.mockClear();
+
+    act(() => {
+      rerender(
+        <HlsPlayer
+          onSelectedQualityChange={handleSelectedQualityChange}
+          preferredQuality="1"
+          src="https://example.com/a.m3u8"
+          title="Channel A"
+        />,
+      );
+    });
+
+    act(() => {
+      instance.autoLevelEnabled = true;
+      instance.currentLevel = 1;
+      instance.emit(MockHls.Events.LEVEL_SWITCHED, { level: 1 });
+    });
+
+    expect(handleSelectedQualityChange).toHaveBeenLastCalledWith("1");
   });
 });
