@@ -3,26 +3,43 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, PlayCircle, TestTube2 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import type { StreamTestInput } from "@tv-dash/shared";
-import { ChannelAdminFormFields, buildChannelFormFromConfig, buildChannelInput, emptyChannelForm, parseHeadersJson } from "@/components/channels/channel-admin-form";
+import {
+  ChannelAdminFormFields,
+  buildChannelFormFromConfig,
+  buildChannelInput,
+  emptyChannelForm,
+  parseHeadersJson,
+} from "@/components/channels/channel-admin-form";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { HlsPlayer } from "@/player/hls-player";
-import { api } from "@/services/api";
+import { api, getChannelPlaybackUrl } from "@/services/api";
 import type { Channel, QualityOption, StreamTestResult } from "@/types/api";
+
+interface StreamTestItem {
+  label: string;
+  playlistUrl: string;
+  result: StreamTestResult;
+}
+
+interface StreamTestSummary {
+  sourceMode: "MASTER_PLAYLIST" | "MANUAL_VARIANTS";
+  items: StreamTestItem[];
+}
+
+const defaultPreviewQualities: QualityOption[] = [{ value: "AUTO", label: "Auto", height: null }];
 
 export function AdminChannelsPage() {
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const [editingChannelId, setEditingChannelId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyChannelForm);
-  const [previewQualities, setPreviewQualities] = useState<QualityOption[]>([
-    { value: "AUTO", label: "Auto", height: null },
-  ]);
+  const [previewQualities, setPreviewQualities] = useState<QualityOption[]>([...defaultPreviewQualities]);
   const [previewSelectedQuality, setPreviewSelectedQuality] = useState("AUTO");
-  const [streamResult, setStreamResult] = useState<StreamTestResult | null>(null);
+  const [streamTestSummary, setStreamTestSummary] = useState<StreamTestSummary | null>(null);
 
   const channelsQuery = useQuery({
     queryKey: ["channels", token],
@@ -117,14 +134,26 @@ export function AdminChannelsPage() {
         throw new Error("Missing session");
       }
 
-      return api.testStream(buildStreamTestPayload(form), token);
+      const requests = buildStreamTestRequests(form);
+      const items = await Promise.all(
+        requests.map(async ({ label, payload }) => ({
+          label,
+          playlistUrl: payload.url,
+          result: (await api.testStream(payload, token)).result,
+        })),
+      );
+
+      return {
+        sourceMode: form.sourceMode,
+        items,
+      } satisfies StreamTestSummary;
     },
-    onSuccess: (response) => {
-      setStreamResult(response.result);
-      toast.success("Stream test completed");
+    onSuccess: (summary) => {
+      setStreamTestSummary(summary);
+      toast.success(summary.sourceMode === "MASTER_PLAYLIST" ? "Master playlist tested" : "Manual variants tested");
     },
     onError: (error) => {
-      setStreamResult(null);
+      setStreamTestSummary(null);
       toast.error(error instanceof Error ? error.message : "Stream test failed");
     },
   });
@@ -134,35 +163,25 @@ export function AdminChannelsPage() {
     [channelsQuery.data],
   );
 
+  const previewSrc = buildPreviewSrc(form, editingChannelId);
+  const previewUnavailableReason =
+    form.sourceMode === "MANUAL_VARIANTS" && !editingChannelId
+      ? "Save the channel first to preview the synthesized master playlist."
+      : null;
+
   function resetEditor() {
     setEditingChannelId(null);
     setForm(emptyChannelForm);
-    setStreamResult(null);
+    setStreamTestSummary(null);
+    setPreviewQualities([...defaultPreviewQualities]);
     setPreviewSelectedQuality("AUTO");
   }
 
   function editChannel(channel: Channel) {
     setEditingChannelId(channel.id);
-    setStreamResult(null);
+    setStreamTestSummary(null);
+    setPreviewQualities([...defaultPreviewQualities]);
     setPreviewSelectedQuality("AUTO");
-
-    const masterHlsUrl = channel.masterHlsUrl;
-
-    if (masterHlsUrl) {
-      setForm((current) => ({
-        ...current,
-        name: channel.name,
-        slug: channel.slug,
-        logoUrl: channel.logoUrl ?? "",
-        groupId: channel.groupId ?? "",
-        masterHlsUrl,
-        isActive: channel.isActive,
-        sortOrder: channel.sortOrder,
-        playbackMode: channel.playbackMode,
-        epgSourceId: channel.epgSourceId ?? "",
-        epgChannelId: channel.epgChannelId ?? "",
-      }));
-    }
   }
 
   async function moveChannel(channel: Channel, direction: "up" | "down") {
@@ -195,7 +214,7 @@ export function AdminChannelsPage() {
       <PageHeader
         eyebrow="Admin"
         title="Channel management"
-        description="Control direct vs proxied playback, upstream request behavior, and channel-to-guide mapping without duplicating channel rows."
+        description="Configure each logical channel from either a real master playlist or manually entered quality variants while keeping one playback source for operators."
       />
 
       <div className="grid gap-6 xl:grid-cols-[0.88fr_1.12fr]">
@@ -206,12 +225,12 @@ export function AdminChannelsPage() {
                 {editingChannelId ? "Edit Channel" : "Create Channel"}
               </p>
               <p className="mt-2 text-sm text-slate-400">
-                Proxy mode hides the upstream URL from the player. Direct mode keeps the current client-side playback path.
+                Manual variant mode generates a synthetic master playlist so the player still sees one logical channel with switchable qualities.
               </p>
             </div>
             <Button onClick={() => streamTestMutation.mutate()} variant="secondary">
               <TestTube2 className="h-4 w-4" />
-              Test stream
+              Test source
             </Button>
           </div>
 
@@ -231,8 +250,7 @@ export function AdminChannelsPage() {
           <div className="rounded-3xl border border-slate-800/80 bg-slate-950/70 p-4 text-sm text-slate-400">
             <p className="font-semibold text-white">Operational notes</p>
             <p className="mt-2">
-              Use upstream request fields only when the provider expects a custom User-Agent, Referrer, or headers. Keep
-              proxy mode for channels where TV-Dash should own upstream access.
+              Use proxy mode when the provider expects TV-Dash to own upstream access, custom headers, or referrer handling. Direct mode keeps the browser on the upstream path, while manual variants still get a synthesized master playlist from the backend.
             </p>
           </div>
 
@@ -247,31 +265,51 @@ export function AdminChannelsPage() {
             ) : null}
           </div>
 
-          {streamResult ? (
+          {streamTestSummary ? (
             <div className="rounded-3xl border border-slate-800/80 bg-slate-950/70 p-4">
-              <p className="text-sm font-semibold text-white">Stream test result</p>
+              <p className="text-sm font-semibold text-white">Source test result</p>
               <p className="mt-2 text-sm text-slate-400">
-                {streamResult.isMasterPlaylist ? "Master playlist detected" : "No variants detected"} ·{" "}
-                {streamResult.variantCount} variant(s)
+                {streamTestSummary.sourceMode === "MASTER_PLAYLIST"
+                  ? "Master playlist inspection"
+                  : `${streamTestSummary.items.length} manual variant playlist test(s)`}
               </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {streamResult.variants.map((variant) => (
-                  <span
-                    key={`${variant.label}-${variant.bandwidth}`}
-                    className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-100"
-                  >
-                    {variant.label}
-                  </span>
+              <div className="mt-4 space-y-3">
+                {streamTestSummary.items.map((item) => (
+                  <div key={`${item.label}-${item.playlistUrl}`} className="rounded-2xl border border-slate-800/80 bg-slate-950/80 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-white">{item.label}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {item.result.isMasterPlaylist ? "Master playlist detected" : "Media playlist reachable"} ·{" "}
+                          {item.result.variantCount} nested variant(s)
+                        </p>
+                      </div>
+                    </div>
+                    {item.result.variants.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {item.result.variants.map((variant) => (
+                          <span
+                            key={`${item.label}-${variant.label}-${variant.bandwidth}`}
+                            className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-100"
+                          >
+                            {variant.label}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 ))}
               </div>
             </div>
           ) : null}
 
           <div>
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-3 flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-semibold text-white">Preview player</p>
-                <p className="mt-1 text-xs text-slate-500">Admin preview uses the raw master URL and request test metadata.</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Master-playlist channels preview the upstream source directly. Saved manual-variant channels preview through the generated synthetic master.
+                </p>
               </div>
               <Select
                 className="max-w-[180px]"
@@ -285,17 +323,24 @@ export function AdminChannelsPage() {
                 ))}
               </Select>
             </div>
-            <div className="h-[280px]">
-              <HlsPlayer
-                autoPlay
-                muted
-                onQualityOptionsChange={setPreviewQualities}
-                onSelectedQualityChange={setPreviewSelectedQuality}
-                preferredQuality={previewSelectedQuality}
-                src={form.masterHlsUrl}
-                title={form.name || "Preview"}
-              />
-            </div>
+
+            {previewUnavailableReason ? (
+              <div className="rounded-3xl border border-slate-800/80 bg-slate-950/70 p-4 text-sm text-slate-400">
+                {previewUnavailableReason}
+              </div>
+            ) : (
+              <div className="h-[280px]">
+                <HlsPlayer
+                  autoPlay
+                  muted
+                  onQualityOptionsChange={setPreviewQualities}
+                  onSelectedQualityChange={setPreviewSelectedQuality}
+                  preferredQuality={previewSelectedQuality}
+                  src={previewSrc}
+                  title={form.name || "Preview"}
+                />
+              </div>
+            )}
           </div>
         </Panel>
 
@@ -322,6 +367,9 @@ export function AdminChannelsPage() {
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2 text-xs">
                       <span className="rounded-full border border-slate-700/80 bg-slate-950/80 px-3 py-1 text-slate-300">
+                        {channel.sourceMode === "MASTER_PLAYLIST" ? "Master playlist" : `${channel.manualVariantCount} manual variant(s)`}
+                      </span>
+                      <span className="rounded-full border border-slate-700/80 bg-slate-950/80 px-3 py-1 text-slate-300">
                         {channel.playbackMode === "PROXY" ? "Proxy playback" : "Direct playback"}
                       </span>
                       <span className="rounded-full border border-slate-700/80 bg-slate-950/80 px-3 py-1 text-slate-300">
@@ -329,9 +377,11 @@ export function AdminChannelsPage() {
                       </span>
                     </div>
                     <p className="mt-3 text-xs text-slate-500">
-                      {channel.playbackMode === "PROXY"
-                        ? "Upstream master URL hidden from the public channel payload."
-                        : channel.masterHlsUrl}
+                      {channel.sourceMode === "MASTER_PLAYLIST"
+                        ? channel.playbackMode === "PROXY"
+                          ? "Upstream master URL hidden from the public channel payload."
+                          : channel.masterHlsUrl
+                        : "Playback uses a backend-generated synthetic master playlist."}
                     </p>
                   </div>
 
@@ -363,11 +413,55 @@ export function AdminChannelsPage() {
   );
 }
 
-function buildStreamTestPayload(form: typeof emptyChannelForm): StreamTestInput {
-  return {
-    url: form.masterHlsUrl,
+function buildStreamTestRequests(form: typeof emptyChannelForm) {
+  const requestConfig = {
     requestUserAgent: form.upstreamUserAgent || null,
     requestReferrer: form.upstreamReferrer || null,
     requestHeaders: parseHeadersJson(form.upstreamHeadersText),
   };
+
+  if (form.sourceMode === "MASTER_PLAYLIST") {
+    return [
+      {
+        label: "Master playlist",
+        payload: {
+          url: form.masterHlsUrl,
+          ...requestConfig,
+        } satisfies StreamTestInput,
+      },
+    ];
+  }
+
+  const requests = form.manualVariants
+    .filter((variant) => variant.isActive && variant.playlistUrl.trim())
+    .map((variant, index) => ({
+      label: variant.label.trim() || `Variant ${index + 1}`,
+      payload: {
+        url: variant.playlistUrl,
+        ...requestConfig,
+      } satisfies StreamTestInput,
+    }));
+
+  if (requests.length === 0) {
+    throw new Error("Add at least one active manual variant URL before testing");
+  }
+
+  return requests;
+}
+
+function buildPreviewSrc(form: typeof emptyChannelForm, editingChannelId: string | null) {
+  if (form.sourceMode === "MASTER_PLAYLIST") {
+    return form.masterHlsUrl || null;
+  }
+
+  if (!editingChannelId) {
+    return null;
+  }
+
+  return getChannelPlaybackUrl({
+    id: editingChannelId,
+    sourceMode: form.sourceMode,
+    masterHlsUrl: form.masterHlsUrl || null,
+    playbackMode: form.playbackMode,
+  });
 }

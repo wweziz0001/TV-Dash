@@ -123,10 +123,10 @@ interface ChannelPlaybackUrlOptions {
 }
 
 export function getChannelPlaybackUrl(
-  channel: Pick<Channel, "id" | "masterHlsUrl" | "playbackMode">,
+  channel: Pick<Channel, "id" | "masterHlsUrl" | "playbackMode" | "sourceMode">,
   options: ChannelPlaybackUrlOptions = {},
 ) {
-  if (options.preferProxy || channel.playbackMode === "PROXY") {
+  if (options.preferProxy || channel.playbackMode === "PROXY" || channel.sourceMode === "MANUAL_VARIANTS") {
     return `${API_BASE_URL}/streams/channels/${channel.id}/master`;
   }
 
