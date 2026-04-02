@@ -4,6 +4,14 @@
 
 TV-Dash is a self-hosted IPTV/Web TV operations platform. Operators manage logical channels backed by master HLS playlists, watch single feeds, compose multi-view walls, favorite channels, and save layouts.
 
+The current operator milestone also adds:
+
+- drag-to-swap multi-view tile reassignment
+- focused-tile quick actions and keyboard shortcuts
+- searchable quick channel switching in single-view and multiview
+- now/next guide context on dashboard cards, multiview tiles, and single-view detail panels
+- clearer saved-layout save/update/load ergonomics
+
 ## Current Architecture Summary
 
 - Monorepo with `apps/api`, `apps/web`, and `packages/shared`
@@ -108,6 +116,8 @@ Key relationship rules:
 - supported multi-view layouts live in `player/layouts.ts`
 - tile defaults and one-active-audio rules live in `player/multiview-layout.ts`
 - saved multi-view serialization/hydration helpers live in `player/multiview-state.ts`
+- focused-tile keyboard navigation lives in `player/multiview-shortcuts.ts`
+- multiview tile chrome, quick actions, and drag/swap affordances live in `player/multiview-tile-card.tsx`
 
 ## Important Conventions
 
@@ -135,6 +145,8 @@ Current automated coverage includes:
 - player quality option resolution tests
 - multi-view tile default/audio ownership tests
 - multi-view layout serialization, hydration, and tile-scoped state reset tests
+- multi-view tile swapping and keyboard shortcut helper tests
+- guide-state display logic and channel-picker component tests
 - channel admin form and playback URL helper tests
 
 Mandatory verification commands:
@@ -156,7 +168,38 @@ Optional but recommended for risky changes:
 - The proxy foundation currently buffers upstream asset bodies in memory instead of true streaming passthrough.
 - XMLTV data is loaded on demand into process memory only; there is no background ingestion job or durable programme storage yet.
 - Proxy playback is intentionally exposed through unauthenticated asset paths because the current HLS client stack does not inject bearer headers into playlist/segment requests.
+- route-level React coverage for the full multiview page is still missing; current frontend regression coverage focuses on the new workflow helpers and picker component seams.
 - `admin-channels-page.tsx`, `admin-epg-sources-page.tsx`, `multiview-page.tsx`, and `player/hls-player.tsx` are still valid but near the current complexity ceiling defined in the standards docs.
+
+## Operator UX Milestone Summary
+
+- Multi-view now centers on a focused tile workflow with:
+  - drag-to-swap tile reassignment
+  - searchable tile replacement instead of only large in-tile dropdowns
+  - clearer focused, muted, loading, retrying, and failed visual states
+  - a dedicated focused-tile panel with now/next context and operator shortcuts
+- Saved layouts now distinguish:
+  - `Save as new`
+  - `Update selected`
+  - `Load saved layout`
+  - `Delete`
+- Dashboard and single-view now surface guide context more consistently without assuming perfect EPG data.
+- Quick channel switching is now available:
+  - single-view via a searchable quick switch dialog and `Ctrl/Cmd + K`
+  - multiview via focused-tile picker shortcuts and tile-level replace actions
+- Current multiview shortcuts:
+  - `[` / `]` focus previous/next tile
+  - `M` toggle focused-tile audio ownership
+  - `C` or `Ctrl/Cmd + K` open the focused tile picker
+  - `F` fullscreen focused tile
+  - `Delete` clear the focused tile
+  - `Shift + 1-5` switch layout presets
+
+## Remaining Limitations
+
+- Guide data is still on-demand and source-backed, so partial or temporarily unavailable XMLTV sources can still leave some cards or tiles without now/next details.
+- Drag-and-drop tile swapping is mouse-first today; there is not yet a full keyboard-only tile reordering flow.
+- The quick switcher is local to the current page and does not yet expose cross-app command palette behavior.
 
 ## Proxy And EPG Foundation Summary
 
@@ -180,10 +223,10 @@ Optional but recommended for risky changes:
 
 ## Next Recommended Priorities
 
-1. Complete the next stream proxy milestone by switching asset delivery from buffered fetches to streaming passthrough and validating more HLS edge cases around large segment traffic.
+1. Add route-level React tests for multiview keyboard/reassignment flows plus dashboard and single-view quick-switch/guide orchestration.
 2. Add a real background XMLTV ingestion/caching job so now/next and future guide views do not depend on on-demand source fetches.
-3. Add isolated database-backed Fastify integration tests for channels, EPG sources, proxy routes, and saved layouts to complement the mocked route-contract coverage.
-4. Add route-level React tests for admin channel/EPG flows plus favorites and saved-layout application.
+3. Complete the next stream proxy milestone by switching asset delivery from buffered fetches to streaming passthrough and validating more HLS edge cases around large segment traffic.
+4. Add isolated database-backed Fastify integration tests for channels, EPG sources, proxy routes, and saved layouts to complement the mocked route-contract coverage.
 5. Add route-level lazy loading to reduce the large player bundle warning.
 
 ## Exact Local Commands

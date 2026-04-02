@@ -13,6 +13,8 @@ As of `2026-04-02`, TV-Dash has:
   - player retry timer cleanup and source replacement behavior
   - quality option resolution
   - multi-view tile defaults, audio ownership, layout hydration, and tile-state pruning
+  - multiview tile swapping and keyboard shortcut helpers
+  - guide state rendering logic and channel-picker search/selection behavior
 - workspace verification via `npm run lint`, `npm run test`, `npm run build`
 - smoke validation via `npm run smoke:test`
 
@@ -99,7 +101,8 @@ If a change touches one of those flows and no automated regression exists yet, e
 ### Phase 3: Frontend Interaction Confidence
 
 - player lifecycle cleanup and retry component coverage now exists
-- next step is adding React component tests for admin forms and multi-view orchestration
+- guide-state and channel-picker component coverage now exists for operator workflow seams
+- next step is adding React route-level coverage for multi-view keyboard/reassignment flows plus dashboard/watch now-next orchestration
 - add route-level regression coverage for critical operator flows
 
 ### Phase 4: Cross-App Regression

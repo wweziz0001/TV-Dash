@@ -33,6 +33,10 @@ That does not belong in:
   - tile defaults, resize policy, and single-audio enforcement
 - `player/multiview-state.ts`
   - multiview layout serialization, hydration, and per-tile state reset helpers
+- `player/multiview-shortcuts.ts`
+  - focused-tile keyboard navigation and layout shortcut helpers
+- `player/multiview-tile-card.tsx`
+  - player-facing multiview tile chrome, drag/swap affordances, and quick tile actions around `HlsPlayer`
 
 ## HLS.js Integration Rules
 
@@ -54,7 +58,8 @@ That does not belong in:
 - Route pages own page orchestration and persistence payload assembly.
 - Frontend service helpers may choose the playback URL contract (`DIRECT` upstream URL vs `PROXY` gateway path), but they do not own HLS lifecycle behavior.
 - `HlsPlayer` owns playback lifecycle and emits status/quality callbacks upward.
-- Multi-view pages own which tile is selected, saved, or displayed.
+- Multi-view pages own which tile is focused, reassigned, saved, or displayed.
+- Player-facing multiview UI components may live under `player/` when they wrap `HlsPlayer`, but pages still resolve playback URLs and persistence decisions.
 - Shared quality and tile decision logic lives in pure player helpers.
 
 ## Playback URL Selection Rules
@@ -95,6 +100,8 @@ Do not add silent infinite retry loops. Any retry policy change must consider mu
 - tile counts come from layout definitions, not inline page conditionals
 - background tiles should prefer lower startup quality where possible
 - saved layout hydration should restore tile order and focus state without leaking stale per-tile quality metadata
+- tile swapping or reassignment must move tile-scoped status and quality metadata together so operator context stays coherent
+- focused-tile keyboard shortcuts should stay intentionally small and operator-oriented rather than becoming a global hotkey subsystem
 - any layout above current supported sizes must be evaluated for:
   - CPU/GPU impact
   - network concurrency
