@@ -12,6 +12,7 @@ The current operator milestone also adds:
 - now/next guide context on dashboard cards, multiview tiles, and single-view detail panels
 - clearer saved-layout save/update/load ergonomics
 - a denser operator layout pass that reduces oversized chrome and gives viewer surfaces more screen space
+- a compact manual quality-variant admin workflow with presets, normalization helpers, inline row validation, and faster repetitive entry controls
 
 ## Current Architecture Summary
 
@@ -154,6 +155,7 @@ Current automated coverage includes:
 - multi-view tile swapping and keyboard shortcut helper tests
 - guide-state display logic and channel-picker component tests
 - channel admin form and playback URL helper tests
+- compact manual quality-variant admin workflow coverage for presets, duplication, sorting, normalization, and inline validation
 
 Mandatory verification commands:
 
@@ -171,10 +173,12 @@ Optional but recommended for risky changes:
 - Fastify route tests still mock persistence; isolated database-backed CRUD coverage is the next backend confidence step.
 - Route-level UI regression coverage for favorites and saved-layout application is still missing on the frontend.
 - Admin reorder remains sort-order based rather than drag-and-drop.
+- Manual variant rows now support presets, duplication, and auto-sort, but they still use button-driven ordering rather than drag-and-drop.
 - The proxy foundation currently buffers upstream asset bodies in memory instead of true streaming passthrough.
 - XMLTV data is loaded on demand into process memory only; there is no background ingestion job or durable programme storage yet.
 - Proxy playback is intentionally exposed through unauthenticated asset paths because the current HLS client stack does not inject bearer headers into playlist/segment requests.
 - Manual-variant channels in `DIRECT` playback mode still rely on browser access to each upstream variant playlist and segment URL, so providers that require custom headers should use `PROXY` mode.
+- The admin form shows the intended synthetic master order and row-level validation state, but it still does not render a full unsaved master-playlist preview.
 - route-level React coverage for the full multiview page is still missing; current frontend regression coverage focuses on the new workflow helpers and picker component seams.
 - `admin-channels-page.tsx`, `admin-epg-sources-page.tsx`, `multiview-page.tsx`, and `player/hls-player.tsx` are still valid but near the current complexity ceiling defined in the standards docs.
 
@@ -201,6 +205,25 @@ Optional but recommended for risky changes:
   - `F` fullscreen focused tile
   - `Delete` clear the focused tile
   - `Shift + 1-5` switch layout presets
+
+## Manual Variant Admin UX
+
+- The channel admin form now treats manual quality entry like a compact ingest table instead of stacked mini-cards.
+- Manual-variant operators can now:
+  - add preset rows for `1080p`, `720p`, `480p`, or a `low/medium/high` ladder
+  - duplicate an existing row without creating an immediate duplicate URL conflict
+  - auto-sort known qualities low-to-high and re-number the synthetic master order
+  - rely on label normalization for common synonyms such as `720`, `FULL HD`, or `med`
+  - let blank labels pick up safe suggestions from URL patterns or entered resolution metadata
+- Validation UX is denser and more operational:
+  - source mode summary pills show whether the current manual set looks complete
+  - each row surfaces its own ready/incomplete/error state inline
+  - duplicate labels, duplicate sort orders, missing URLs, and invalid URLs now show as practical inline messages before save
+  - manual direct-playback mode with custom upstream request settings now warns that headers/referrer only apply to the synthesized master request unless proxy mode is used
+- Current future-work boundary:
+  - no drag-and-drop row ordering yet
+  - no unsaved synthetic master manifest preview yet
+  - no bulk paste parser for importing many manual rows from text in one action
 
 ## Operator Density Corrections
 
