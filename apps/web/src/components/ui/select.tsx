@@ -15,7 +15,7 @@ export function Select({ uiSize = "md", ...props }: SelectProps) {
     <select
       {...props}
       className={cn(
-        "w-full border border-slate-700/70 bg-slate-950/70 text-slate-100 focus:border-accent",
+        "w-full appearance-none border border-slate-700/70 bg-slate-950/70 text-slate-200 transition-colors focus:border-accent",
         sizeStyles[uiSize],
         props.className,
       )}
