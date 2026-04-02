@@ -17,13 +17,19 @@ export function setStoredToken(token: string | null) {
 }
 
 async function request<T>(path: string, init: RequestInit = {}, token?: string | null): Promise<T> {
+  const headers = new Headers(init.headers);
+
+  if (token) {
+    headers.set("authorization", `Bearer ${token}`);
+  }
+
+  if (init.body && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
-    headers: {
-      "content-type": "application/json",
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-      ...(init.headers ?? {}),
-    },
+    headers,
   });
 
   if (response.status === 204) {
@@ -83,4 +89,3 @@ export const api = {
       token,
     ),
 };
-
