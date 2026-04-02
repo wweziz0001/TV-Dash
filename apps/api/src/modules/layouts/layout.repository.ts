@@ -1,5 +1,6 @@
 import type { SavedLayoutInput } from "@tv-dash/shared";
 import { prisma } from "../../db/prisma.js";
+import { publicChannelInclude } from "../channels/channel.repository.js";
 
 function mapLayoutItems(items: SavedLayoutInput["items"]) {
   return items.map((item) => ({
@@ -17,9 +18,7 @@ export function listLayouts(userId: string) {
       items: {
         include: {
           channel: {
-            include: {
-              group: true,
-            },
+            include: publicChannelInclude,
           },
         },
         orderBy: {
@@ -59,7 +58,9 @@ export function createLayout(userId: string, payload: SavedLayoutInput) {
     include: {
       items: {
         include: {
-          channel: true,
+          channel: {
+            include: publicChannelInclude,
+          },
         },
         orderBy: {
           tileIndex: "asc",
@@ -84,7 +85,9 @@ export function updateLayout(id: string, payload: SavedLayoutInput) {
     include: {
       items: {
         include: {
-          channel: true,
+          channel: {
+            include: publicChannelInclude,
+          },
         },
         orderBy: {
           tileIndex: "asc",

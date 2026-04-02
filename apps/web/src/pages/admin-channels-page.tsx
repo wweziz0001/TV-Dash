@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, PlayCircle, TestTube2 } from "lucide-react";
 import { toast } from "react-hot-toast";
+import type { StreamTestInput } from "@tv-dash/shared";
+import { ChannelAdminFormFields, buildChannelFormFromConfig, buildChannelInput, emptyChannelForm, parseHeadersJson } from "@/components/channels/channel-admin-form";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
@@ -12,21 +13,11 @@ import { HlsPlayer } from "@/player/hls-player";
 import { api } from "@/services/api";
 import type { Channel, QualityOption, StreamTestResult } from "@/types/api";
 
-const emptyForm = {
-  name: "",
-  slug: "",
-  logoUrl: "",
-  groupId: "",
-  masterHlsUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
-  isActive: true,
-  sortOrder: 0,
-};
-
 export function AdminChannelsPage() {
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const [editingChannelId, setEditingChannelId] = useState<string | null>(null);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(emptyChannelForm);
   const [previewQualities, setPreviewQualities] = useState<QualityOption[]>([
     { value: "AUTO", label: "Auto", height: null },
   ]);
@@ -45,17 +36,39 @@ export function AdminChannelsPage() {
     enabled: Boolean(token),
   });
 
+  const epgSourcesQuery = useQuery({
+    queryKey: ["epg-sources", token],
+    queryFn: async () => (await api.listEpgSources(token!)).sources,
+    enabled: Boolean(token),
+  });
+
+  const channelConfigQuery = useQuery({
+    queryKey: ["channel-config", editingChannelId, token],
+    queryFn: async () => {
+      if (!editingChannelId || !token) {
+        throw new Error("Missing channel context");
+      }
+
+      return (await api.getChannelConfig(editingChannelId, token)).channel;
+    },
+    enabled: Boolean(token && editingChannelId),
+  });
+
+  useEffect(() => {
+    if (!channelConfigQuery.data) {
+      return;
+    }
+
+    setForm(buildChannelFormFromConfig(channelConfigQuery.data));
+  }, [channelConfigQuery.data]);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!token) {
         throw new Error("Missing session");
       }
 
-      const payload = {
-        ...form,
-        groupId: form.groupId || null,
-        sortOrder: Number(form.sortOrder),
-      };
+      const payload = buildChannelInput(form);
 
       if (editingChannelId) {
         return api.updateChannel(editingChannelId, payload, token);
@@ -63,12 +76,13 @@ export function AdminChannelsPage() {
 
       return api.createChannel(payload, token);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(editingChannelId ? "Channel updated" : "Channel created");
-      setEditingChannelId(null);
-      setForm(emptyForm);
-      setStreamResult(null);
-      void queryClient.invalidateQueries({ queryKey: ["channels", token] });
+      resetEditor();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["channels", token] }),
+        queryClient.invalidateQueries({ queryKey: ["channel-config", editingChannelId, token] }),
+      ]);
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to save channel");
@@ -80,11 +94,17 @@ export function AdminChannelsPage() {
       if (!token) {
         throw new Error("Missing session");
       }
+
       await api.deleteChannel(id, token);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success("Channel deleted");
-      void queryClient.invalidateQueries({ queryKey: ["channels", token] });
+
+      if (editingChannelId) {
+        resetEditor();
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["channels", token] });
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to delete channel");
@@ -96,7 +116,8 @@ export function AdminChannelsPage() {
       if (!token) {
         throw new Error("Missing session");
       }
-      return api.testStream(form.masterHlsUrl, token);
+
+      return api.testStream(buildStreamTestPayload(form), token);
     },
     onSuccess: (response) => {
       setStreamResult(response.result);
@@ -113,18 +134,35 @@ export function AdminChannelsPage() {
     [channelsQuery.data],
   );
 
+  function resetEditor() {
+    setEditingChannelId(null);
+    setForm(emptyChannelForm);
+    setStreamResult(null);
+    setPreviewSelectedQuality("AUTO");
+  }
+
   function editChannel(channel: Channel) {
     setEditingChannelId(channel.id);
-    setForm({
-      name: channel.name,
-      slug: channel.slug,
-      logoUrl: channel.logoUrl ?? "",
-      groupId: channel.groupId ?? "",
-      masterHlsUrl: channel.masterHlsUrl,
-      isActive: channel.isActive,
-      sortOrder: channel.sortOrder,
-    });
     setStreamResult(null);
+    setPreviewSelectedQuality("AUTO");
+
+    const masterHlsUrl = channel.masterHlsUrl;
+
+    if (masterHlsUrl) {
+      setForm((current) => ({
+        ...current,
+        name: channel.name,
+        slug: channel.slug,
+        logoUrl: channel.logoUrl ?? "",
+        groupId: channel.groupId ?? "",
+        masterHlsUrl,
+        isActive: channel.isActive,
+        sortOrder: channel.sortOrder,
+        playbackMode: channel.playbackMode,
+        epgSourceId: channel.epgSourceId ?? "",
+        epgChannelId: channel.epgChannelId ?? "",
+      }));
+    }
   }
 
   async function moveChannel(channel: Channel, direction: "up" | "down") {
@@ -141,25 +179,12 @@ export function AdminChannelsPage() {
     }
 
     try {
-      await api.updateChannel(
-        channel.id,
-        {
-          ...channel,
-          sortOrder: target.sortOrder,
-        },
-        token,
-      );
-      await api.updateChannel(
-        target.id,
-        {
-          ...target,
-          groupId: target.groupId,
-          sortOrder: channel.sortOrder,
-        },
-        token,
-      );
+      await Promise.all([
+        api.updateChannelSortOrder(channel.id, target.sortOrder, token),
+        api.updateChannelSortOrder(target.id, channel.sortOrder, token),
+      ]);
       toast.success("Channel order updated");
-      void queryClient.invalidateQueries({ queryKey: ["channels", token] });
+      await queryClient.invalidateQueries({ queryKey: ["channels", token] });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to reorder channels");
     }
@@ -170,17 +195,19 @@ export function AdminChannelsPage() {
       <PageHeader
         eyebrow="Admin"
         title="Channel management"
-        description="Store each channel as one logical feed backed by a master HLS URL. Operators pick quality inside the player, not via duplicate channel rows."
+        description="Control direct vs proxied playback, upstream request behavior, and channel-to-guide mapping without duplicating channel rows."
       />
 
-      <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+      <div className="grid gap-6 xl:grid-cols-[0.88fr_1.12fr]">
         <Panel className="space-y-5">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-[0.28em] text-slate-500">
                 {editingChannelId ? "Edit Channel" : "Create Channel"}
               </p>
-              <p className="mt-2 text-sm text-slate-400">Master playlist URL only. Quality variants are discovered by HLS.js.</p>
+              <p className="mt-2 text-sm text-slate-400">
+                Proxy mode hides the upstream URL from the player. Direct mode keeps the current client-side playback path.
+              </p>
             </div>
             <Button onClick={() => streamTestMutation.mutate()} variant="secondary">
               <TestTube2 className="h-4 w-4" />
@@ -188,58 +215,25 @@ export function AdminChannelsPage() {
             </Button>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Name">
-              <Input onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} value={form.name} />
-            </Field>
-            <Field label="Slug">
-              <Input onChange={(event) => setForm((current) => ({ ...current, slug: event.target.value }))} value={form.slug} />
-            </Field>
-            <Field label="Logo URL">
-              <Input
-                onChange={(event) => setForm((current) => ({ ...current, logoUrl: event.target.value }))}
-                value={form.logoUrl}
-              />
-            </Field>
-            <Field label="Group">
-              <Select
-                onChange={(event) => setForm((current) => ({ ...current, groupId: event.target.value }))}
-                value={form.groupId}
-              >
-                <option value="">Ungrouped</option>
-                {(groupsQuery.data ?? []).map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
+          {editingChannelId && channelConfigQuery.isLoading ? (
+            <div className="rounded-3xl border border-slate-800/80 bg-slate-950/70 p-4 text-sm text-slate-400">
+              Loading admin channel configuration...
+            </div>
+          ) : null}
 
-          <Field label="Master HLS URL">
-            <Input
-              onChange={(event) => setForm((current) => ({ ...current, masterHlsUrl: event.target.value }))}
-              value={form.masterHlsUrl}
-            />
-          </Field>
+          <ChannelAdminFormFields
+            epgSources={epgSourcesQuery.data ?? []}
+            form={form}
+            groups={groupsQuery.data ?? []}
+            onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
+          />
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Sort order">
-              <Input
-                onChange={(event) => setForm((current) => ({ ...current, sortOrder: Number(event.target.value) }))}
-                type="number"
-                value={form.sortOrder}
-              />
-            </Field>
-            <Field label="Status">
-              <Select
-                onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.value === "true" }))}
-                value={String(form.isActive)}
-              >
-                <option value="true">Active</option>
-                <option value="false">Inactive</option>
-              </Select>
-            </Field>
+          <div className="rounded-3xl border border-slate-800/80 bg-slate-950/70 p-4 text-sm text-slate-400">
+            <p className="font-semibold text-white">Operational notes</p>
+            <p className="mt-2">
+              Use upstream request fields only when the provider expects a custom User-Agent, Referrer, or headers. Keep
+              proxy mode for channels where TV-Dash should own upstream access.
+            </p>
           </div>
 
           <div className="flex gap-3">
@@ -247,15 +241,7 @@ export function AdminChannelsPage() {
               {editingChannelId ? "Update channel" : "Create channel"}
             </Button>
             {editingChannelId ? (
-              <Button
-                className="flex-1"
-                onClick={() => {
-                  setEditingChannelId(null);
-                  setForm(emptyForm);
-                  setStreamResult(null);
-                }}
-                variant="secondary"
-              >
+              <Button className="flex-1" onClick={resetEditor} variant="secondary">
                 Cancel
               </Button>
             ) : null}
@@ -283,7 +269,10 @@ export function AdminChannelsPage() {
 
           <div>
             <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm font-semibold text-white">Preview player</p>
+              <div>
+                <p className="text-sm font-semibold text-white">Preview player</p>
+                <p className="mt-1 text-xs text-slate-500">Admin preview uses the raw master URL and request test metadata.</p>
+              </div>
               <Select
                 className="max-w-[180px]"
                 onChange={(event) => setPreviewSelectedQuality(event.target.value)}
@@ -323,17 +312,27 @@ export function AdminChannelsPage() {
 
           <div className="mt-5 space-y-3">
             {sortedChannels.map((channel) => (
-              <div
-                key={channel.id}
-                className="rounded-3xl border border-slate-800/70 bg-slate-950/60 p-4"
-              >
+              <div key={channel.id} className="rounded-3xl border border-slate-800/70 bg-slate-950/60 p-4">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <p className="font-semibold text-white">{channel.name}</p>
                     <p className="mt-1 text-sm text-slate-400">
-                      {channel.group?.name ?? "Ungrouped"} · order {channel.sortOrder} · {channel.isActive ? "active" : "inactive"}
+                      {channel.group?.name ?? "Ungrouped"} · order {channel.sortOrder} ·{" "}
+                      {channel.isActive ? "active" : "inactive"}
                     </p>
-                    <p className="mt-2 text-xs text-slate-500">{channel.masterHlsUrl}</p>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                      <span className="rounded-full border border-slate-700/80 bg-slate-950/80 px-3 py-1 text-slate-300">
+                        {channel.playbackMode === "PROXY" ? "Proxy playback" : "Direct playback"}
+                      </span>
+                      <span className="rounded-full border border-slate-700/80 bg-slate-950/80 px-3 py-1 text-slate-300">
+                        {channel.epgSource ? `EPG: ${channel.epgSource.name}` : "No EPG mapping"}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-xs text-slate-500">
+                      {channel.playbackMode === "PROXY"
+                        ? "Upstream master URL hidden from the public channel payload."
+                        : channel.masterHlsUrl}
+                    </p>
                   </div>
 
                   <div className="flex flex-wrap gap-3">
@@ -349,20 +348,7 @@ export function AdminChannelsPage() {
                     <Button onClick={() => deleteMutation.mutate(channel.id)} variant="danger">
                       Delete
                     </Button>
-                    <Button
-                      onClick={() => {
-                        setForm({
-                          name: channel.name,
-                          slug: channel.slug,
-                          logoUrl: channel.logoUrl ?? "",
-                          groupId: channel.groupId ?? "",
-                          masterHlsUrl: channel.masterHlsUrl,
-                          isActive: channel.isActive,
-                          sortOrder: channel.sortOrder,
-                        });
-                      }}
-                      variant="ghost"
-                    >
+                    <Button onClick={() => editChannel(channel)} variant="ghost">
                       <PlayCircle className="h-4 w-4" />
                       Preview
                     </Button>
@@ -377,11 +363,11 @@ export function AdminChannelsPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="mb-2 block text-sm text-slate-400">{label}</label>
-      {children}
-    </div>
-  );
+function buildStreamTestPayload(form: typeof emptyChannelForm): StreamTestInput {
+  return {
+    url: form.masterHlsUrl,
+    requestUserAgent: form.upstreamUserAgent || null,
+    requestReferrer: form.upstreamReferrer || null,
+    requestHeaders: parseHeadersJson(form.upstreamHeadersText),
+  };
 }

@@ -24,7 +24,7 @@ import {
   setTileQualityOptions,
 } from "@/player/multiview-state";
 import { defaultQualityOptions } from "@/player/quality-options";
-import { api } from "@/services/api";
+import { api, getChannelPlaybackUrl } from "@/services/api";
 import type { QualityOption } from "@/types/api";
 
 export function MultiViewPage() {
@@ -279,6 +279,9 @@ export function MultiViewPage() {
                       {isFocused ? "Focused tile" : "Background tile"}
                     </div>
                     <div className="rounded-full border border-slate-700/80 bg-slate-950/80 px-3 py-1 text-slate-300">
+                      {channel ? (channel.playbackMode === "PROXY" ? "Proxy" : "Direct") : "No source"}
+                    </div>
+                    <div className="rounded-full border border-slate-700/80 bg-slate-950/80 px-3 py-1 text-slate-300">
                       {channel ? `${playerStatus} · ${tile.preferredQuality}` : "Idle"}
                     </div>
                   </div>
@@ -303,7 +306,7 @@ export function MultiViewPage() {
                       }))
                     }
                     preferredQuality={tile.preferredQuality}
-                    src={channel?.masterHlsUrl ?? null}
+                    src={channel ? getChannelPlaybackUrl(channel) : null}
                     title={channel?.name ?? `Tile ${index + 1}`}
                   />
                 </div>

@@ -1,13 +1,12 @@
 import { prisma } from "../../db/prisma.js";
+import { publicChannelInclude } from "../channels/channel.repository.js";
 
 export function listFavorites(userId: string) {
   return prisma.favorite.findMany({
     where: { userId },
     include: {
       channel: {
-        include: {
-          group: true,
-        },
+        include: publicChannelInclude,
       },
     },
     orderBy: {
@@ -31,9 +30,7 @@ export function upsertFavorite(userId: string, channelId: string) {
     },
     include: {
       channel: {
-        include: {
-          group: true,
-        },
+        include: publicChannelInclude,
       },
     },
   });

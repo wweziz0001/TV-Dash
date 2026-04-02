@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "@/components/layout/app-shell";
 import { RequireAdmin, RequireAuth } from "@/features/auth/auth-context";
 import { AdminChannelsPage } from "@/pages/admin-channels-page";
+import { AdminEpgSourcesPage } from "@/pages/admin-epg-sources-page";
 import { AdminGroupsPage } from "@/pages/admin-groups-page";
 import { ChannelWatchPage } from "@/pages/channel-watch-page";
 import { DashboardPage } from "@/pages/dashboard-page";
@@ -38,6 +39,14 @@ export function AppRouter() {
             element={
               <RequireAdmin>
                 <AdminGroupsPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/epg"
+            element={
+              <RequireAdmin>
+                <AdminEpgSourcesPage />
               </RequireAdmin>
             }
           />

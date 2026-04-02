@@ -20,6 +20,15 @@ enum LayoutType {
   LAYOUT_FOCUS_1_4
 }
 
+enum StreamPlaybackMode {
+  DIRECT
+  PROXY
+}
+
+enum EpgSourceType {
+  XMLTV
+}
+
 model User {
   id           String        @id @default(uuid()) @db.Uuid
   email        String        @unique
@@ -43,19 +52,44 @@ model ChannelGroup {
 }
 
 model Channel {
-  id           String        @id @default(uuid()) @db.Uuid
-  name         String
-  slug         String        @unique
-  logoUrl      String?
-  masterHlsUrl String
-  groupId      String?       @db.Uuid
-  group        ChannelGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  isActive     Boolean       @default(true)
-  sortOrder    Int           @default(0)
-  favorites    Favorite[]
-  layoutItems  SavedLayoutItem[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id                String             @id @default(uuid()) @db.Uuid
+  name              String
+  slug              String             @unique
+  logoUrl           String?
+  masterHlsUrl      String
+  playbackMode      StreamPlaybackMode @default(DIRECT)
+  upstreamUserAgent String?
+  upstreamReferrer  String?
+  upstreamHeaders   Json?
+  groupId           String?            @db.Uuid
+  group             ChannelGroup?      @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  epgSourceId       String?            @db.Uuid
+  epgSource         EpgSource?         @relation(fields: [epgSourceId], references: [id], onDelete: SetNull)
+  epgChannelId      String?
+  isActive          Boolean            @default(true)
+  sortOrder         Int                @default(0)
+  favorites         Favorite[]
+  layoutItems       SavedLayoutItem[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([epgSourceId, epgChannelId])
+}
+
+model EpgSource {
+  id                     String        @id @default(uuid()) @db.Uuid
+  name                   String
+  slug                   String        @unique
+  sourceType             EpgSourceType @default(XMLTV)
+  url                    String
+  isActive               Boolean       @default(true)
+  refreshIntervalMinutes Int           @default(360)
+  requestUserAgent       String?
+  requestReferrer        String?
+  requestHeaders         Json?
+  channels               Channel[]
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
 }
 
 model Favorite {
@@ -93,4 +127,3 @@ model SavedLayoutItem {
 
   @@unique([savedLayoutId, tileIndex])
 }
-

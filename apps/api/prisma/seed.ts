@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { PrismaClient, LayoutType, UserRole } from "@prisma/client";
+import { PrismaClient, EpgSourceType, LayoutType, StreamPlaybackMode, UserRole } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -89,6 +89,25 @@ async function main() {
     groupMap.set(group.slug, record.id);
   }
 
+  const demoEpgSource = await prisma.epgSource.upsert({
+    where: { slug: "demo-xmltv" },
+    update: {
+      name: "Demo XMLTV",
+      sourceType: EpgSourceType.XMLTV,
+      url: "https://example.com/demo.xml",
+      isActive: false,
+      refreshIntervalMinutes: 360,
+    },
+    create: {
+      name: "Demo XMLTV",
+      slug: "demo-xmltv",
+      sourceType: EpgSourceType.XMLTV,
+      url: "https://example.com/demo.xml",
+      isActive: false,
+      refreshIntervalMinutes: 360,
+    },
+  });
+
   const createdChannels = [];
 
   for (const channel of channels) {
@@ -98,7 +117,10 @@ async function main() {
         name: channel.name,
         logoUrl: channel.logoUrl,
         masterHlsUrl: channel.masterHlsUrl,
+        playbackMode: channel.slug === "pulse-24" ? StreamPlaybackMode.PROXY : StreamPlaybackMode.DIRECT,
         groupId: groupMap.get(channel.groupSlug) ?? null,
+        epgSourceId: channel.slug === "tv-dash-live" ? demoEpgSource.id : null,
+        epgChannelId: channel.slug === "tv-dash-live" ? "tv-dash-live" : null,
         isActive: true,
         sortOrder: channel.sortOrder,
       },
@@ -107,7 +129,10 @@ async function main() {
         slug: channel.slug,
         logoUrl: channel.logoUrl,
         masterHlsUrl: channel.masterHlsUrl,
+        playbackMode: channel.slug === "pulse-24" ? StreamPlaybackMode.PROXY : StreamPlaybackMode.DIRECT,
         groupId: groupMap.get(channel.groupSlug) ?? null,
+        epgSourceId: channel.slug === "tv-dash-live" ? demoEpgSource.id : null,
+        epgChannelId: channel.slug === "tv-dash-live" ? "tv-dash-live" : null,
         isActive: true,
         sortOrder: channel.sortOrder,
       },
@@ -176,4 +201,3 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
-
