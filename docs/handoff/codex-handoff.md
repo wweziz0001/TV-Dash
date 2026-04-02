@@ -2,7 +2,7 @@
 
 ## Project Purpose
 
-TV-Dash is a self-hosted IPTV/Web TV operations platform. Operators manage logical channels backed by master HLS playlists, watch single feeds, compose multi-view walls, favorite channels, and save layouts.
+TV-Dash is a self-hosted IPTV/Web TV operations platform. Operators manage logical channels backed by either real HLS master playlists or manually entered quality variants, watch single feeds, compose multi-view walls, favorite channels, and save layouts.
 
 The current operator milestone also adds:
 
@@ -78,7 +78,7 @@ tests/
 ## Key Backend Modules
 
 - `auth`: login and current user lookup
-- `channels`: logical channel catalog CRUD, browse lookups, playback-mode metadata, and channel-to-EPG linking
+- `channels`: logical channel catalog CRUD, browse lookups, ingest-mode metadata, manual quality variants, playback-mode metadata, and channel-to-EPG linking
 - `epg`: EPG source CRUD, XMLTV preview/loading, and now/next lookup
 - `groups`: category/group CRUD
 - `favorites`: per-user pinned channels
@@ -95,6 +95,7 @@ Main models:
 - `User`
 - `ChannelGroup`
 - `Channel`
+- `ChannelQualityVariant`
 - `EpgSource`
 - `Favorite`
 - `SavedLayout`
@@ -104,16 +105,19 @@ Key relationship rules:
 
 - a channel optionally belongs to a group
 - a channel may optionally point to one EPG source and one EPG channel id
+- a channel may be configured in `MASTER_PLAYLIST` or `MANUAL_VARIANTS` source mode
+- manual-variant channels store ordered `ChannelQualityVariant` rows instead of one upstream master URL
 - channels may play either in `DIRECT` or `PROXY` mode
 - favorites are per-user per-channel
 - saved layouts are per-user and contain ordered tile items
-- each logical channel stores one master HLS URL plus optional upstream request metadata
+- each logical channel resolves to one player-facing master source plus optional upstream request metadata
 
 ## Player Architecture Overview
 
 - `player/hls-player.tsx` owns one video element and one HLS.js instance
 - `player/playback-recovery.ts` owns bounded fatal error recovery decisions
 - quality options and preference resolution live in `player/quality-options.ts`
+- manual-variant channels reach the player through a backend-generated synthetic master playlist, not duplicated channel rows
 - supported multi-view layouts live in `player/layouts.ts`
 - tile defaults and one-active-audio rules live in `player/multiview-layout.ts`
 - saved multi-view serialization/hydration helpers live in `player/multiview-state.ts`
@@ -131,6 +135,7 @@ Key relationship rules:
 - Frontend request payloads should use shared DTO types instead of `unknown` or ad-hoc object shapes.
 - Saved layout config is now modeled as real JSON in shared contracts, not as an unbounded `any` record.
 - Proxy playback URL selection happens in frontend service helpers, not inside the player lifecycle code.
+- Manual-variant channels must resolve through the backend stream master path so HLS.js receives one logical manifest.
 - Public channel responses may intentionally hide raw upstream stream URLs when proxy mode is enabled.
 
 ## Testing Status
@@ -139,7 +144,7 @@ Current automated coverage includes:
 
 - API health boot/injection test
 - Fastify inject coverage for channels, groups, favorites, layouts, streams, and EPG route contracts
-- HLS master playlist parsing test
+- HLS master playlist parsing and synthetic master generation tests
 - HLS playlist rewrite and proxy token tests
 - XMLTV parser and now/next lookup tests
 - HlsPlayer component coverage for bounded retry timers and source replacement cleanup
@@ -169,6 +174,7 @@ Optional but recommended for risky changes:
 - The proxy foundation currently buffers upstream asset bodies in memory instead of true streaming passthrough.
 - XMLTV data is loaded on demand into process memory only; there is no background ingestion job or durable programme storage yet.
 - Proxy playback is intentionally exposed through unauthenticated asset paths because the current HLS client stack does not inject bearer headers into playlist/segment requests.
+- Manual-variant channels in `DIRECT` playback mode still rely on browser access to each upstream variant playlist and segment URL, so providers that require custom headers should use `PROXY` mode.
 - route-level React coverage for the full multiview page is still missing; current frontend regression coverage focuses on the new workflow helpers and picker component seams.
 - `admin-channels-page.tsx`, `admin-epg-sources-page.tsx`, `multiview-page.tsx`, and `player/hls-player.tsx` are still valid but near the current complexity ceiling defined in the standards docs.
 
@@ -249,10 +255,37 @@ Optional but recommended for risky changes:
   - a dedicated EPG source management page with XMLTV preview
 - Tests now cover proxy rewriting/token behavior, XMLTV parsing, EPG routes, proxy routes, and frontend helper logic for the new contracts.
 
+## Flexible Channel Ingest Summary
+
+- Channels now support two ingest modes:
+  - `MASTER_PLAYLIST`: one upstream master playlist URL
+  - `MANUAL_VARIANTS`: multiple manually entered variant playlist URLs
+- Manual-variant channels are still exposed to end users as one logical channel only.
+- The backend generates a real synthetic master playlist at `GET /api/streams/channels/:channelId/master` when a channel uses manual variants.
+- Synthetic master generation rules:
+  - one `#EXT-X-STREAM-INF` line per active manual variant
+  - `BANDWIDTH` always present, using explicit metadata first and safe fallbacks second
+  - `RESOLUTION` derived from explicit width/height, resolution-style labels like `720p`, or common low/medium/high mappings
+  - `NAME` preserves admin-facing labels so HLS.js quality options can display clean names
+- Playback behavior:
+  - real-master channels keep the old behavior
+  - manual-variant channels always use the backend master path so HLS.js sees one manifest
+  - proxy playback mode rewrites manual variant URLs to signed proxy asset paths
+  - direct playback mode leaves manual variant URLs upstream-facing after the synthetic master is generated
+- Admin configuration behavior:
+  - the channel form now has an explicit source-mode switch
+  - master mode shows one master URL field
+  - manual mode shows ordered variant rows with label, URL, status, sort order, and optional metadata
+  - admins can add, remove, and reorder manual variant rows
+- Remaining limitations:
+  - new unsaved manual-variant channels cannot be previewed until they have a channel id because the synthetic master is generated server-side
+  - if manual variants need custom headers or referrer handling during playback, `PROXY` mode should be used
+  - synthetic metadata fallback is intentionally conservative and should be refined if provider-specific ladders need tighter control
+
 ## Next Recommended Priorities
 
 1. Add route-level React tests for the denser watch and multiview layouts so critical operator surfaces have regression coverage beyond helper/component seams.
-2. Apply the same density strategy to the admin pages where controls and tables still feel roomier than the operator surfaces.
+2. Add admin-side helper UX around manual variant metadata defaults and provider-specific ladder presets if operators start onboarding many non-master channels.
 3. Add a real background XMLTV ingestion/caching job so now/next and future guide views do not depend on on-demand source fetches.
 4. Complete the next stream proxy milestone by switching asset delivery from buffered fetches to streaming passthrough and validating more HLS edge cases around large segment traffic.
 5. Add route-level lazy loading to reduce the large player bundle warning.

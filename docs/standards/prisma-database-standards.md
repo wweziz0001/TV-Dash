@@ -11,6 +11,7 @@ This document defines schema design, migration discipline, repository usage, and
 - Join or child entities should be explicit when they carry real state:
   - `Favorite`
   - `SavedLayoutItem`
+  - `ChannelQualityVariant`
 
 ## Field Naming Rules
 

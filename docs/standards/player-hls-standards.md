@@ -50,7 +50,9 @@ Rules:
 
 ## Quality Rules
 
-- Every logical channel stores one master HLS URL.
+- Every logical channel must resolve to one HLS master source for the player, whether that comes from:
+  - a real upstream master playlist
+  - or a backend-generated synthetic master playlist built from manual variant rows
 - Quality options are discovered from manifest levels at runtime.
 - `AUTO` is always available.
 - `LOWEST` is a startup preference for background tiles, not a persisted duplicate channel record.

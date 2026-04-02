@@ -114,11 +114,13 @@ describe("streamRoutes", () => {
       name: "Pulse 24",
       slug: "pulse-24",
       isActive: true,
+      sourceMode: "MASTER_PLAYLIST",
       masterHlsUrl: "https://origin.example.com/live/master.m3u8",
       playbackMode: "PROXY",
       upstreamUserAgent: null,
       upstreamReferrer: null,
       upstreamHeaders: null,
+      qualityVariants: [],
     });
 
     vi.stubGlobal(
@@ -139,6 +141,102 @@ describe("streamRoutes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain("/api/streams/channels/11111111-1111-1111-1111-111111111111/asset?token=");
+  });
+
+  it("generates a synthetic master playlist for manual-variant channels", async () => {
+    mockPrisma.channel.findUnique.mockResolvedValue({
+      id: "22222222-2222-2222-2222-222222222222",
+      name: "Al Alam",
+      slug: "al-alam",
+      isActive: true,
+      sourceMode: "MANUAL_VARIANTS",
+      masterHlsUrl: null,
+      playbackMode: "DIRECT",
+      upstreamUserAgent: null,
+      upstreamReferrer: null,
+      upstreamHeaders: null,
+      qualityVariants: [
+        {
+          id: "variant-1",
+          channelId: "22222222-2222-2222-2222-222222222222",
+          label: "low",
+          sortOrder: 0,
+          playlistUrl: "https://example.com/live/low/index.m3u8",
+          width: null,
+          height: null,
+          bandwidth: null,
+          codecs: null,
+          isActive: true,
+          createdAt: "2026-04-02T00:00:00.000Z",
+          updatedAt: "2026-04-02T00:00:00.000Z",
+        },
+        {
+          id: "variant-2",
+          channelId: "22222222-2222-2222-2222-222222222222",
+          label: "1080p",
+          sortOrder: 1,
+          playlistUrl: "https://example.com/live/high/index.m3u8",
+          width: null,
+          height: null,
+          bandwidth: null,
+          codecs: "avc1.640028,mp4a.40.2",
+          isActive: true,
+          createdAt: "2026-04-02T00:00:00.000Z",
+          updatedAt: "2026-04-02T00:00:00.000Z",
+        },
+      ],
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/streams/channels/22222222-2222-2222-2222-222222222222/master",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("application/vnd.apple.mpegurl");
+    expect(response.body).toContain('NAME="low"');
+    expect(response.body).toContain("https://example.com/live/low/index.m3u8");
+    expect(response.body).toContain('CODECS="avc1.640028,mp4a.40.2"');
+    expect(response.body).toContain("RESOLUTION=1920x1080");
+  });
+
+  it("rewrites manual-variant playlists through the proxy when proxy playback is enabled", async () => {
+    mockPrisma.channel.findUnique.mockResolvedValue({
+      id: "33333333-3333-3333-3333-333333333333",
+      name: "Proxy Manual",
+      slug: "proxy-manual",
+      isActive: true,
+      sourceMode: "MANUAL_VARIANTS",
+      masterHlsUrl: null,
+      playbackMode: "PROXY",
+      upstreamUserAgent: null,
+      upstreamReferrer: null,
+      upstreamHeaders: null,
+      qualityVariants: [
+        {
+          id: "variant-1",
+          channelId: "33333333-3333-3333-3333-333333333333",
+          label: "medium",
+          sortOrder: 0,
+          playlistUrl: "https://example.com/live/medium/index.m3u8",
+          width: null,
+          height: 540,
+          bandwidth: null,
+          codecs: null,
+          isActive: true,
+          createdAt: "2026-04-02T00:00:00.000Z",
+          updatedAt: "2026-04-02T00:00:00.000Z",
+        },
+      ],
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/streams/channels/33333333-3333-3333-3333-333333333333/master",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain("/api/streams/channels/33333333-3333-3333-3333-333333333333/asset?token=");
   });
 
   it("rejects invalid proxy asset tokens at the route edge", async () => {

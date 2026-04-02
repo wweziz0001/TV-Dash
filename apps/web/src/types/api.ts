@@ -1,4 +1,5 @@
 import type {
+  ChannelSourceMode,
   EpgSourceType,
   LayoutType,
   SavedLayoutConfig,
@@ -32,8 +33,10 @@ export interface Channel {
   name: string;
   slug: string;
   logoUrl: string | null;
+  sourceMode: ChannelSourceMode;
   masterHlsUrl: string | null;
   playbackMode: StreamPlaybackMode;
+  manualVariantCount: number;
   groupId: string | null;
   group: ChannelGroup | null;
   epgSourceId: string | null;
@@ -45,11 +48,23 @@ export interface Channel {
   updatedAt: string;
 }
 
-export interface ChannelConfig extends Omit<Channel, "masterHlsUrl"> {
-  masterHlsUrl: string;
+export interface ChannelQualityVariant {
+  id?: string;
+  label: string;
+  sortOrder: number;
+  playlistUrl: string;
+  width: number | null;
+  height: number | null;
+  bandwidth: number | null;
+  codecs: string | null;
+  isActive: boolean;
+}
+
+export interface ChannelConfig extends Channel {
   upstreamUserAgent: string | null;
   upstreamReferrer: string | null;
   upstreamHeaders: Record<string, string>;
+  qualityVariants: ChannelQualityVariant[];
 }
 
 export interface Favorite {

@@ -20,12 +20,13 @@ export function buildQualityOptions(levels: Level[]): QualityOption[] {
   const mapped = levels.flatMap((level, index): NormalizedQualityOption[] => {
     const height = normalizePositiveNumber(level.height);
     const bitrate = normalizePositiveNumber(level.bitrate);
+    const preferredLabel = typeof level.name === "string" && level.name.trim() ? level.name.trim() : null;
 
-    if (height === null && bitrate === null) {
+    if (height === null && bitrate === null && preferredLabel === null) {
       return [];
     }
 
-    const label = height !== null ? `${height}p` : `${Math.round((bitrate ?? 0) / 1000)} kbps`;
+    const label = preferredLabel ?? (height !== null ? `${height}p` : `${Math.round((bitrate ?? 0) / 1000)} kbps`);
     const dedupeKey = `${height ?? "unknown"}:${bitrate ?? "unknown"}:${label}`;
 
     if (seen.has(dedupeKey)) {

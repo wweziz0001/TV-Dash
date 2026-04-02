@@ -31,6 +31,15 @@ describe("buildQualityOptions", () => {
       { value: "3", label: "900 kbps", height: null },
     ]);
   });
+
+  it("prefers the manifest level name when one is present", () => {
+    const options = buildQualityOptions([{ height: null, bitrate: 1200000, name: "Medium" } as never]);
+
+    expect(options).toEqual([
+      { value: "AUTO", label: "Auto", height: null },
+      { value: "0", label: "Medium", height: null },
+    ]);
+  });
 });
 
 describe("resolvePreferredQuality", () => {

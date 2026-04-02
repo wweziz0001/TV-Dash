@@ -9,7 +9,7 @@ This document defines a practical testing bar for TV-Dash. The goal is confidenc
 Current automated coverage already exists for:
 
 - Fastify boot and health wiring
-- HLS master playlist parsing
+- HLS master playlist parsing and synthetic master generation
 - quality option resolution
 - multi-view tile defaulting and single-audio behavior
 

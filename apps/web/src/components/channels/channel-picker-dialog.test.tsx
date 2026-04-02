@@ -16,8 +16,10 @@ describe("ChannelPickerDialog", () => {
             name: "News One",
             slug: "news-one",
             logoUrl: null,
+            sourceMode: "MASTER_PLAYLIST",
             masterHlsUrl: "https://example.com/news.m3u8",
             playbackMode: "DIRECT",
+            manualVariantCount: 0,
             groupId: "group-1",
             group: {
               id: "group-1",
@@ -40,8 +42,10 @@ describe("ChannelPickerDialog", () => {
             name: "Sports Live",
             slug: "sports-live",
             logoUrl: null,
+            sourceMode: "MASTER_PLAYLIST",
             masterHlsUrl: "https://example.com/sports.m3u8",
             playbackMode: "PROXY",
+            manualVariantCount: 0,
             groupId: "group-2",
             group: {
               id: "group-2",
