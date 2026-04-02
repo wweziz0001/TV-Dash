@@ -6,6 +6,7 @@ describe("getChannelPlaybackUrl", () => {
     expect(
       getChannelPlaybackUrl({
         id: "11111111-1111-1111-1111-111111111111",
+        sourceMode: "MASTER_PLAYLIST",
         masterHlsUrl: "https://example.com/live.m3u8",
         playbackMode: "DIRECT",
       }),
@@ -16,6 +17,7 @@ describe("getChannelPlaybackUrl", () => {
     expect(
       getChannelPlaybackUrl({
         id: "11111111-1111-1111-1111-111111111111",
+        sourceMode: "MASTER_PLAYLIST",
         masterHlsUrl: null,
         playbackMode: "PROXY",
       }),
@@ -27,11 +29,23 @@ describe("getChannelPlaybackUrl", () => {
       getChannelPlaybackUrl(
         {
           id: "11111111-1111-1111-1111-111111111111",
+          sourceMode: "MASTER_PLAYLIST",
           masterHlsUrl: "https://example.com/live.m3u8",
           playbackMode: "DIRECT",
         },
         { preferProxy: true },
       ),
+    ).toContain("/streams/channels/11111111-1111-1111-1111-111111111111/master");
+  });
+
+  it("uses the API master path for manual-variant channels", () => {
+    expect(
+      getChannelPlaybackUrl({
+        id: "11111111-1111-1111-1111-111111111111",
+        sourceMode: "MANUAL_VARIANTS",
+        masterHlsUrl: null,
+        playbackMode: "DIRECT",
+      }),
     ).toContain("/streams/channels/11111111-1111-1111-1111-111111111111/master");
   });
 });
