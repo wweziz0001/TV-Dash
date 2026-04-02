@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Focus, LayoutTemplate, Maximize2, Save, Trash2, Volume2, VolumeX } from "lucide-react";
+import { Keyboard, LayoutTemplate, Save, Trash2 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import type { LayoutType } from "@tv-dash/shared";
+import { ChannelGuideCard } from "@/components/channels/channel-guide-card";
+import { ChannelPickerDialog } from "@/components/channels/channel-picker-dialog";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
+import { isEditableKeyboardTarget } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
-import { HlsPlayer, type PlayerStatus } from "@/player/hls-player";
 import { getLayoutDefinition, layoutDefinitions } from "@/player/layouts";
 import { enforceSingleActiveAudio, resizeTiles, type TileState } from "@/player/multiview-layout";
+import { getLayoutTypeForShortcut, getWrappedTileIndex } from "@/player/multiview-shortcuts";
 import {
   hydrateMultiviewLayout,
   pruneTileScopedState,
@@ -22,9 +25,13 @@ import {
   serializeMultiviewLayout,
   setTilePreferredQuality,
   setTileQualityOptions,
+  swapTileScopedState,
+  swapTiles,
 } from "@/player/multiview-state";
+import { MultiviewTileCard } from "@/player/multiview-tile-card";
 import { defaultQualityOptions } from "@/player/quality-options";
 import { api, getChannelPlaybackUrl } from "@/services/api";
+import type { PlayerStatus } from "@/player/hls-player";
 import type { QualityOption } from "@/types/api";
 
 export function MultiViewPage() {
@@ -37,6 +44,9 @@ export function MultiViewPage() {
   const [layoutName, setLayoutName] = useState("Ops Layout");
   const [selectedLayoutId, setSelectedLayoutId] = useState<string | null>(null);
   const [focusedTileIndex, setFocusedTileIndex] = useState(0);
+  const [pickerTileIndex, setPickerTileIndex] = useState<number | null>(null);
+  const [draggedTileIndex, setDraggedTileIndex] = useState<number | null>(null);
+  const [dragTargetTileIndex, setDragTargetTileIndex] = useState<number | null>(null);
   const [tiles, setTiles] = useState<TileState[]>(resizeTiles("LAYOUT_2X2", [], { ensureAudioOwner: true }));
   const [qualityOptionsByTile, setQualityOptionsByTile] = useState<Record<number, QualityOption[]>>({});
   const [playerStatusByTile, setPlayerStatusByTile] = useState<Record<number, PlayerStatus>>({});
@@ -53,11 +63,31 @@ export function MultiViewPage() {
     enabled: Boolean(token),
   });
 
+  const tileChannelIds = useMemo(
+    () => [...new Set(tiles.map((tile) => tile.channelId).filter((channelId): channelId is string => Boolean(channelId)))],
+    [tiles],
+  );
+
+  const nowNextQuery = useQuery({
+    queryKey: ["multiview-now-next", token, tileChannelIds],
+    queryFn: async () => {
+      if (!token || !tileChannelIds.length) {
+        return [];
+      }
+
+      return (await api.getNowNext(tileChannelIds, token)).items;
+    },
+    enabled: Boolean(token && tileChannelIds.length),
+  });
+
   useEffect(() => {
     setTiles((current) => resizeTiles(layoutType, current, { ensureAudioOwner: true }));
     setQualityOptionsByTile((current) => pruneTileScopedState(current, getLayoutDefinition(layoutType).tileCount));
     setPlayerStatusByTile((current) => pruneTileScopedState(current, getLayoutDefinition(layoutType).tileCount));
     setFocusedTileIndex((current) => Math.min(current, getLayoutDefinition(layoutType).tileCount - 1));
+    setPickerTileIndex((current) =>
+      typeof current === "number" ? Math.min(current, getLayoutDefinition(layoutType).tileCount - 1) : null,
+    );
   }, [layoutType]);
 
   useEffect(() => {
@@ -67,10 +97,14 @@ export function MultiViewPage() {
 
     const seededIds = searchParams.get("channels")?.split(",").filter(Boolean) ?? [];
     const fallbackIds = channelsQuery.data.slice(0, getLayoutDefinition(layoutType).tileCount).map((channel) => channel.id);
-    setTiles(resizeTiles(layoutType, [], { ensureAudioOwner: true }).map((tile, index) => ({
-      ...tile,
-      channelId: (seededIds.length ? seededIds : fallbackIds)[index] ?? null,
-    })));
+    const nextIds = seededIds.length ? seededIds : fallbackIds;
+
+    setTiles(
+      resizeTiles(layoutType, [], { ensureAudioOwner: true }).map((tile, index) => ({
+        ...tile,
+        channelId: nextIds[index] ?? null,
+      })),
+    );
     setFocusedTileIndex(0);
     initialChannelsApplied.current = true;
   }, [channelsQuery.data, layoutType, searchParams]);
@@ -89,12 +123,9 @@ export function MultiViewPage() {
 
       return api.createLayout(payload, token);
     },
-    onSuccess: async (response) => {
-      const layoutId = "layout" in response ? response.layout.id : null;
-      if (layoutId) {
-        setSelectedLayoutId(layoutId);
-      }
-      toast.success(selectedLayoutId ? "Layout updated" : "Layout saved");
+    onSuccess: async (response, mode) => {
+      setSelectedLayoutId(response.layout.id);
+      toast.success(mode === "update" ? "Saved layout updated" : "Saved as a new operator layout");
       await queryClient.invalidateQueries({ queryKey: ["layouts", token] });
     },
     onError: (error) => {
@@ -110,7 +141,7 @@ export function MultiViewPage() {
       await api.deleteLayout(selectedLayoutId, token);
     },
     onSuccess: async () => {
-      toast.success("Layout deleted");
+      toast.success("Saved layout removed");
       setSelectedLayoutId(null);
       setLayoutName("Ops Layout");
       await queryClient.invalidateQueries({ queryKey: ["layouts", token] });
@@ -121,20 +152,22 @@ export function MultiViewPage() {
   });
 
   const layoutDefinition = getLayoutDefinition(layoutType);
-  const activeAudioIndex = tiles.findIndex((tile) => !tile.isMuted);
-
   const savedLayouts = layoutsQuery.data ?? [];
   const channels = channelsQuery.data ?? [];
+  const selectedLayout = savedLayouts.find((layout) => layout.id === selectedLayoutId) ?? null;
 
   const channelMap = useMemo(() => new Map(channels.map((channel) => [channel.id, channel])), [channels]);
+  const nowNextByChannelId = useMemo(
+    () => new Map((nowNextQuery.data ?? []).map((item) => [item.channelId, item])),
+    [nowNextQuery.data],
+  );
 
-  function updateLayoutType(nextValue: string) {
-    const nextLayout = layoutDefinitions.find((layout) => layout.type === nextValue);
-    if (!nextLayout) {
-      return;
-    }
+  const focusedTile = tiles[focusedTileIndex] ?? tiles[0];
+  const focusedChannel = focusedTile?.channelId ? channelMap.get(focusedTile.channelId) ?? null : null;
+  const focusedGuide = focusedChannel ? nowNextByChannelId.get(focusedChannel.id) : null;
 
-    setLayoutType(nextLayout.type);
+  function updateLayoutType(nextLayoutType: LayoutType) {
+    setLayoutType(nextLayoutType);
   }
 
   function applySavedLayout(layoutId: string) {
@@ -149,12 +182,13 @@ export function MultiViewPage() {
     setLayoutType(layout.layoutType);
     setTiles(nextState.tiles);
     setFocusedTileIndex(nextState.focusedTileIndex);
+    setPickerTileIndex(null);
     setQualityOptionsByTile({});
     setPlayerStatusByTile({});
   }
 
-  function handleChannelChange(tileIndex: number, channelId: string) {
-    setTiles((current) => replaceTileChannel(current, tileIndex, channelId || null));
+  function handleChannelChange(tileIndex: number, channelId: string | null) {
+    setTiles((current) => replaceTileChannel(current, tileIndex, channelId));
     setQualityOptionsByTile((current) => resetTileQualityOptions(current, tileIndex));
     setPlayerStatusByTile((current) => ({
       ...current,
@@ -167,44 +201,291 @@ export function MultiViewPage() {
     setFocusedTileIndex(tileIndex);
   }
 
+  function handleTileSwap(sourceIndex: number, targetIndex: number) {
+    if (sourceIndex === targetIndex) {
+      return;
+    }
+
+    setTiles((current) => swapTiles(current, sourceIndex, targetIndex));
+    setQualityOptionsByTile((current) => swapTileScopedState(current, sourceIndex, targetIndex));
+    setPlayerStatusByTile((current) => swapTileScopedState(current, sourceIndex, targetIndex));
+    setFocusedTileIndex((current) =>
+      current === sourceIndex ? targetIndex : current === targetIndex ? sourceIndex : current,
+    );
+    setPickerTileIndex((current) =>
+      current === sourceIndex ? targetIndex : current === targetIndex ? sourceIndex : current,
+    );
+  }
+
+  function openTilePicker(tileIndex: number) {
+    setFocusedTileIndex(tileIndex);
+    setPickerTileIndex(tileIndex);
+  }
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (isEditableKeyboardTarget(event.target)) {
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        openTilePicker(focusedTileIndex);
+        return;
+      }
+
+      if (event.shiftKey) {
+        const nextLayoutType = getLayoutTypeForShortcut(event.key);
+
+        if (nextLayoutType) {
+          event.preventDefault();
+          updateLayoutType(nextLayoutType);
+        }
+
+        return;
+      }
+
+      if (event.key === "[") {
+        event.preventDefault();
+        setFocusedTileIndex((current) => getWrappedTileIndex(current, -1, tiles.length));
+        return;
+      }
+
+      if (event.key === "]") {
+        event.preventDefault();
+        setFocusedTileIndex((current) => getWrappedTileIndex(current, 1, tiles.length));
+        return;
+      }
+
+      if (event.key.toLowerCase() === "m") {
+        event.preventDefault();
+        handleAudioToggle(focusedTileIndex);
+        return;
+      }
+
+      if (event.key.toLowerCase() === "c") {
+        event.preventDefault();
+        openTilePicker(focusedTileIndex);
+        return;
+      }
+
+      if (event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        tileRefs.current[focusedTileIndex]?.requestFullscreen?.();
+        return;
+      }
+
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        handleChannelChange(focusedTileIndex, null);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [focusedTileIndex, tiles.length]);
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Multi-View"
-        title="Split-screen channel wall"
-        description="Run several channels side by side, keep one audio source active, and save layouts for recurring monitoring setups."
+        title="Operator wall"
+        description="Swap tiles quickly, keep one live audio owner, load saved walls, and work from a focused tile without losing situational awareness."
         actions={
           <>
-            <Button onClick={() => saveMutation.mutate(selectedLayoutId ? "update" : "create")}>
+            <Button onClick={() => saveMutation.mutate("create")}>
               <Save className="h-4 w-4" />
-              {selectedLayoutId ? "Update layout" : "Save layout"}
+              Save as new
             </Button>
-            <Button onClick={() => deleteMutation.mutate()} variant="secondary">
+            <Button
+              disabled={!selectedLayoutId}
+              onClick={() => saveMutation.mutate("update")}
+              variant="secondary"
+            >
+              <Save className="h-4 w-4" />
+              Update selected
+            </Button>
+            <Button disabled={!selectedLayoutId} onClick={() => deleteMutation.mutate()} variant="secondary">
               <Trash2 className="h-4 w-4" />
               Delete
             </Button>
           </>
         }
       >
-        <div className="grid gap-4 xl:grid-cols-[0.5fr_0.25fr_0.25fr]">
+        <div className="grid gap-4 xl:grid-cols-[0.45fr_0.25fr_0.3fr]">
           <Input onChange={(event) => setLayoutName(event.target.value)} placeholder="Layout name" value={layoutName} />
-          <Select onChange={(event) => updateLayoutType(event.target.value)} value={layoutType}>
-            {layoutDefinitions.map((layout) => (
-              <option key={layout.type} value={layout.type}>
-                {layout.label} · {layout.description}
-              </option>
-            ))}
-          </Select>
-          <Select onChange={(event) => applySavedLayout(event.target.value)} value={selectedLayoutId ?? ""}>
-            <option value="">Apply saved layout</option>
+          <Select
+            onChange={(event) => {
+              if (event.target.value) {
+                applySavedLayout(event.target.value);
+              }
+            }}
+            value={selectedLayoutId ?? ""}
+          >
+            <option value="">Load saved layout</option>
             {savedLayouts.map((layout) => (
               <option key={layout.id} value={layout.id}>
                 {layout.name}
               </option>
             ))}
           </Select>
+          <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Current wall</p>
+            <p className="mt-2 text-sm font-semibold text-white">
+              {layoutDefinition.label} · {layoutDefinition.tileCount} tiles
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {selectedLayout ? `Editing saved layout: ${selectedLayout.name}` : "Working in an unsaved operator draft"}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {layoutDefinitions.map((layout) => (
+            <Button
+              key={layout.type}
+              onClick={() => updateLayoutType(layout.type)}
+              variant={layout.type === layoutType ? "primary" : "secondary"}
+            >
+              <LayoutTemplate className="h-4 w-4" />
+              {layout.label}
+            </Button>
+          ))}
         </div>
       </PageHeader>
+
+      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <Panel>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Focused Tile</p>
+              <h2 className="mt-2 text-2xl font-semibold text-white">
+                {focusedChannel?.name ?? `Tile ${focusedTileIndex + 1}`}
+              </h2>
+              <p className="mt-2 text-sm text-slate-400">
+                Tile {focusedTileIndex + 1} of {tiles.length} · {focusedChannel?.group?.name ?? "Awaiting channel assignment"}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => openTilePicker(focusedTileIndex)} variant="secondary">
+                Assign / Replace
+              </Button>
+              <Button onClick={() => handleAudioToggle(focusedTileIndex)} variant={focusedTile?.isMuted ? "secondary" : "primary"}>
+                {focusedTile?.isMuted ? "Muted" : "Audio live"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-[0.55fr_0.45fr]">
+            <ChannelGuideCard
+              guide={focusedGuide}
+              hasEpgSource={Boolean(focusedChannel?.epgSource)}
+              isLoading={nowNextQuery.isLoading}
+              variant="detailed"
+            />
+
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
+                <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Focused Tile Status</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-slate-700/80 bg-slate-900/80 px-3 py-1 text-xs text-slate-200">
+                    {playerStatusByTile[focusedTileIndex] ?? (focusedChannel ? "loading" : "idle")}
+                  </span>
+                  <span className="rounded-full border border-slate-700/80 bg-slate-900/80 px-3 py-1 text-xs text-slate-200">
+                    {focusedTile?.preferredQuality ?? "AUTO"}
+                  </span>
+                  <span className="rounded-full border border-slate-700/80 bg-slate-900/80 px-3 py-1 text-xs text-slate-200">
+                    {focusedTile?.isMuted ? "Muted tile" : "Audio owner"}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm text-slate-400">
+                  Drag tiles to swap positions, use the picker to replace sources quickly, and keep the selected tile as your control surface.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
+                <div className="flex items-center gap-3">
+                  <Keyboard className="h-5 w-5 text-accent" />
+                  <div>
+                    <p className="font-semibold text-white">Operator shortcuts</p>
+                    <p className="text-sm text-slate-400">A small set of commands for high-frequency wall work.</p>
+                  </div>
+                </div>
+                <div className="mt-4 space-y-2 text-sm text-slate-300">
+                  <p>
+                    <span className="font-mono text-cyan-200">[</span> / <span className="font-mono text-cyan-200">]</span> focus previous or next tile
+                  </p>
+                  <p>
+                    <span className="font-mono text-cyan-200">M</span> toggle audio ownership for the focused tile
+                  </p>
+                  <p>
+                    <span className="font-mono text-cyan-200">C</span> or <span className="font-mono text-cyan-200">Ctrl/Cmd + K</span> open the focused tile picker
+                  </p>
+                  <p>
+                    <span className="font-mono text-cyan-200">F</span> fullscreen the focused tile
+                  </p>
+                  <p>
+                    <span className="font-mono text-cyan-200">Delete</span> clear the focused tile
+                  </p>
+                  <p>
+                    <span className="font-mono text-cyan-200">Shift + 1-5</span> switch layout presets
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel>
+          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Saved Layouts</p>
+          {savedLayouts.length ? (
+            <div className="mt-4 space-y-3">
+              {savedLayouts.map((layout) => {
+                const filledTileCount = layout.items.filter((item) => item.channelId).length;
+                const previewNames = layout.items
+                  .filter((item) => item.channel)
+                  .slice(0, 3)
+                  .map((item) => item.channel?.name ?? "Unassigned")
+                  .join(" · ");
+
+                return (
+                  <div
+                    key={layout.id}
+                    className={cn(
+                      "rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4",
+                      layout.id === selectedLayoutId && "border-cyan-300/60 bg-cyan-500/5",
+                    )}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-white">{layout.name}</p>
+                        <p className="mt-1 text-sm text-slate-400">
+                          {layout.layoutType} · {filledTileCount} populated tile(s)
+                        </p>
+                      </div>
+                      <Button onClick={() => applySavedLayout(layout.id)} variant="secondary">
+                        Apply
+                      </Button>
+                    </div>
+                    <p className="mt-3 text-sm text-slate-300">{previewNames || "Saved empty tile placeholders for a draft wall."}</p>
+                    <p className="mt-2 text-xs text-slate-500">Updated {formatTimestamp(layout.updatedAt)}</p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mt-4 rounded-[1.75rem] border border-dashed border-slate-700/80 bg-slate-950/60 p-6">
+              <p className="text-lg font-semibold text-white">No saved layouts yet.</p>
+              <p className="mt-2 text-sm text-slate-400">
+                Build a wall, name it, and save it as a reusable operator preset for recurring monitoring setups.
+              </p>
+            </div>
+          )}
+        </Panel>
+      </div>
 
       <Panel>
         <div className={cn("grid gap-4", layoutDefinition.containerClassName)}>
@@ -212,7 +493,6 @@ export function MultiViewPage() {
             const channel = tile.channelId ? channelMap.get(tile.channelId) ?? null : null;
             const qualityOptions = qualityOptionsByTile[index] ?? [...defaultQualityOptions];
             const playerStatus = playerStatusByTile[index] ?? (channel ? "loading" : "idle");
-            const isFocused = focusedTileIndex === index;
 
             return (
               <div
@@ -220,114 +500,109 @@ export function MultiViewPage() {
                 ref={(element) => {
                   tileRefs.current[index] = element;
                 }}
-                className={cn(
-                  "rounded-[1.9rem] border p-3 shadow-glow transition",
-                  tile.isMuted ? "border-slate-800/80 bg-slate-950/70" : "border-cyan-400/20 bg-cyan-500/5",
-                  isFocused && "border-cyan-300/70 ring-1 ring-cyan-300/30",
-                  playerStatus === "error" && "border-rose-400/40 bg-rose-500/5",
-                  layoutDefinition.tileClassNames[index],
-                )}
               >
-                <div className="mb-3 flex flex-wrap gap-3">
-                  <div className="min-w-[220px] flex-1">
-                    <Select onChange={(event) => handleChannelChange(index, event.target.value)} value={tile.channelId ?? ""}>
-                      <option value="">Select channel</option>
-                      {channels.map((entry) => (
-                        <option key={entry.id} value={entry.id}>
-                          {entry.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                  <div className="min-w-[160px]">
-                    <Select
-                      disabled={!channel}
-                      onChange={(event) => setTiles((current) => setTilePreferredQuality(current, index, event.target.value))}
-                      value={channel ? tile.preferredQuality : "AUTO"}
-                    >
-                      {qualityOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                  <Button onClick={() => handleAudioToggle(index)} variant={tile.isMuted ? "secondary" : "primary"}>
-                    {tile.isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                    {tile.isMuted ? "Muted" : "Live audio"}
-                  </Button>
-                  <Button onClick={() => setFocusedTileIndex(index)} variant={isFocused ? "primary" : "secondary"}>
-                    <Focus className="h-4 w-4" />
-                    {isFocused ? "Focused" : "Focus"}
-                  </Button>
-                  <Button onClick={() => tileRefs.current[index]?.requestFullscreen?.()} variant="secondary">
-                    <Maximize2 className="h-4 w-4" />
-                    Fullscreen
-                  </Button>
-                </div>
+                <MultiviewTileCard
+                  channel={channel}
+                  guide={channel ? nowNextByChannelId.get(channel.id) : null}
+                  guideLoading={nowNextQuery.isLoading}
+                  isDragging={draggedTileIndex === index}
+                  isDragTarget={dragTargetTileIndex === index && draggedTileIndex !== index}
+                  isFocused={focusedTileIndex === index}
+                  isPickerTarget={pickerTileIndex === index}
+                  layoutDefinition={layoutDefinition}
+                  onClear={() => handleChannelChange(index, null)}
+                  onDragEnd={() => {
+                    setDraggedTileIndex(null);
+                    setDragTargetTileIndex(null);
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    if (draggedTileIndex !== null) {
+                      setDragTargetTileIndex(index);
+                    }
+                  }}
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", String(index));
+                    setDraggedTileIndex(index);
+                    setDragTargetTileIndex(index);
+                    setFocusedTileIndex(index);
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const sourceIndex =
+                      draggedTileIndex ?? Number.parseInt(event.dataTransfer.getData("text/plain"), 10);
 
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-4 text-sm">
-                  <div>
-                    <p className="font-semibold text-white">{channel?.name ?? `Tile ${index + 1}`}</p>
-                    <p className="text-slate-400">{channel?.group?.name ?? "No channel selected"}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    <div className="rounded-full border border-slate-700/80 bg-slate-950/80 px-3 py-1 text-slate-300">
-                      {activeAudioIndex === index ? "Audio owner" : tile.isMuted ? "Muted tile" : "All muted"}
-                    </div>
-                    <div className="rounded-full border border-slate-700/80 bg-slate-950/80 px-3 py-1 text-slate-300">
-                      {isFocused ? "Focused tile" : "Background tile"}
-                    </div>
-                    <div className="rounded-full border border-slate-700/80 bg-slate-950/80 px-3 py-1 text-slate-300">
-                      {channel ? (channel.playbackMode === "PROXY" ? "Proxy" : "Direct") : "No source"}
-                    </div>
-                    <div className="rounded-full border border-slate-700/80 bg-slate-950/80 px-3 py-1 text-slate-300">
-                      {channel ? `${playerStatus} · ${tile.preferredQuality}` : "Idle"}
-                    </div>
-                  </div>
-                </div>
+                    if (Number.isInteger(sourceIndex)) {
+                      handleTileSwap(sourceIndex, index);
+                    }
 
-                <div className="h-full">
-                  <HlsPlayer
-                    key={`${index}:${tile.channelId ?? "empty"}`}
-                    autoPlay
-                    initialBias={tile.isMuted ? "LOWEST" : "AUTO"}
-                    muted={tile.isMuted}
-                    onQualityOptionsChange={(options) =>
-                      setQualityOptionsByTile((current) => setTileQualityOptions(current, index, options))
-                    }
-                    onSelectedQualityChange={(selectedQuality) =>
-                      setTiles((current) => setTilePreferredQuality(current, index, selectedQuality))
-                    }
-                    onStatusChange={(nextStatus) =>
-                      setPlayerStatusByTile((current) => ({
-                        ...current,
-                        [index]: nextStatus,
-                      }))
-                    }
-                    preferredQuality={tile.preferredQuality}
-                    src={channel ? getChannelPlaybackUrl(channel) : null}
-                    title={channel?.name ?? `Tile ${index + 1}`}
-                  />
-                </div>
+                    setDraggedTileIndex(null);
+                    setDragTargetTileIndex(null);
+                  }}
+                  onFocus={() => setFocusedTileIndex(index)}
+                  onFullscreen={() => tileRefs.current[index]?.requestFullscreen?.()}
+                  onOpenPicker={() => openTilePicker(index)}
+                  onPreferredQualityChange={(value) =>
+                    setTiles((current) => setTilePreferredQuality(current, index, value))
+                  }
+                  onQualityOptionsChange={(options) =>
+                    setQualityOptionsByTile((current) => setTileQualityOptions(current, index, options))
+                  }
+                  onSelectedQualityChange={(selectedQuality) =>
+                    setTiles((current) => setTilePreferredQuality(current, index, selectedQuality))
+                  }
+                  onStatusChange={(nextStatus) =>
+                    setPlayerStatusByTile((current) => ({
+                      ...current,
+                      [index]: nextStatus,
+                    }))
+                  }
+                  onToggleAudio={() => handleAudioToggle(index)}
+                  playerStatus={playerStatus}
+                  qualityOptions={qualityOptions}
+                  src={channel ? getChannelPlaybackUrl(channel) : null}
+                  tile={tile}
+                  tileIndex={index}
+                />
               </div>
             );
           })}
         </div>
       </Panel>
 
-      <Panel>
-        <div className="flex items-center gap-3">
-          <LayoutTemplate className="h-5 w-5 text-accent" />
-          <div>
-            <p className="font-semibold text-white">Wall behavior</p>
-            <p className="text-sm text-slate-400">
-              Only one tile is unmuted at a time, focused tiles stay visually distinct, and muted background tiles reset
-              to low-bias startup quality when their source changes.
-            </p>
-          </div>
-        </div>
-      </Panel>
+      <ChannelPickerDialog
+        allowClear={pickerTileIndex !== null}
+        channels={channels}
+        description="Search once and replace the focused tile without scanning long dropdowns."
+        nowNextByChannelId={nowNextByChannelId}
+        onClear={() => {
+          if (typeof pickerTileIndex === "number") {
+            handleChannelChange(pickerTileIndex, null);
+          }
+          setPickerTileIndex(null);
+        }}
+        onClose={() => setPickerTileIndex(null)}
+        onSelect={(channelId) => {
+          if (typeof pickerTileIndex === "number") {
+            handleChannelChange(pickerTileIndex, channelId);
+            setFocusedTileIndex(pickerTileIndex);
+          }
+          setPickerTileIndex(null);
+        }}
+        open={typeof pickerTileIndex === "number"}
+        selectedChannelId={typeof pickerTileIndex === "number" ? tiles[pickerTileIndex]?.channelId ?? null : null}
+        title={`Assign channel to tile ${typeof pickerTileIndex === "number" ? pickerTileIndex + 1 : ""}`}
+      />
     </div>
   );
+}
+
+function formatTimestamp(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
 }

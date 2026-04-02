@@ -92,6 +92,16 @@ export function replaceTileChannel(tiles: TileState[], tileIndex: number, channe
   );
 }
 
+export function swapTiles(tiles: TileState[], sourceIndex: number, targetIndex: number) {
+  if (sourceIndex === targetIndex || !tiles[sourceIndex] || !tiles[targetIndex]) {
+    return tiles;
+  }
+
+  const nextTiles = [...tiles];
+  [nextTiles[sourceIndex], nextTiles[targetIndex]] = [nextTiles[targetIndex], nextTiles[sourceIndex]];
+  return nextTiles;
+}
+
 export function setTilePreferredQuality(tiles: TileState[], tileIndex: number, preferredQuality: string) {
   return tiles.map((tile, index) => (index === tileIndex ? { ...tile, preferredQuality } : tile));
 }
@@ -117,4 +127,28 @@ export function resetTileQualityOptions(record: Record<number, QualityOption[]>,
     ...record,
     [tileIndex]: [...defaultQualityOptions],
   };
+}
+
+export function swapTileScopedState<T>(record: Record<number, T>, sourceIndex: number, targetIndex: number) {
+  if (sourceIndex === targetIndex) {
+    return record;
+  }
+
+  const nextRecord = { ...record };
+  const sourceValue = nextRecord[sourceIndex];
+  const targetValue = nextRecord[targetIndex];
+
+  if (typeof targetValue === "undefined") {
+    delete nextRecord[sourceIndex];
+  } else {
+    nextRecord[sourceIndex] = targetValue;
+  }
+
+  if (typeof sourceValue === "undefined") {
+    delete nextRecord[targetIndex];
+  } else {
+    nextRecord[targetIndex] = sourceValue;
+  }
+
+  return nextRecord;
 }
