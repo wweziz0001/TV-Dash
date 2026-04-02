@@ -5,12 +5,14 @@
 As of `2026-04-02`, TV-Dash has:
 
 - backend unit/integration foundation with Vitest
-- frontend unit foundation with Vitest
+- frontend unit and component test foundation with Vitest + jsdom
 - representative tests for:
   - API health server boot path
+  - channel, group, favorite, layout, and stream route validation/contract behavior via Fastify `inject`
   - HLS master playlist parsing
+  - player retry timer cleanup and source replacement behavior
   - quality option resolution
-  - multi-view tile defaults and audio ownership
+  - multi-view tile defaults, audio ownership, layout hydration, and tile-state pruning
 - workspace verification via `npm run lint`, `npm run test`, `npm run build`
 - smoke validation via `npm run smoke:test`
 
@@ -47,12 +49,9 @@ Required for:
 
 Target next phase:
 
-- auth login/me
-- channel CRUD
-- group CRUD
-- favorites flows
-- saved layouts create/update/delete
-- stream test endpoint
+- auth login/me against isolated data
+- database-backed channel/group/favorite/layout flows instead of mocked persistence
+- stream test endpoint behavior against controlled upstream fixtures
 
 Preferred approach:
 
@@ -64,11 +63,10 @@ Preferred approach:
 
 Target next phase:
 
-- player control rendering
-- quality selector state transitions
-- multi-view tile control behavior
+- saved layout apply flows at the page level
 - admin form loading/error states
-- saved layout apply flows
+- favorites UI toggling in the single-view page
+- multi-view tile control behavior beyond helper-level state coverage
 
 Use component tests only where page-level orchestration or player UI behavior is the risk. Do not over-test styling.
 
@@ -94,12 +92,14 @@ If a change touches one of those flows and no automated regression exists yet, e
 
 ### Phase 2: Backend API Confidence
 
-- add database-backed Fastify integration coverage for auth, channels, groups, layouts, favorites, and streams
+- route-edge contract and validation coverage complete for channels, groups, favorites, layouts, and streams
+- next step is database-backed Fastify integration coverage for auth, channels, groups, layouts, favorites, and streams
 - introduce isolated database strategy for tests
 
 ### Phase 3: Frontend Interaction Confidence
 
-- add React component tests for player controls, admin forms, and multi-view orchestration
+- player lifecycle cleanup and retry component coverage now exists
+- next step is adding React component tests for admin forms and multi-view orchestration
 - add route-level regression coverage for critical operator flows
 
 ### Phase 4: Cross-App Regression

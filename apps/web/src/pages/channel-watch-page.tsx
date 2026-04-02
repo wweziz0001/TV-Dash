@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Heart, LayoutTemplate, Tv } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
@@ -9,6 +9,7 @@ import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { HlsPlayer, type PlayerStatus } from "@/player/hls-player";
+import { defaultQualityOptions } from "@/player/quality-options";
 import { api } from "@/services/api";
 import type { QualityOption } from "@/types/api";
 
@@ -16,7 +17,7 @@ export function ChannelWatchPage() {
   const { slug = "" } = useParams();
   const { token } = useAuth();
   const queryClient = useQueryClient();
-  const [qualities, setQualities] = useState<QualityOption[]>([{ value: "AUTO", label: "Auto", height: null }]);
+  const [qualities, setQualities] = useState<QualityOption[]>([...defaultQualityOptions]);
   const [selectedQuality, setSelectedQuality] = useState("AUTO");
   const [playerStatus, setPlayerStatus] = useState<PlayerStatus>("idle");
 
@@ -55,6 +56,12 @@ export function ChannelWatchPage() {
   const isFavorite = useMemo(() => {
     return (favoritesQuery.data ?? []).some((favorite) => favorite.channelId === channelQuery.data?.id);
   }, [channelQuery.data?.id, favoritesQuery.data]);
+
+  useEffect(() => {
+    setQualities([...defaultQualityOptions]);
+    setSelectedQuality("AUTO");
+    setPlayerStatus("idle");
+  }, [slug]);
 
   if (!channelQuery.data) {
     return (
@@ -125,7 +132,9 @@ export function ChannelWatchPage() {
               </div>
               <div className="rounded-2xl border border-slate-800/80 bg-slate-950/80 p-4">
                 <p className="text-sm font-semibold text-white">Current state</p>
-                <p className="mt-2 text-sm text-slate-400">{playerStatus}</p>
+                <p className="mt-2 text-sm text-slate-400">
+                  {playerStatus} · {selectedQuality === "AUTO" ? "Auto quality" : `Manual quality ${selectedQuality}`}
+                </p>
               </div>
             </div>
           </Panel>

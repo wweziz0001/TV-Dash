@@ -68,6 +68,7 @@ Rules:
 - Single-view pages may request unmuted autoplay, but must handle browser refusal gracefully.
 - Multi-view tiles default to one audible tile and muted background tiles.
 - Changing the active audio tile must mute the others in the same state transition.
+- Muted/background tiles should reset back to low-bias startup quality when their source changes unless the operator explicitly reselects another level.
 - Browser autoplay failures are expected behavior, not exceptional failures by themselves.
 
 ## Retry And Reconnect Rules
@@ -81,7 +82,9 @@ Retry behavior must distinguish between:
 Rules:
 
 - network failures may schedule a bounded reconnect attempt
+- current bounded policy is `3` network retries with escalating delays before surfacing failure
 - media failures may attempt `recoverMediaError`
+- current bounded policy is `1` media recovery attempt before surfacing failure
 - terminal failures must surface a visible retry UI
 - silent infinite retry loops are not allowed
 
@@ -115,6 +118,7 @@ At minimum, player-related changes must add or update tests for:
 - preferred quality resolution
 - tile default behavior
 - single-audio enforcement
+- saved layout hydration or tile-state reset helpers when multi-view persistence logic changes
 
 Higher-risk player changes should add component or integration coverage for:
 

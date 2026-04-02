@@ -99,9 +99,11 @@ Key relationship rules:
 ## Player Architecture Overview
 
 - `player/hls-player.tsx` owns one video element and one HLS.js instance
+- `player/playback-recovery.ts` owns bounded fatal error recovery decisions
 - quality options and preference resolution live in `player/quality-options.ts`
 - supported multi-view layouts live in `player/layouts.ts`
 - tile defaults and one-active-audio rules live in `player/multiview-layout.ts`
+- saved multi-view serialization/hydration helpers live in `player/multiview-state.ts`
 
 ## Important Conventions
 
@@ -119,9 +121,12 @@ Key relationship rules:
 Current automated coverage includes:
 
 - API health boot/injection test
+- Fastify inject coverage for channels, groups, favorites, layouts, and stream validation/error contracts
 - HLS master playlist parsing test
+- HlsPlayer component coverage for bounded retry timers and source replacement cleanup
 - player quality option resolution tests
 - multi-view tile default/audio ownership tests
+- multi-view layout serialization, hydration, and tile-scoped state reset tests
 
 Mandatory verification commands:
 
@@ -136,17 +141,23 @@ Optional but recommended for risky changes:
 ## Known Issues
 
 - Vite still warns that the player chunk is large; route-level lazy loading is the next high-value frontend optimization.
-- CRUD-heavy API integration tests against an isolated database are not built yet.
-- Player component-level UI tests are not built yet.
+- Fastify route tests still mock persistence; isolated database-backed CRUD coverage is the next backend confidence step.
+- Route-level UI regression coverage for favorites and saved-layout application is still missing on the frontend.
 - Admin reorder remains sort-order based rather than drag-and-drop.
 - `admin-channels-page.tsx`, `multiview-page.tsx`, and `player/hls-player.tsx` are still valid but near the current complexity ceiling defined in the standards docs.
 
+## Hardening Summary
+
+- Playback startup now resets stale tile quality metadata, bounds fatal retries, and surfaces buffering/retrying/recovered states more clearly.
+- Multi-view layout changes now prune removed tile state, persist focused-tile metadata, and reset background tile quality bias safely when the source changes.
+- Touched CRUD endpoints now validate ids/query parameters at the route edge and map common Prisma not-found/duplicate failures to stable HTTP responses.
+
 ## Next Recommended Priorities
 
-1. Add Fastify integration tests for auth, channels, favorites, and layouts with isolated test data.
-2. Add route-level lazy loading to reduce the large player bundle warning.
-3. Add player/component regression tests around selector UI, retry UI, and saved-layout application.
-4. Upgrade touched backend routes from simple param/query casts to explicit route-edge validation as those modules evolve.
+1. Add isolated database-backed Fastify integration tests for auth, channels, groups, favorites, and layouts to complement the new mocked route-contract coverage.
+2. Add route-level React tests for multiview saved-layout application and favorites toggling in the single-view page.
+3. Add route-level lazy loading to reduce the large player bundle warning.
+4. Consider extracting one more seam out of `multiview-page.tsx` if future behavior adds another major branch of UI state.
 5. Consider an ADR if a future session wants to extract shared backend runtime code into packages.
 
 ## Exact Local Commands

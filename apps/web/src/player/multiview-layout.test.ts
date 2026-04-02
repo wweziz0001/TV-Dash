@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildTileDefaults, enforceSingleActiveAudio, resizeTiles } from "./multiview-layout";
+import {
+  buildTileDefaults,
+  enforceSingleActiveAudio,
+  normalizeTileAudio,
+  resizeTiles,
+} from "./multiview-layout";
 
 describe("buildTileDefaults", () => {
   it("creates mute-safe defaults for multi-view layouts", () => {
@@ -26,6 +31,19 @@ describe("resizeTiles", () => {
       { channelId: null, preferredQuality: "LOWEST", isMuted: true },
     ]);
   });
+
+  it("reassigns audio ownership safely when the active tile is removed", () => {
+    const tiles = resizeTiles(
+      "LAYOUT_1X1",
+      [
+        { channelId: "a", preferredQuality: "LOWEST", isMuted: true },
+        { channelId: "b", preferredQuality: "AUTO", isMuted: false },
+      ],
+      { ensureAudioOwner: true },
+    );
+
+    expect(tiles).toEqual([{ channelId: "a", preferredQuality: "AUTO", isMuted: false }]);
+  });
 });
 
 describe("enforceSingleActiveAudio", () => {
@@ -37,15 +55,32 @@ describe("enforceSingleActiveAudio", () => {
     ];
 
     expect(enforceSingleActiveAudio(tiles, 1)).toEqual([
-      { channelId: "a", preferredQuality: "AUTO", isMuted: true },
-      { channelId: "b", preferredQuality: "LOWEST", isMuted: false },
+      { channelId: "a", preferredQuality: "LOWEST", isMuted: true },
+      { channelId: "b", preferredQuality: "AUTO", isMuted: false },
       { channelId: "c", preferredQuality: "LOWEST", isMuted: true },
     ]);
 
     expect(enforceSingleActiveAudio(tiles, 0)).toEqual([
-      { channelId: "a", preferredQuality: "AUTO", isMuted: true },
+      { channelId: "a", preferredQuality: "LOWEST", isMuted: true },
       { channelId: "b", preferredQuality: "LOWEST", isMuted: true },
       { channelId: "c", preferredQuality: "LOWEST", isMuted: true },
+    ]);
+  });
+});
+
+describe("normalizeTileAudio", () => {
+  it("keeps only the preferred active tile unmuted", () => {
+    const tiles = normalizeTileAudio(
+      [
+        { channelId: "a", preferredQuality: "AUTO", isMuted: false },
+        { channelId: "b", preferredQuality: "AUTO", isMuted: false },
+      ],
+      { preferredActiveIndex: 1, ensureAudioOwner: true },
+    );
+
+    expect(tiles).toEqual([
+      { channelId: "a", preferredQuality: "LOWEST", isMuted: true },
+      { channelId: "b", preferredQuality: "AUTO", isMuted: false },
     ]);
   });
 });
