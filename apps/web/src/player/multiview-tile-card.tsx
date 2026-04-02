@@ -149,10 +149,10 @@ export function MultiviewTileCard({
         <Button aria-label="Clear tile" disabled={!channel} onClick={onClear} size="icon-sm" type="button" variant="ghost">
           <X className="h-4 w-4" />
         </Button>
-        <div className="ml-auto flex min-w-[152px] items-center gap-1.5 rounded-lg border border-slate-800/80 bg-slate-950/70 px-2 py-1.5">
-          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Q</span>
+        <div className="ml-auto flex min-w-[52px] items-center gap-1.5 rounded-lg border border-slate-800/80 bg-slate-950/70 px-2 py-0">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500"></span>
           <Select
-            className="border-0 bg-transparent px-0 text-[11px] focus:border-transparent"
+            className="h-6 border-0 bg-transparent px-0 text-[11px] focus:border-transparent"
             disabled={!channel}
             onChange={(event) => onPreferredQualityChange(event.target.value)}
             uiSize="sm"
