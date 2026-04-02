@@ -6,24 +6,31 @@ export function PageHeader({
   description,
   actions,
   children,
+  density = "default",
 }: PropsWithChildren<{
   eyebrow: string;
   title: string;
   description: string;
   actions?: ReactNode;
+  density?: "default" | "compact";
 }>) {
   return (
-    <section className="rounded-[2rem] border border-slate-800/80 bg-slate-950/60 p-6 shadow-glow backdrop-blur">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+    <section
+      className={density === "compact"
+        ? "rounded-[1.5rem] border border-slate-800/80 bg-slate-950/60 p-4 shadow-glow backdrop-blur"
+        : "rounded-[1.75rem] border border-slate-800/80 bg-slate-950/60 p-5 shadow-glow backdrop-blur"}
+    >
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.32em] text-accent/80">{eyebrow}</p>
-          <h1 className="mt-3 text-3xl font-bold text-white">{title}</h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">{description}</p>
+          <p className="text-[11px] uppercase tracking-[0.28em] text-accent/80">{eyebrow}</p>
+          <h1 className={density === "compact" ? "mt-2 text-2xl font-bold text-white" : "mt-2 text-[1.75rem] font-bold text-white"}>
+            {title}
+          </h1>
+          <p className="mt-2 max-w-3xl text-[13px] leading-5 text-slate-400">{description}</p>
         </div>
-        {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
+        {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
       </div>
-      {children ? <div className="mt-5">{children}</div> : null}
+      {children ? <div className="mt-4">{children}</div> : null}
     </section>
   );
 }
-
