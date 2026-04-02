@@ -1,5 +1,12 @@
 import bcrypt from "bcryptjs";
-import { PrismaClient, EpgSourceType, LayoutType, StreamPlaybackMode, UserRole } from "@prisma/client";
+import {
+  ChannelSourceMode,
+  EpgSourceType,
+  LayoutType,
+  PrismaClient,
+  StreamPlaybackMode,
+  UserRole,
+} from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -41,6 +48,35 @@ const channels = [
     masterHlsUrl: "https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8",
     groupSlug: "newsroom",
     sortOrder: 4,
+  },
+  {
+    name: "Al Alam Variants",
+    slug: "al-alam-variants",
+    logoUrl: "https://placehold.co/160x90/1f2937/93c5fd?text=Variants",
+    masterHlsUrl: null,
+    groupSlug: "newsroom",
+    sortOrder: 5,
+    sourceMode: ChannelSourceMode.MANUAL_VARIANTS,
+    manualVariants: [
+      {
+        label: "low",
+        sortOrder: 0,
+        playlistUrl: "https://live2.alalam.ir/live/Alalam_low/index.m3u8",
+        height: 360,
+      },
+      {
+        label: "medium",
+        sortOrder: 1,
+        playlistUrl: "https://live2.alalam.ir/live/Alalam_medium/index.m3u8",
+        height: 540,
+      },
+      {
+        label: "high",
+        sortOrder: 2,
+        playlistUrl: "https://live2.alalam.ir/live/Alalam_high/index.m3u8",
+        height: 720,
+      },
+    ],
   },
 ];
 
@@ -116,6 +152,7 @@ async function main() {
       update: {
         name: channel.name,
         logoUrl: channel.logoUrl,
+        sourceMode: channel.sourceMode ?? ChannelSourceMode.MASTER_PLAYLIST,
         masterHlsUrl: channel.masterHlsUrl,
         playbackMode: channel.slug === "pulse-24" ? StreamPlaybackMode.PROXY : StreamPlaybackMode.DIRECT,
         groupId: groupMap.get(channel.groupSlug) ?? null,
@@ -123,11 +160,16 @@ async function main() {
         epgChannelId: channel.slug === "tv-dash-live" ? "tv-dash-live" : null,
         isActive: true,
         sortOrder: channel.sortOrder,
+        qualityVariants: {
+          deleteMany: {},
+          create: channel.manualVariants ?? [],
+        },
       },
       create: {
         name: channel.name,
         slug: channel.slug,
         logoUrl: channel.logoUrl,
+        sourceMode: channel.sourceMode ?? ChannelSourceMode.MASTER_PLAYLIST,
         masterHlsUrl: channel.masterHlsUrl,
         playbackMode: channel.slug === "pulse-24" ? StreamPlaybackMode.PROXY : StreamPlaybackMode.DIRECT,
         groupId: groupMap.get(channel.groupSlug) ?? null,
@@ -135,6 +177,11 @@ async function main() {
         epgChannelId: channel.slug === "tv-dash-live" ? "tv-dash-live" : null,
         isActive: true,
         sortOrder: channel.sortOrder,
+        qualityVariants: channel.manualVariants
+          ? {
+              create: channel.manualVariants,
+            }
+          : undefined,
       },
     });
     createdChannels.push(record);

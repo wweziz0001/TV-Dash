@@ -1,4 +1,4 @@
-import type { ChannelInput } from "@tv-dash/shared";
+import type { ChannelInput, ChannelQualityVariantInput } from "@tv-dash/shared";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 
@@ -19,6 +19,14 @@ export const publicChannelInclude = {
       isActive: true,
     },
   },
+  qualityVariants: {
+    where: {
+      isActive: true,
+    },
+    select: {
+      id: true,
+    },
+  },
 } satisfies Prisma.ChannelInclude;
 
 const channelConfigInclude = {
@@ -34,6 +42,9 @@ const channelConfigInclude = {
       refreshIntervalMinutes: true,
     },
   },
+  qualityVariants: {
+    orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
+  },
 } satisfies Prisma.ChannelInclude;
 
 const streamChannelSelect = {
@@ -41,11 +52,18 @@ const streamChannelSelect = {
   name: true,
   slug: true,
   isActive: true,
+  sourceMode: true,
   masterHlsUrl: true,
   playbackMode: true,
   upstreamUserAgent: true,
   upstreamReferrer: true,
   upstreamHeaders: true,
+  qualityVariants: {
+    where: {
+      isActive: true,
+    },
+    orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
+  },
 } satisfies Prisma.ChannelSelect;
 
 const epgLookupChannelSelect = {
@@ -103,7 +121,8 @@ function mapChannelPersistenceInput(data: ChannelInput): Prisma.ChannelUnchecked
     name: data.name,
     slug: data.slug,
     logoUrl: data.logoUrl,
-    masterHlsUrl: data.masterHlsUrl,
+    sourceMode: data.sourceMode,
+    masterHlsUrl: data.sourceMode === "MASTER_PLAYLIST" ? data.masterHlsUrl : null,
     playbackMode: data.playbackMode,
     upstreamUserAgent: data.upstreamUserAgent,
     upstreamReferrer: data.upstreamReferrer,
@@ -114,6 +133,19 @@ function mapChannelPersistenceInput(data: ChannelInput): Prisma.ChannelUnchecked
     isActive: data.isActive,
     sortOrder: data.sortOrder,
   };
+}
+
+function mapQualityVariantPersistenceInput(variant: ChannelQualityVariantInput) {
+  return {
+    label: variant.label,
+    sortOrder: variant.sortOrder,
+    playlistUrl: variant.playlistUrl,
+    width: variant.width,
+    height: variant.height,
+    bandwidth: variant.bandwidth,
+    codecs: variant.codecs,
+    isActive: variant.isActive,
+  } satisfies Prisma.ChannelQualityVariantUncheckedCreateWithoutChannelInput;
 }
 
 export function listChannels(filters: ChannelQueryParams) {
@@ -165,7 +197,16 @@ export function findChannelsForEpgLookup(ids: string[]) {
 
 export function createChannel(data: ChannelInput) {
   return prisma.channel.create({
-    data: mapChannelPersistenceInput(data),
+    data: {
+      ...mapChannelPersistenceInput(data),
+      ...(data.sourceMode === "MANUAL_VARIANTS"
+        ? {
+            qualityVariants: {
+              create: data.manualVariants.map(mapQualityVariantPersistenceInput),
+            },
+          }
+        : {}),
+    },
     include: channelConfigInclude,
   });
 }
@@ -173,7 +214,17 @@ export function createChannel(data: ChannelInput) {
 export function updateChannel(id: string, data: ChannelInput) {
   return prisma.channel.update({
     where: { id },
-    data: mapChannelPersistenceInput(data),
+    data: {
+      ...mapChannelPersistenceInput(data),
+      qualityVariants: {
+        deleteMany: {},
+        ...(data.sourceMode === "MANUAL_VARIANTS"
+          ? {
+              create: data.manualVariants.map(mapQualityVariantPersistenceInput),
+            }
+          : {}),
+      },
+    },
     include: channelConfigInclude,
   });
 }

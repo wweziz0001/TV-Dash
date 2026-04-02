@@ -1,8 +1,9 @@
 import { buildUpstreamHeaders, type UpstreamRequestConfig } from "../../app/upstream-request.js";
 import { getChannelStreamDetails } from "../channels/channel.service.js";
 import { parseMasterPlaylist } from "./playlist-parser.js";
-import { rewritePlaylist, isPlaylistResponse } from "./playlist-rewrite.js";
+import { isPlaylistResponse, rewritePlaylist } from "./playlist-rewrite.js";
 import { createProxyToken, readProxyToken } from "./proxy-token.js";
+import { buildSyntheticMasterPlaylist } from "./synthetic-master.js";
 
 function buildProxyAssetPath(channelId: string, target: string) {
   const token = createProxyToken({ channelId, target });
@@ -84,6 +85,22 @@ export async function getChannelProxyMasterResponse(channelId: string) {
 
   if (!channel) {
     return null;
+  }
+
+  if (channel.sourceMode === "MANUAL_VARIANTS") {
+    return {
+      body: buildSyntheticMasterPlaylist(channel.qualityVariants, {
+        rewriteUri:
+          channel.playbackMode === "PROXY"
+            ? (absoluteUrl) => buildProxyAssetPath(channel.id, absoluteUrl)
+            : undefined,
+      }),
+      contentType: "application/vnd.apple.mpegurl",
+    };
+  }
+
+  if (!channel.masterHlsUrl) {
+    throw new Error("Channel master playlist is not configured");
   }
 
   return proxyStreamUrl(channelId, channel.masterHlsUrl);

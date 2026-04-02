@@ -13,6 +13,7 @@ export const layoutTypeSchema = z.enum([
 ]);
 
 export const streamPlaybackModeSchema = z.enum(["DIRECT", "PROXY"]);
+export const channelSourceModeSchema = z.enum(["MASTER_PLAYLIST", "MANUAL_VARIANTS"]);
 export const epgSourceTypeSchema = z.enum(["XMLTV"]);
 export const qualityModeSchema = z.enum(["AUTO", "LOWEST", "HIGHEST", "MANUAL"]);
 
@@ -30,6 +31,14 @@ const optionalNullableUrlSchema = z
   .optional()
   .transform((value) => value || null);
 
+const optionalNullablePositiveIntegerSchema = z
+  .number()
+  .int()
+  .positive()
+  .nullable()
+  .optional()
+  .transform((value) => value ?? null);
+
 export const upstreamHeadersInputSchema = z.record(z.string().min(1).max(120), z.string().min(1).max(2000)).default({});
 
 export const loginInputSchema = z.object({
@@ -43,28 +52,70 @@ export const channelGroupInputSchema = z.object({
   sortOrder: z.number().int().min(0).max(9999).default(0),
 });
 
+export const channelQualityVariantInputSchema = z.object({
+  label: z.string().trim().min(1).max(40),
+  sortOrder: z.number().int().min(0).max(9999),
+  playlistUrl: z.string().url(),
+  width: optionalNullablePositiveIntegerSchema,
+  height: optionalNullablePositiveIntegerSchema,
+  bandwidth: optionalNullablePositiveIntegerSchema,
+  codecs: z
+    .string()
+    .trim()
+    .max(255)
+    .nullable()
+    .optional()
+    .transform((value) => value || null),
+  isActive: z.boolean().default(true),
+});
+
+const channelBaseInputSchema = z.object({
+  name: z.string().min(2).max(120),
+  slug: z.string().min(2).max(120),
+  logoUrl: optionalNullableUrlSchema,
+  groupId: z.string().uuid().nullable().optional(),
+  isActive: z.boolean().default(true),
+  sortOrder: z.number().int().min(0).max(9999).default(0),
+  playbackMode: streamPlaybackModeSchema.default("DIRECT"),
+  upstreamUserAgent: optionalNullableTrimmedStringSchema,
+  upstreamReferrer: optionalNullableUrlSchema,
+  upstreamHeaders: upstreamHeadersInputSchema,
+  epgSourceId: z.string().uuid().nullable().optional(),
+  epgChannelId: z
+    .string()
+    .trim()
+    .max(160)
+    .nullable()
+    .optional()
+    .transform((value) => value || null),
+});
+
+const masterPlaylistChannelInputSchema = channelBaseInputSchema.extend({
+  sourceMode: z.literal("MASTER_PLAYLIST"),
+  masterHlsUrl: z.string().url(),
+  manualVariants: z.undefined().optional(),
+});
+
+const manualVariantsChannelInputSchema = channelBaseInputSchema.extend({
+  sourceMode: z.literal("MANUAL_VARIANTS"),
+  masterHlsUrl: z.null().optional(),
+  manualVariants: z.array(channelQualityVariantInputSchema).min(1),
+});
+
+function addDuplicateIssue(
+  context: z.RefinementCtx,
+  path: ["manualVariants", number, "label" | "sortOrder" | "playlistUrl"],
+  message: string,
+) {
+  context.addIssue({
+    code: z.ZodIssueCode.custom,
+    path,
+    message,
+  });
+}
+
 export const channelInputSchema = z
-  .object({
-    name: z.string().min(2).max(120),
-    slug: z.string().min(2).max(120),
-    logoUrl: optionalNullableUrlSchema,
-    masterHlsUrl: z.string().url(),
-    groupId: z.string().uuid().nullable().optional(),
-    isActive: z.boolean().default(true),
-    sortOrder: z.number().int().min(0).max(9999).default(0),
-    playbackMode: streamPlaybackModeSchema.default("DIRECT"),
-    upstreamUserAgent: optionalNullableTrimmedStringSchema,
-    upstreamReferrer: optionalNullableUrlSchema,
-    upstreamHeaders: upstreamHeadersInputSchema,
-    epgSourceId: z.string().uuid().nullable().optional(),
-    epgChannelId: z
-      .string()
-      .trim()
-      .max(160)
-      .nullable()
-      .optional()
-      .transform((value) => value || null),
-  })
+  .discriminatedUnion("sourceMode", [masterPlaylistChannelInputSchema, manualVariantsChannelInputSchema])
   .superRefine((value, context) => {
     const hasEpgSource = Boolean(value.epgSourceId);
     const hasEpgChannelId = Boolean(value.epgChannelId);
@@ -74,6 +125,57 @@ export const channelInputSchema = z
         code: z.ZodIssueCode.custom,
         message: "EPG source and EPG channel id must be provided together",
         path: hasEpgSource ? ["epgChannelId"] : ["epgSourceId"],
+      });
+    }
+
+    if (value.sourceMode !== "MANUAL_VARIANTS") {
+      return;
+    }
+
+    const labelMap = new Map<string, number>();
+    const sortOrderMap = new Map<number, number>();
+    const playlistUrlMap = new Map<string, number>();
+    const activeVariantCount = value.manualVariants.filter((variant) => variant.isActive).length;
+
+    value.manualVariants.forEach((variant, index) => {
+      const normalizedLabel = variant.label.trim().toLowerCase();
+      const normalizedUrl = variant.playlistUrl.trim().toLowerCase();
+
+      const duplicateLabelIndex = labelMap.get(normalizedLabel);
+      if (duplicateLabelIndex !== undefined) {
+        addDuplicateIssue(context, ["manualVariants", index, "label"], "Manual variant labels must be unique");
+      } else {
+        labelMap.set(normalizedLabel, index);
+      }
+
+      const duplicateSortOrderIndex = sortOrderMap.get(variant.sortOrder);
+      if (duplicateSortOrderIndex !== undefined) {
+        addDuplicateIssue(
+          context,
+          ["manualVariants", index, "sortOrder"],
+          "Manual variant sort orders must be unique",
+        );
+      } else {
+        sortOrderMap.set(variant.sortOrder, index);
+      }
+
+      const duplicateUrlIndex = playlistUrlMap.get(normalizedUrl);
+      if (duplicateUrlIndex !== undefined) {
+        addDuplicateIssue(
+          context,
+          ["manualVariants", index, "playlistUrl"],
+          "Manual variant playlist URLs must be unique",
+        );
+      } else {
+        playlistUrlMap.set(normalizedUrl, index);
+      }
+    });
+
+    if (activeVariantCount === 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "At least one manual variant must be active",
+        path: ["manualVariants"],
       });
     }
   });
@@ -136,10 +238,12 @@ export const streamVariantSchema = z.object({
 export type UserRole = z.infer<typeof userRoleSchema>;
 export type LayoutType = z.infer<typeof layoutTypeSchema>;
 export type StreamPlaybackMode = z.infer<typeof streamPlaybackModeSchema>;
+export type ChannelSourceMode = z.infer<typeof channelSourceModeSchema>;
 export type EpgSourceType = z.infer<typeof epgSourceTypeSchema>;
 export type QualityMode = z.infer<typeof qualityModeSchema>;
 export type LoginInput = z.infer<typeof loginInputSchema>;
 export type ChannelGroupInput = z.infer<typeof channelGroupInputSchema>;
+export type ChannelQualityVariantInput = z.infer<typeof channelQualityVariantInputSchema>;
 export type ChannelInput = z.infer<typeof channelInputSchema>;
 export type ChannelSortOrderInput = z.infer<typeof channelSortOrderInputSchema>;
 export type EpgSourceInput = z.infer<typeof epgSourceInputSchema>;

@@ -25,6 +25,11 @@ enum StreamPlaybackMode {
   PROXY
 }
 
+enum ChannelSourceMode {
+  MASTER_PLAYLIST
+  MANUAL_VARIANTS
+}
+
 enum EpgSourceType {
   XMLTV
 }
@@ -56,7 +61,8 @@ model Channel {
   name              String
   slug              String             @unique
   logoUrl           String?
-  masterHlsUrl      String
+  sourceMode        ChannelSourceMode  @default(MASTER_PLAYLIST)
+  masterHlsUrl      String?
   playbackMode      StreamPlaybackMode @default(DIRECT)
   upstreamUserAgent String?
   upstreamReferrer  String?
@@ -68,12 +74,32 @@ model Channel {
   epgChannelId      String?
   isActive          Boolean            @default(true)
   sortOrder         Int                @default(0)
+  qualityVariants   ChannelQualityVariant[]
   favorites         Favorite[]
   layoutItems       SavedLayoutItem[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
   @@index([epgSourceId, epgChannelId])
+}
+
+model ChannelQualityVariant {
+  id          String   @id @default(uuid()) @db.Uuid
+  channelId   String   @db.Uuid
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  label       String
+  sortOrder   Int
+  playlistUrl String
+  width       Int?
+  height      Int?
+  bandwidth   Int?
+  codecs      String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([channelId, sortOrder])
+  @@index([channelId, isActive, sortOrder])
 }
 
 model EpgSource {
