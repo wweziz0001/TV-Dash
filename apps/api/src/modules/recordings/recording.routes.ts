@@ -1,6 +1,11 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { recordingJobInputSchema, recordingJobUpdateInputSchema, recordingRuleInputSchema } from "@tv-dash/shared";
+import {
+  recordingJobInputSchema,
+  recordingJobUpdateInputSchema,
+  recordingRetentionInputSchema,
+  recordingRuleInputSchema,
+} from "@tv-dash/shared";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { requirePermission } from "../../app/auth-guards.js";
 import {
@@ -22,9 +27,11 @@ import {
   getRecordingPlaybackAccessForViewer,
   getRecordingQualityOptionsForViewer,
   getRecordingRuleForViewer,
+  getRecordingThumbnailByPlaybackToken,
   listRecordingJobsForViewer,
   listRecordingRulesForViewer,
   stopRecordingJobForViewer,
+  updateRecordingRetentionForViewer,
   updateRecordingJobForViewer,
   updateRecordingRuleForViewer,
 } from "./recording.service.js";
@@ -121,6 +128,11 @@ export const recordingRoutes: FastifyPluginAsync = async (fastify) => {
       search: query.search,
       statuses: query.status.length ? query.status : undefined,
       channelId: query.channelId,
+      modes: query.mode.length ? query.mode : undefined,
+      isProtected: query.isProtected ? query.isProtected === "true" : undefined,
+      recordedAfter: query.recordedAfter,
+      recordedBefore: query.recordedBefore,
+      sort: query.sort,
     });
 
     return { jobs };
@@ -246,6 +258,27 @@ export const recordingRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  fastify.put("/recordings/:id/retention", { preHandler: [requirePermission("recordings:manage-own")] }, async (request, reply) => {
+    const params = parseWithSchema(idParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const payload = parseWithSchema(recordingRetentionInputSchema, request.body, reply);
+    if (!payload) {
+      return;
+    }
+
+    try {
+      const job = await updateRecordingRetentionForViewer(getViewer(request), params.id, payload);
+      return { job };
+    } catch (error) {
+      return reply.status(mapRecordingErrorStatus(error)).send({
+        message: error instanceof Error ? error.message : "Unable to update recording retention",
+      });
+    }
+  });
+
   fastify.post("/recordings/:id/cancel", { preHandler: [requirePermission("recordings:manage-own")] }, async (request, reply) => {
     const params = parseWithSchema(idParamSchema, request.params, reply);
     if (!params) {
@@ -362,6 +395,32 @@ export const recordingRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send(createReadStream(absolutePath, { start: byteRange.start, end: byteRange.end }));
     }
 
+    reply.header("content-length", fileStats.size);
+    return reply.send(createReadStream(absolutePath));
+  });
+
+  fastify.get("/recordings/:id/thumbnail", async (request, reply) => {
+    const params = parseWithSchema(idParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const query = parseWithSchema(recordingPlaybackQuerySchema, request.query, reply);
+    if (!query) {
+      return;
+    }
+
+    const asset = await getRecordingThumbnailByPlaybackToken(params.id, query.token);
+
+    if (!asset?.thumbnailPath || !asset.thumbnailMimeType) {
+      return reply.status(404).send({ message: "Recording thumbnail not found" });
+    }
+
+    const absolutePath = resolveRecordingAbsolutePath(asset.thumbnailPath);
+    const fileStats = await stat(absolutePath);
+
+    reply.header("content-type", asset.thumbnailMimeType);
+    reply.header("cache-control", "private, max-age=300");
     reply.header("content-length", fileStats.size);
     return reply.send(createReadStream(absolutePath));
   });

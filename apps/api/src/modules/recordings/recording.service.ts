@@ -1,6 +1,7 @@
 import type {
   RecordingJobInput,
   RecordingJobUpdateInput,
+  RecordingRetentionInput,
   RecordingRuleInput,
   RecordingWeekday,
   UserRole,
@@ -23,13 +24,17 @@ import {
   findRecordingPlaybackJobById,
   findRecordingRuleById,
   listRecordingJobs,
+  type RecordingJobListSort,
   listRecordingJobsForRulesInWindow,
   listRecordingRules,
+  updateRecordingAssetThumbnail,
+  updateRecordingJobRetention,
   updateRecordingJobSchedule,
   updateRecordingRule,
   type RecordingJobRecord,
   type RecordingRuleRecord,
 } from "./recording.repository.js";
+import { getRecordingRetentionPolicy, resolveRecordingRetentionReferenceDate } from "./recording-retention.js";
 import { syncRecurringRecordingJobs } from "./recording-rule-sync.js";
 import {
   buildDefaultRecordingTitle,
@@ -40,6 +45,7 @@ import {
   resolveRecordingJobStartAt,
 } from "./recording-status.js";
 import { deleteRecordingFile } from "./recording-storage.js";
+import { generateRecordingThumbnail } from "./recording-thumbnail.js";
 import { pokeRecordingRuntime, stopActiveRecordingJob } from "./recording-runtime.js";
 
 interface RecordingViewer {
@@ -53,6 +59,17 @@ interface RecordingRuleViewerFilters {
   isActive?: boolean;
 }
 
+interface RecordingJobViewerFilters {
+  search?: string;
+  statuses?: RecordingJobRecord["status"][];
+  channelId?: string;
+  modes?: RecordingJobRecord["mode"][];
+  isProtected?: boolean;
+  recordedAfter?: Date;
+  recordedBefore?: Date;
+  sort?: RecordingJobListSort;
+}
+
 function canViewAllRecordings(viewer: RecordingViewer) {
   return viewer.role === "ADMIN";
 }
@@ -63,6 +80,83 @@ function mapFileSize(value: bigint | null | undefined) {
   }
 
   return Number(value);
+}
+
+function buildRecordingAssetAccess(recordingJobId: string, recordingAssetId: string) {
+  const token = createRecordingPlaybackToken({
+    recordingJobId,
+    recordingAssetId,
+  });
+  const encodedToken = encodeURIComponent(token);
+
+  return {
+    playbackUrl: `/api/recordings/${recordingJobId}/media?token=${encodedToken}`,
+    thumbnailUrl: `/api/recordings/${recordingJobId}/thumbnail?token=${encodedToken}`,
+  };
+}
+
+function mapRecordingRetention(record: RecordingJobRecord) {
+  const policy = getRecordingRetentionPolicy();
+  const referenceDate = resolveRecordingRetentionReferenceDate({
+    id: record.id,
+    channelId: record.channelId,
+    status: record.status,
+    isProtected: record.isProtected,
+    startAt: record.startAt,
+    actualEndAt: record.actualEndAt,
+    createdAt: record.createdAt,
+    asset: record.asset
+      ? {
+          endedAt: record.asset.endedAt,
+        }
+      : null,
+  });
+
+  if (record.isProtected) {
+    return {
+      isProtected: true,
+      protectedAt: record.protectedAt?.toISOString() ?? null,
+      deleteAfter: null,
+      mode: "PROTECTED" as const,
+      maxAgeDays: policy.maxAgeDays,
+      maxRecordingsPerChannel: policy.maxRecordingsPerChannel,
+      failedCleanupHours: policy.failedCleanupHours,
+    };
+  }
+
+  if (record.status === "FAILED" || record.status === "CANCELED") {
+    return {
+      isProtected: false,
+      protectedAt: null,
+      deleteAfter: new Date(referenceDate.getTime() + policy.failedCleanupHours * 60 * 60_000).toISOString(),
+      mode: "FAILED_CLEANUP" as const,
+      maxAgeDays: policy.maxAgeDays,
+      maxRecordingsPerChannel: policy.maxRecordingsPerChannel,
+      failedCleanupHours: policy.failedCleanupHours,
+    };
+  }
+
+  if (record.status === "COMPLETED") {
+    return {
+      isProtected: false,
+      protectedAt: null,
+      deleteAfter: new Date(referenceDate.getTime() + policy.maxAgeDays * 24 * 60 * 60_000).toISOString(),
+      mode: "STANDARD" as const,
+      maxAgeDays: policy.maxAgeDays,
+      maxRecordingsPerChannel: policy.maxRecordingsPerChannel,
+      failedCleanupHours: policy.failedCleanupHours,
+    };
+  }
+
+  return {
+    isProtected: false,
+    protectedAt: null,
+    deleteAfter: null,
+    mode: "ACTIVE" as const,
+    maxAgeDays: policy.maxAgeDays,
+    maxRecordingsPerChannel: policy.maxRecordingsPerChannel,
+    failedCleanupHours: policy.failedCleanupHours,
+  };
 }
 
 function buildDefaultRecordingRuleTitle(params: {
@@ -118,6 +212,8 @@ async function resolveProgramEntryContext(payload: RecordingJobInput) {
   return {
     programEntryId: programme.id,
     programTitleSnapshot: programme.title,
+    programDescriptionSnapshot: programme.description ?? null,
+    programCategorySnapshot: programme.category ?? null,
     programStartAt: new Date(programme.startAt),
     programEndAt: new Date(programme.endAt),
     derivedStartAt: new Date(Date.parse(programme.startAt) - payload.paddingBeforeMinutes * 60_000),
@@ -163,6 +259,7 @@ function mapRecordingRuleJobSummary(job: RecordingJobRecord | null) {
 
 async function mapRecordingJob(record: RecordingJobRecord) {
   const latestRun = await resolveRecordingRunProgress(record);
+  const assetAccess = record.asset ? buildRecordingAssetAccess(record.id, record.asset.id) : null;
 
   return {
     id: record.id,
@@ -176,6 +273,8 @@ async function mapRecordingJob(record: RecordingJobRecord) {
     status: record.status,
     paddingBeforeMinutes: record.paddingBeforeMinutes,
     paddingAfterMinutes: record.paddingAfterMinutes,
+    isProtected: record.isProtected,
+    protectedAt: record.protectedAt?.toISOString() ?? null,
     startAt: record.startAt.toISOString(),
     endAt: record.endAt?.toISOString() ?? null,
     actualStartAt: record.actualStartAt?.toISOString() ?? null,
@@ -184,11 +283,15 @@ async function mapRecordingJob(record: RecordingJobRecord) {
     cancellationReason: record.cancellationReason,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
+    retention: mapRecordingRetention(record),
     program: record.programEntryId || record.programTitleSnapshot
       ? {
           id: record.programEntry?.id ?? record.programEntryId,
           sourceKind: record.programEntry?.sourceKind ?? null,
           title: record.programEntry?.title ?? record.programTitleSnapshot ?? null,
+          description: record.programEntry?.description ?? record.programDescriptionSnapshot ?? null,
+          category: record.programEntry?.category ?? record.programCategorySnapshot ?? null,
+          imageUrl: record.programEntry?.imageUrl ?? null,
           startAt: record.programEntry?.startAt.toISOString() ?? record.programStartAt?.toISOString() ?? null,
           endAt: record.programEntry?.endAt?.toISOString() ?? record.programEndAt?.toISOString() ?? null,
         }
@@ -229,10 +332,15 @@ async function mapRecordingJob(record: RecordingJobRecord) {
           fileName: record.asset.fileName,
           mimeType: record.asset.mimeType,
           containerFormat: record.asset.containerFormat,
+          storagePath: record.asset.storagePath,
           startedAt: record.asset.startedAt.toISOString(),
           endedAt: record.asset.endedAt.toISOString(),
           durationSeconds: record.asset.durationSeconds,
           fileSizeBytes: mapFileSize(record.asset.fileSizeBytes),
+          thumbnailUrl: assetAccess?.thumbnailUrl ?? null,
+          thumbnailMimeType: record.asset.thumbnailMimeType ?? null,
+          thumbnailGeneratedAt: record.asset.thumbnailGeneratedAt?.toISOString() ?? null,
+          playbackUrl: assetAccess?.playbackUrl ?? null,
           createdAt: record.asset.createdAt.toISOString(),
           updatedAt: record.asset.updatedAt.toISOString(),
         }
@@ -337,6 +445,7 @@ async function recordAdminRecordingAudit(params: {
       channelSlug: params.job.channelSlugSnapshot,
       mode: params.job.mode,
       status: params.job.status,
+      isProtected: params.job.isProtected,
       recordingRuleId: params.job.recordingRuleId,
       programEntryId: params.job.programEntryId,
     },
@@ -371,11 +480,7 @@ async function recordAdminRecordingRuleAudit(params: {
 
 export async function listRecordingJobsForViewer(
   viewer: RecordingViewer,
-  filters: {
-    search?: string;
-    statuses?: RecordingJobRecord["status"][];
-    channelId?: string;
-  },
+  filters: RecordingJobViewerFilters,
 ) {
   const jobs = await listRecordingJobs({
     userId: viewer.id,
@@ -383,6 +488,11 @@ export async function listRecordingJobsForViewer(
     search: filters.search,
     statuses: filters.statuses,
     channelId: filters.channelId,
+    modes: filters.modes,
+    isProtected: filters.isProtected,
+    recordedAfter: filters.recordedAfter,
+    recordedBefore: filters.recordedBefore,
+    sort: filters.sort,
   });
 
   return Promise.all(jobs.map(mapRecordingJob));
@@ -482,6 +592,8 @@ export async function createRecordingJobForViewer(viewer: RecordingViewer, paylo
     channelSlugSnapshot: channel.slug,
     programEntryId: programContext?.programEntryId ?? null,
     programTitleSnapshot: programContext?.programTitleSnapshot ?? null,
+    programDescriptionSnapshot: programContext?.programDescriptionSnapshot ?? null,
+    programCategorySnapshot: programContext?.programCategorySnapshot ?? null,
     programStartAt: programContext?.programStartAt ?? null,
     programEndAt: programContext?.programEndAt ?? null,
     recordingRuleId: null,
@@ -640,7 +752,7 @@ export async function deleteRecordingJobForViewer(viewer: RecordingViewer, recor
   const deletedJob = await deleteRecordingJob(recordingJobId);
   const storagePaths = [
     ...new Set(
-      [deletedJob.asset?.storagePath, ...deletedJob.runs.map((run) => run.storagePath)].filter(
+      [deletedJob.asset?.storagePath, deletedJob.asset?.thumbnailPath, ...deletedJob.runs.map((run) => run.storagePath)].filter(
         (storagePath): storagePath is string => Boolean(storagePath),
       ),
     ),
@@ -649,6 +761,31 @@ export async function deleteRecordingJobForViewer(viewer: RecordingViewer, recor
   await Promise.all(storagePaths.map((storagePath) => deleteRecordingFile(storagePath)));
 
   return undefined;
+}
+
+export async function updateRecordingRetentionForViewer(
+  viewer: RecordingViewer,
+  recordingJobId: string,
+  payload: RecordingRetentionInput,
+) {
+  const currentJob = await getOwnedRecordingJob(viewer, recordingJobId);
+
+  if (!currentJob) {
+    throw new Error("Recording job not found");
+  }
+
+  const updatedJob = await updateRecordingJobRetention(recordingJobId, {
+    isProtected: payload.isProtected,
+    protectedAt: payload.isProtected ? new Date() : null,
+  });
+
+  await recordAdminRecordingAudit({
+    viewer,
+    action: payload.isProtected ? "recording-job.protect" : "recording-job.unprotect",
+    job: updatedJob,
+  });
+
+  return mapRecordingJob(updatedJob);
 }
 
 export async function createRecordingRuleForViewer(viewer: RecordingViewer, payload: RecordingRuleInput) {
@@ -800,13 +937,8 @@ export async function getRecordingPlaybackAccessForViewer(viewer: RecordingViewe
     throw new Error("Recording media is not available");
   }
 
-  const token = createRecordingPlaybackToken({
-    recordingJobId,
-    recordingAssetId: playbackJob.asset.id,
-  });
-
   return {
-    playbackUrl: `/api/recordings/${recordingJobId}/media?token=${encodeURIComponent(token)}`,
+    playbackUrl: buildRecordingAssetAccess(recordingJobId, playbackJob.asset.id).playbackUrl,
   };
 }
 
@@ -834,4 +966,33 @@ export async function getRecordingMediaByPlaybackToken(recordingJobId: string, t
   }
 
   return playbackJob.asset;
+}
+
+export async function getRecordingThumbnailByPlaybackToken(recordingJobId: string, token: string) {
+  const payload = readRecordingPlaybackToken(token, recordingJobId);
+
+  if (!payload) {
+    return null;
+  }
+
+  const playbackJob = await findRecordingPlaybackJobById(recordingJobId);
+
+  if (!playbackJob?.asset || playbackJob.asset.id !== payload.recordingAssetId) {
+    return null;
+  }
+
+  if (playbackJob.asset.thumbnailPath && playbackJob.asset.thumbnailMimeType) {
+    return playbackJob.asset;
+  }
+
+  const generatedThumbnail = await generateRecordingThumbnail({
+    storagePath: playbackJob.asset.storagePath,
+    durationSeconds: playbackJob.asset.durationSeconds,
+  });
+
+  if (!generatedThumbnail) {
+    return null;
+  }
+
+  return updateRecordingAssetThumbnail(playbackJob.asset.id, generatedThumbnail);
 }

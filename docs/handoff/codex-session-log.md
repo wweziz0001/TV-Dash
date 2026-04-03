@@ -1,5 +1,121 @@
 # Codex Session Log
 
+## `2026-04-04T12:10:00+03:00`
+
+### Objective
+
+Turn the recordings library into a real product area by improving metadata, thumbnails/previews, retention rules, browsing/filtering, and recording detail usability.
+
+### Work Completed
+
+- created the requested branch `018-recordings-library-polish-metadata-thumbnails-and-retention`
+- extended the recording data model with:
+  - richer programme snapshots on `RecordingJob`
+  - protected/keep-forever state on `RecordingJob`
+  - thumbnail metadata on `RecordingAsset`
+- added the Prisma migration `20260404111500_recordings_library_polish`
+- expanded the recordings API/library contract so operators can:
+  - search by title, programme, channel, rule title, or filename
+  - filter by status, channel, origin/mode, protected state, and recorded date window
+  - sort by recorded date, title, channel, or status
+  - update keep-forever/protected state per recording
+  - load signed recording thumbnails in addition to playback media
+- implemented a real thumbnail foundation:
+  - completed recordings now attempt one representative JPEG extraction through ffmpeg
+  - the thumbnail endpoint can lazily generate the preview on first request if it was not produced earlier
+  - thumbnail files are stored as relative sidecars under the recordings storage root
+- implemented a practical first retention model:
+  - keep recordings for `RECORDINGS_RETENTION_DAYS`
+  - keep only the most recent `RECORDINGS_RETENTION_MAX_PER_CHANNEL` completed recordings per channel
+  - clean up failed/canceled history after `RECORDINGS_FAILED_CLEANUP_HOURS`
+  - exclude protected recordings from automatic deletion
+  - run cleanup on the single-process runtime cadence via `RECORDINGS_RETENTION_SWEEP_INTERVAL_MS`
+- upgraded the `/recordings` UI so the library now has:
+  - summary counts
+  - compact operational filters
+  - origin/protection/sort controls
+  - date-range filtering
+  - richer media-aware recording cards with preview, storage, and retention info
+  - keep-forever toggles directly from the library
+- upgraded the recording playback/details page so operators can inspect:
+  - thumbnail/poster
+  - origin
+  - retention state
+  - guide metadata
+  - storage path
+  - playback media details
+- added targeted tests for:
+  - retention evaluation and protected exclusion
+  - thumbnail helper behavior
+  - richer recording library route filtering
+  - retention/protection route behavior
+  - frontend recording-library query-state helpers
+
+### Files Added Or Changed
+
+- shared/API contracts:
+  - `packages/shared/src/index.ts`
+  - `apps/web/src/types/api.ts`
+  - `apps/web/src/services/api.ts`
+- Prisma/config/runtime:
+  - `apps/api/prisma/schema.prisma`
+  - `apps/api/prisma/migrations/20260404111500_recordings_library_polish/migration.sql`
+  - `.env.example`
+  - `apps/api/src/config/env.ts`
+- backend recordings module:
+  - `apps/api/src/app/request-schemas.ts`
+  - `apps/api/src/modules/recordings/recording.repository.ts`
+  - `apps/api/src/modules/recordings/recording.service.ts`
+  - `apps/api/src/modules/recordings/recording.routes.ts`
+  - `apps/api/src/modules/recordings/recording-runtime.ts`
+  - `apps/api/src/modules/recordings/recording-rule-sync.ts`
+  - `apps/api/src/modules/recordings/recording-retention.ts`
+  - `apps/api/src/modules/recordings/recording-thumbnail.ts`
+- frontend recordings UI:
+  - `apps/web/src/pages/recordings-page.tsx`
+  - `apps/web/src/pages/recording-playback-page.tsx`
+  - `apps/web/src/components/recordings/recording-library-state.ts`
+  - `apps/web/src/components/recordings/recording-retention-badge.tsx`
+- tests:
+  - `apps/api/src/modules/recordings/recording.routes.test.ts`
+  - `apps/api/src/modules/recordings/recording-retention.test.ts`
+  - `apps/api/src/modules/recordings/recording-thumbnail.test.ts`
+  - `apps/web/src/components/recordings/recording-library-state.test.ts`
+  - `apps/web/src/components/recordings/recording-form-state.test.ts`
+- docs:
+  - `docs/architecture/api-boundaries.md`
+  - `docs/standards/backend-api-standards.md`
+  - `docs/standards/prisma-database-standards.md`
+  - `docs/standards/testing-standards.md`
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- Kept the first retention system explicit and bounded in env/config plus one per-recording protected override, instead of introducing a large policy engine or channel-level settings UI in the same milestone.
+- Reused the existing signed playback-token model for thumbnail access so previews stay secure without requiring a second auth mechanism for `<img>` loading.
+- Stored programme description/category snapshots on jobs so the library remains readable even if guide rows are replaced on future imports.
+- Used one practical representative thumbnail per recording as the current foundation, because the goal of this branch was browseability and identification rather than a full media-analysis platform.
+
+### Verification Run
+
+- `npm run db:generate -w apps/api`
+- `npm run lint -w apps/api`
+- `npm run lint -w apps/web`
+- `npm run test -w apps/api -- recording.routes.test.ts recording-storage.test.ts recording-retention.test.ts recording-thumbnail.test.ts recording-status.test.ts`
+- `npm run test -w apps/web -- recording-form-state.test.ts recording-library-state.test.ts`
+
+### Remaining Risk
+
+- Retention is still owned by the single API runtime process; a multi-replica deployment would need shared worker/lease ownership before automatic cleanup can be considered horizontally safe.
+- Thumbnail extraction assumes ffmpeg can decode the finalized MP4 output; unusual codec/container edge cases may still finish playback without producing a preview image.
+- The library now exposes richer detail and filtering, but there is still no bulk action workflow for large cleanup passes.
+- Per-channel or per-rule retention settings are still future work; the current policy is intentionally global plus protected overrides.
+
+### Exact Suggested Next Task
+
+Add bulk library actions plus a dedicated retention settings UI, then move runtime-owned cleanup/scheduling work behind a lease-based worker for multi-replica safety.
+
 ## `2026-04-04T09:30:00+03:00`
 
 ### Objective

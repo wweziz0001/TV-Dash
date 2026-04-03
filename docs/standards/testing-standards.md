@@ -168,6 +168,8 @@ These areas are release-critical and should gain or maintain automated coverage 
 - recording route contracts for create/list/update/cancel/stop/playback access
 - storage-path safety and playback media access behavior
 - library filtering/search behavior when recording list contracts change
+- retention-rule evaluation plus protected-recording exclusion behavior
+- thumbnail path/offset or generation-orchestration helpers when preview support changes
 
 ### Auth And Governance
 

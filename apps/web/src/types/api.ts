@@ -300,12 +300,27 @@ export interface RecordingAsset {
   fileName: string;
   mimeType: string;
   containerFormat: string;
+  storagePath: string;
   startedAt: string;
   endedAt: string;
   durationSeconds: number | null;
   fileSizeBytes: number | null;
+  thumbnailUrl: string | null;
+  thumbnailMimeType: string | null;
+  thumbnailGeneratedAt: string | null;
+  playbackUrl: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RecordingRetentionSummary {
+  isProtected: boolean;
+  protectedAt: string | null;
+  deleteAfter: string | null;
+  mode: "ACTIVE" | "STANDARD" | "FAILED_CLEANUP" | "PROTECTED";
+  maxAgeDays: number;
+  maxRecordingsPerChannel: number;
+  failedCleanupHours: number;
 }
 
 export interface RecordingJob {
@@ -320,6 +335,8 @@ export interface RecordingJob {
   status: RecordingJobStatus;
   paddingBeforeMinutes: number;
   paddingAfterMinutes: number;
+  isProtected: boolean;
+  protectedAt: string | null;
   startAt: string;
   endAt: string | null;
   actualStartAt: string | null;
@@ -328,10 +345,14 @@ export interface RecordingJob {
   cancellationReason: string | null;
   createdAt: string;
   updatedAt: string;
+  retention: RecordingRetentionSummary;
   program: {
     id: string | null;
     sourceKind: ProgramEntrySource | null;
     title: string | null;
+    description: string | null;
+    category: string | null;
+    imageUrl: string | null;
     startAt: string | null;
     endAt: string | null;
   } | null;

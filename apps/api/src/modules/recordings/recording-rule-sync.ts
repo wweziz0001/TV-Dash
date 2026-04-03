@@ -108,6 +108,8 @@ export async function syncRecurringRecordingJobs(now = new Date()) {
         channelSlugSnapshot: rule.channel.slug,
         programEntryId: matchedProgramme?.id ?? null,
         programTitleSnapshot: matchedProgramme?.title ?? rule.originProgramTitleSnapshot ?? null,
+        programDescriptionSnapshot: matchedProgramme?.description ?? null,
+        programCategorySnapshot: matchedProgramme?.category ?? null,
         programStartAt: matchedProgramme ? new Date(matchedProgramme.start) : rule.originProgramStartAt,
         programEndAt: matchedProgramme?.stop ? new Date(matchedProgramme.stop) : rule.originProgramEndAt,
         recordingRuleId: rule.id,

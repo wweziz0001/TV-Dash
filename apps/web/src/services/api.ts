@@ -188,6 +188,12 @@ export const api = {
     request<{ job: RecordingJob }>(`/recordings/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
   updateRecordingRule: (id: string, payload: RecordingRuleInput, token: string) =>
     request<{ rule: RecordingRule }>(`/recording-rules/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+  updateRecordingRetention: (id: string, isProtected: boolean, token: string) =>
+    request<{ job: RecordingJob }>(
+      `/recordings/${id}/retention`,
+      { method: "PUT", body: JSON.stringify({ isProtected }) },
+      token,
+    ),
   cancelRecordingJob: (id: string, token: string) =>
     request<{ job: RecordingJob }>(`/recordings/${id}/cancel`, { method: "POST" }, token),
   stopRecordingJob: (id: string, token: string) =>

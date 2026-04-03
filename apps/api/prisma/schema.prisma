@@ -296,6 +296,8 @@ model RecordingJob {
   programEntryId      String?            @db.Uuid
   programEntry        ProgramEntry?      @relation(fields: [programEntryId], references: [id], onDelete: SetNull)
   programTitleSnapshot String?
+  programDescriptionSnapshot String?
+  programCategorySnapshot String?
   programStartAt      DateTime?
   programEndAt        DateTime?
   recordingRuleId     String?            @db.Uuid
@@ -310,6 +312,8 @@ model RecordingJob {
   status              RecordingJobStatus @default(PENDING)
   paddingBeforeMinutes Int               @default(0)
   paddingAfterMinutes Int                @default(0)
+  isProtected         Boolean            @default(false)
+  protectedAt         DateTime?
   startAt             DateTime
   endAt               DateTime?
   actualStartAt       DateTime?
@@ -323,9 +327,11 @@ model RecordingJob {
 
   @@index([createdByUserId, status, startAt])
   @@index([channelId, startAt])
+  @@index([channelId, isProtected, startAt])
   @@index([programEntryId, startAt])
   @@index([recordingRuleId, startAt])
   @@index([status, startAt])
+  @@index([isProtected, status, startAt])
   @@unique([recordingRuleId, startAt])
 }
 
@@ -374,6 +380,9 @@ model RecordingAsset {
   endedAt             DateTime
   durationSeconds     Int?
   fileSizeBytes       BigInt?
+  thumbnailPath       String?      @unique
+  thumbnailMimeType   String?
+  thumbnailGeneratedAt DateTime?
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
