@@ -1,14 +1,14 @@
-<a href="https://tvdash.com/" target="_blank" rel="noopener">
+<a href="https://wweziz0001.github.io/TV-Dash" target="_blank" rel="noopener">
   <picture>
     <source media="(prefers-color-scheme: dark)" alt="TvDash" srcset="/docs/tvdash-banner.png" />
-    <img alt="TvDash" src="https://wweziz0001.github.io/TV-Dash/docs/tvdash-banner.png" />
+    <img alt="TvDash" src="/docs/tvdash-banner.png" />
   </picture>
 </a>
 
 <h4 align="center">
-  <a href="https://tvdash.com">TV Dash</a> |
-  <a href="https://blog.tvdash.com">Blog</a> |
-  <a href="https://docs.tvdash.com">Documentation</a> |
+  <a href="https://wweziz0001.github.io/TV-Dash">TV Dash</a> |
+  <a href="https://wweziz0001.github.io/TV-Dash/blog">Blog</a> |
+  <a href="https://wweziz0001.github.io/TV-Dash/docs">Documentation</a> |
 </h4>
 
 <div align="center">
@@ -37,7 +37,7 @@
 
 <div align="center">
   <figure>
-    <a href="https://tvdash.com" target="_blank" rel="noopener">
+    <a href="https://wweziz0001.github.io/TV-Dash" target="_blank" rel="noopener">
       <img src="/docs/tvdash.png" alt="Product showcase" />
     </a>
     <figcaption>
