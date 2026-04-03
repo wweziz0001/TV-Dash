@@ -35,6 +35,7 @@ interface MultiviewTileCardProps {
   isPickerTarget: boolean;
   isDragging: boolean;
   isDragTarget: boolean;
+  canDragSwap: boolean;
   onFocus: () => void;
   onToggleAudio: () => void;
   onOpenPicker: () => void;
@@ -66,6 +67,7 @@ export function MultiviewTileCard({
   isPickerTarget,
   isDragging,
   isDragTarget,
+  canDragSwap,
   onFocus,
   onToggleAudio,
   onOpenPicker,
@@ -104,6 +106,7 @@ export function MultiviewTileCard({
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
+            <Badge size="sm">Tile {tileIndex + 1}</Badge>
             <p className="truncate text-[13px] font-semibold text-white">{channel?.name ?? `Tile ${tileIndex + 1}`}</p>
             <Badge className={statusBadgeClassName} size="sm">{playerDiagnostics.label}</Badge>
             {playerDiagnostics.recoveryState === "recovered" ? <Badge className="text-emerald-200" size="sm">Recovered</Badge> : null}
@@ -120,15 +123,17 @@ export function MultiviewTileCard({
           ) : null}
         </div>
 
-        <div
-          aria-label="Drag to swap tile positions"
-          className="flex h-[1.875rem] w-[1.875rem] cursor-move items-center justify-center rounded-lg border border-slate-800/80 bg-slate-950/70 text-slate-400"
-          draggable
-          onDragStart={onDragStart}
-          title="Drag to swap tile positions"
-        >
-          <GripVertical className="h-4 w-4" />
-        </div>
+        {canDragSwap ? (
+          <div
+            aria-label="Drag to swap tile positions"
+            className="hidden h-[1.875rem] w-[1.875rem] cursor-move items-center justify-center rounded-lg border border-slate-800/80 bg-slate-950/70 text-slate-400 sm:flex"
+            draggable
+            onDragStart={onDragStart}
+            title="Drag to swap tile positions"
+          >
+            <GripVertical className="h-4 w-4" />
+          </div>
+        ) : null}
       </div>
 
       <div className="mb-2 flex flex-wrap gap-1.5">
@@ -160,10 +165,10 @@ export function MultiviewTileCard({
         <Button aria-label="Clear tile" disabled={!channel} onClick={onClear} size="icon-sm" type="button" variant="ghost">
           <X className="h-4 w-4" />
         </Button>
-        <div className="ml-auto flex min-w-[72px] items-center gap-1.5 rounded-lg border border-slate-800/80 bg-slate-950/70 px-2 py-0">
-          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500"></span>
+        <div className="flex w-full items-center gap-1.5 rounded-xl border border-slate-800/80 bg-slate-950/70 px-2.5 py-1 sm:ml-auto sm:w-auto sm:min-w-[88px] sm:rounded-lg sm:px-2 sm:py-0">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Quality</span>
           <Select
-            className="h-6 border-0 bg-transparent px-0 text-[11px] focus:border-transparent"
+            className="h-7 border-0 bg-transparent px-0 text-[11px] focus:border-transparent sm:h-6"
             disabled={!channel}
             onChange={(event) => onPreferredQualityChange(event.target.value)}
             uiSize="sm"

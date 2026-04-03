@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MultiviewTileCard } from "./multiview-tile-card";
@@ -30,8 +30,8 @@ const layoutDefinition: LayoutDefinition = {
   label: "2x2",
   description: "Quad wall",
   tileCount: 4,
-  containerClassName: "grid-cols-1 md:grid-cols-2",
-  tileClassNames: ["min-h-[280px]", "min-h-[280px]", "min-h-[280px]", "min-h-[280px]"],
+  containerClassName: "grid-cols-1 sm:grid-cols-2",
+  tileClassNames: Array.from({ length: 4 }, () => "min-h-[220px] sm:min-h-[260px] 2xl:min-h-[320px]"),
 };
 
 const defaultPlayerDiagnostics = buildPlayerDiagnostics({
@@ -41,6 +41,7 @@ const defaultPlayerDiagnostics = buildPlayerDiagnostics({
 
 describe("MultiviewTileCard", () => {
   beforeEach(() => {
+    cleanup();
     hlsPlayerLifecycle.mounts = 0;
     hlsPlayerLifecycle.unmounts = 0;
   });
@@ -73,6 +74,7 @@ describe("MultiviewTileCard", () => {
         guideLoading={false}
         isDragging={false}
         isDragTarget={false}
+        canDragSwap
         isFocused={false}
         isPickerTarget={false}
         layoutDefinition={layoutDefinition}
@@ -136,6 +138,7 @@ describe("MultiviewTileCard", () => {
         guideLoading={false}
         isDragging={false}
         isDragTarget={false}
+        canDragSwap
         isFocused={false}
         isPickerTarget={false}
         layoutDefinition={layoutDefinition}
@@ -187,6 +190,7 @@ describe("MultiviewTileCard", () => {
         guideLoading={false}
         isDragging={false}
         isDragTarget={false}
+        canDragSwap
         isFocused
         isPickerTarget={false}
         layoutDefinition={layoutDefinition}
@@ -216,5 +220,61 @@ describe("MultiviewTileCard", () => {
     expect(hlsPlayerLifecycle.mounts).toBe(1);
     expect(hlsPlayerLifecycle.unmounts).toBe(0);
     expect(screen.getByText("Ops Feed Mirror player")).toBeInTheDocument();
+  });
+
+  it("hides drag-swap affordances when touch-first mode disables tile swapping", () => {
+    render(
+      <MultiviewTileCard
+        canDragSwap={false}
+        channel={{
+          id: "channel-1",
+          name: "Ops Feed",
+          slug: "ops-feed",
+          logoUrl: null,
+          sourceMode: "MASTER_PLAYLIST",
+          masterHlsUrl: "https://example.com/live.m3u8",
+          playbackMode: "DIRECT",
+          manualVariantCount: 0,
+          groupId: null,
+          group: null,
+          epgSourceId: null,
+          epgChannelId: null,
+          epgSource: null,
+          isActive: true,
+          sortOrder: 1,
+          createdAt: "",
+          updatedAt: "",
+        }}
+        guide={null}
+        guideLoading={false}
+        isDragging={false}
+        isDragTarget={false}
+        isFocused={false}
+        isPickerTarget={false}
+        layoutDefinition={layoutDefinition}
+        onClear={vi.fn()}
+        onDragEnd={vi.fn()}
+        onDragOver={vi.fn()}
+        onDragStart={vi.fn()}
+        onDrop={vi.fn()}
+        onFocus={vi.fn()}
+        onFullscreen={vi.fn()}
+        onOpenPicker={vi.fn()}
+        onPreferredQualityChange={vi.fn()}
+        onQualityOptionsChange={vi.fn()}
+        onSelectedQualityChange={vi.fn()}
+        onStatusChange={vi.fn()}
+        onDiagnosticsChange={vi.fn()}
+        onToggleAudio={vi.fn()}
+        playerDiagnostics={defaultPlayerDiagnostics}
+        playerStatus="playing"
+        qualityOptions={[{ value: "AUTO", label: "Auto", height: null }]}
+        src="https://example.com/live.m3u8"
+        tile={{ channelId: "channel-1", isMuted: false, preferredQuality: "AUTO" }}
+        tileIndex={0}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Drag to swap tile positions")).not.toBeInTheDocument();
   });
 });

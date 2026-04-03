@@ -14,6 +14,7 @@ import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { usePlaybackSessionHeartbeat } from "@/features/observability/use-playback-session-heartbeat";
 import { isEditableKeyboardTarget } from "@/lib/keyboard";
+import { useDeviceProfile } from "@/lib/use-device-profile";
 import { cn } from "@/lib/utils";
 import type { PlayerDiagnostics, PlayerStatus } from "@/player/hls-player";
 import { getLayoutDefinition, layoutDefinitions } from "@/player/layouts";
@@ -32,12 +33,18 @@ import {
   swapTiles,
 } from "@/player/multiview-state";
 import { MultiviewTileCard } from "@/player/multiview-tile-card";
+import {
+  constrainMultiviewLayoutType,
+  getMultiviewViewportPolicy,
+  getSuggestedMultiviewLayoutType,
+} from "@/player/multiview-viewport";
 import { defaultQualityOptions } from "@/player/quality-options";
 import { api, getChannelPlaybackUrl } from "@/services/api";
 import type { QualityOption } from "@/types/api";
 
 export function MultiViewPage() {
   const { token } = useAuth();
+  const { deviceClass, isCoarsePointer, viewportWidth } = useDeviceProfile();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const initialChannelsApplied = useRef(false);
@@ -53,6 +60,8 @@ export function MultiViewPage() {
   const [qualityOptionsByTile, setQualityOptionsByTile] = useState<Record<number, QualityOption[]>>({});
   const [playerStatusByTile, setPlayerStatusByTile] = useState<Record<number, PlayerStatus>>({});
   const [playerDiagnosticsByTile, setPlayerDiagnosticsByTile] = useState<Record<number, PlayerDiagnostics>>({});
+  const viewportPolicy = useMemo(() => getMultiviewViewportPolicy(viewportWidth), [viewportWidth]);
+  const canDragSwap = !isCoarsePointer && deviceClass !== "mobile";
 
   const channelsQuery = useQuery({
     queryKey: ["channels", token],
@@ -69,6 +78,11 @@ export function MultiViewPage() {
   const tileChannelIds = useMemo(
     () => [...new Set(tiles.map((tile) => tile.channelId).filter((channelId): channelId is string => Boolean(channelId)))],
     [tiles],
+  );
+  const activeChannelCount = tileChannelIds.length;
+  const availableLayouts = useMemo(
+    () => layoutDefinitions.filter((layout) => viewportPolicy.allowedLayoutTypes.includes(layout.type)),
+    [viewportPolicy.allowedLayoutTypes],
   );
 
   const nowNextQuery = useQuery({
@@ -95,23 +109,33 @@ export function MultiViewPage() {
   }, [layoutType]);
 
   useEffect(() => {
+    const constrainedLayoutType = constrainMultiviewLayoutType(layoutType, viewportWidth, activeChannelCount);
+
+    if (constrainedLayoutType !== layoutType) {
+      setLayoutType(constrainedLayoutType);
+    }
+  }, [activeChannelCount, layoutType, viewportWidth]);
+
+  useEffect(() => {
     if (!channelsQuery.data || initialChannelsApplied.current) {
       return;
     }
 
-    const seededIds = searchParams.get("channels")?.split(",").filter(Boolean) ?? [];
-    const fallbackIds = channelsQuery.data.slice(0, getLayoutDefinition(layoutType).tileCount).map((channel) => channel.id);
+    const seededIds = (searchParams.get("channels")?.split(",").filter(Boolean) ?? []).slice(0, viewportPolicy.maxTileCount);
+    const fallbackIds = channelsQuery.data.slice(0, viewportPolicy.maxTileCount).map((channel) => channel.id);
     const nextIds = seededIds.length ? seededIds : fallbackIds;
+    const nextLayoutType = getSuggestedMultiviewLayoutType(viewportWidth, nextIds.length);
 
+    setLayoutType(nextLayoutType);
     setTiles(
-      resizeTiles(layoutType, [], { ensureAudioOwner: true }).map((tile, index) => ({
+      resizeTiles(nextLayoutType, [], { ensureAudioOwner: true }).map((tile, index) => ({
         ...tile,
         channelId: nextIds[index] ?? null,
       })),
     );
     setFocusedTileIndex(0);
     initialChannelsApplied.current = true;
-  }, [channelsQuery.data, layoutType, searchParams]);
+  }, [channelsQuery.data, searchParams, viewportPolicy.maxTileCount, viewportWidth]);
 
   const saveMutation = useMutation({
     mutationFn: async (mode: "create" | "update") => {
@@ -208,7 +232,7 @@ export function MultiViewPage() {
     });
 
   function updateLayoutType(nextLayoutType: LayoutType) {
-    setLayoutType(nextLayoutType);
+    setLayoutType(constrainMultiviewLayoutType(nextLayoutType, viewportWidth, activeChannelCount));
   }
 
   function applySavedLayout(layoutId: string) {
@@ -218,11 +242,13 @@ export function MultiViewPage() {
     }
 
     const nextState = hydrateMultiviewLayout(layout);
+    const populatedTileCount = layout.items.filter((item) => item.channelId).length;
+    const nextLayoutType = constrainMultiviewLayoutType(layout.layoutType, viewportWidth, populatedTileCount);
     setSelectedLayoutId(layout.id);
     setLayoutName(layout.name);
-    setLayoutType(layout.layoutType);
-    setTiles(nextState.tiles);
-    setFocusedTileIndex(nextState.focusedTileIndex);
+    setLayoutType(nextLayoutType);
+    setTiles(resizeTiles(nextLayoutType, nextState.tiles, { ensureAudioOwner: true }));
+    setFocusedTileIndex(Math.min(nextState.focusedTileIndex, getLayoutDefinition(nextLayoutType).tileCount - 1));
     setPickerTileIndex(null);
     setQualityOptionsByTile({});
     setPlayerStatusByTile({});
@@ -346,11 +372,12 @@ export function MultiViewPage() {
         description="Swap tiles quickly, keep one live audio owner, and keep the wall itself as the primary surface."
         actions={
           <>
-            <Button onClick={() => saveMutation.mutate("create")} size="sm">
+            <Button className="w-full sm:w-auto" onClick={() => saveMutation.mutate("create")} size="sm">
               <Save className="h-4 w-4" />
               Save as new
             </Button>
             <Button
+              className="w-full sm:w-auto"
               disabled={!selectedLayoutId}
               onClick={() => saveMutation.mutate("update")}
               size="sm"
@@ -359,14 +386,20 @@ export function MultiViewPage() {
               <Save className="h-4 w-4" />
               Update selected
             </Button>
-            <Button disabled={!selectedLayoutId} onClick={() => deleteMutation.mutate()} size="sm" variant="secondary">
+            <Button
+              className="w-full sm:w-auto"
+              disabled={!selectedLayoutId}
+              onClick={() => deleteMutation.mutate()}
+              size="sm"
+              variant="secondary"
+            >
               <Trash2 className="h-4 w-4" />
               Delete
             </Button>
           </>
         }
       >
-        <div className="grid gap-3 xl:grid-cols-[0.46fr_0.24fr_0.3fr]">
+        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-[0.46fr_0.24fr_0.3fr]">
           <Input onChange={(event) => setLayoutName(event.target.value)} placeholder="Layout name" uiSize="sm" value={layoutName} />
           <Select
             onChange={(event) => {
@@ -384,19 +417,20 @@ export function MultiViewPage() {
               </option>
             ))}
           </Select>
-          <div className="rounded-xl border border-slate-800/80 bg-slate-950/70 px-3 py-2.5">
+          <div className="rounded-xl border border-slate-800/80 bg-slate-950/70 px-3 py-2.5 md:col-span-2 2xl:col-span-1">
             <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Current wall</p>
             <p className="mt-1 text-[13px] font-semibold text-white">
               {layoutDefinition.label} · {layoutDefinition.tileCount} tiles
             </p>
             <p className="mt-0.5 text-[10px] text-slate-500">
-              {selectedLayout ? `Editing saved layout: ${selectedLayout.name}` : "Working in an unsaved operator draft"}
+              {selectedLayout ? `Editing saved layout: ${selectedLayout.name}` : "Working in an unsaved operator draft"} ·{" "}
+              {deviceClass}
             </p>
           </div>
         </div>
 
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {layoutDefinitions.map((layout) => (
+          {availableLayouts.map((layout) => (
             <Button
               key={layout.type}
               onClick={() => updateLayoutType(layout.type)}
@@ -408,15 +442,25 @@ export function MultiViewPage() {
             </Button>
           ))}
         </div>
+
+        <div className="mt-3 rounded-xl border border-slate-800/80 bg-slate-950/70 px-3 py-2.5">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Viewport policy</p>
+          <p className="mt-1 text-[13px] text-slate-300">{viewportPolicy.operatorNote}</p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            {canDragSwap
+              ? "Drag-swap stays enabled for fine-pointer devices."
+              : "Touch-first mode disables drag-swap and prioritizes focus, replace, and saved-layout flows."}
+          </p>
+        </div>
       </PageHeader>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
-        <Panel className="p-2.5" density="compact">
+      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+        <Panel className="p-2 sm:p-2.5" density="compact">
           <div className="mb-2 flex items-center justify-between gap-3">
             <div>
               <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Live wall</p>
               <p className="mt-0.5 text-[13px] text-slate-400">
-                {tiles.filter((tile) => tile.channelId).length} active feed(s) · focus tile {focusedTileIndex + 1}
+                {activeChannelCount} active feed(s) · focus tile {focusedTileIndex + 1}
               </p>
             </div>
           </div>
@@ -447,6 +491,7 @@ export function MultiViewPage() {
                     guideLoading={nowNextQuery.isLoading}
                     isDragging={draggedTileIndex === index}
                     isDragTarget={dragTargetTileIndex === index && draggedTileIndex !== index}
+                    canDragSwap={canDragSwap}
                     isFocused={focusedTileIndex === index}
                     isPickerTarget={pickerTileIndex === index}
                     layoutDefinition={layoutDefinition}
@@ -456,12 +501,21 @@ export function MultiViewPage() {
                       setDragTargetTileIndex(null);
                     }}
                     onDragOver={(event) => {
+                      if (!canDragSwap) {
+                        return;
+                      }
+
                       event.preventDefault();
                       if (draggedTileIndex !== null) {
                         setDragTargetTileIndex(index);
                       }
                     }}
                     onDragStart={(event) => {
+                      if (!canDragSwap) {
+                        event.preventDefault();
+                        return;
+                      }
+
                       event.dataTransfer.effectAllowed = "move";
                       event.dataTransfer.setData("text/plain", String(index));
                       setDraggedTileIndex(index);
@@ -469,6 +523,10 @@ export function MultiViewPage() {
                       setFocusedTileIndex(index);
                     }}
                     onDrop={(event) => {
+                      if (!canDragSwap) {
+                        return;
+                      }
+
                       event.preventDefault();
                       const sourceIndex =
                         draggedTileIndex ?? Number.parseInt(event.dataTransfer.getData("text/plain"), 10);
@@ -518,8 +576,8 @@ export function MultiViewPage() {
           </div>
         </Panel>
 
-        <div className="space-y-3 xl:sticky xl:top-3 xl:self-start">
-          <Panel density="compact">
+        <div className="grid gap-3 lg:grid-cols-2 2xl:sticky 2xl:top-3 2xl:grid-cols-1 2xl:self-start">
+          <Panel className="lg:col-span-2 2xl:col-span-1" density="compact">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Focused Tile</p>
@@ -573,7 +631,9 @@ export function MultiViewPage() {
                   ) : null}
                 </div>
                 <p className="mt-2 text-[12px] text-slate-400">
-                  Drag tiles to swap positions, replace the focused source quickly, and keep most of the screen on the live wall.
+                  {canDragSwap
+                    ? "Drag tiles to swap positions, replace the focused source quickly, and keep most of the screen on the live wall."
+                    : "Touch mode keeps swapping off so the wall stays stable while you replace feeds and move through focused monitoring."}
                 </p>
               </div>
 
@@ -582,7 +642,7 @@ export function MultiViewPage() {
                   <Keyboard className="h-4 w-4 text-accent" />
                   <div>
                     <p className="text-sm font-semibold text-white">Operator shortcuts</p>
-                    <p className="text-[12px] text-slate-400">Compact, high-frequency controls.</p>
+                    <p className="text-[12px] text-slate-400">Keyboard and remote-friendly controls.</p>
                   </div>
                 </div>
                 <div className="mt-3 space-y-1.5 text-[12px] text-slate-300">
@@ -602,7 +662,7 @@ export function MultiViewPage() {
                     <span className="font-mono text-cyan-200">Delete</span> clear the focused tile
                   </p>
                   <p>
-                    <span className="font-mono text-cyan-200">Shift + 1-5</span> switch layout presets
+                    <span className="font-mono text-cyan-200">Shift + 1-5</span> switch the allowed layout presets
                   </p>
                 </div>
               </div>
