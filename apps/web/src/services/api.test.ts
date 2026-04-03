@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getChannelPlaybackUrl } from "./api";
+import { getChannelPlaybackUrl, resolveApiUrl } from "./api";
 
 describe("getChannelPlaybackUrl", () => {
   it("returns the direct upstream URL for direct channels", () => {
@@ -47,5 +47,9 @@ describe("getChannelPlaybackUrl", () => {
         playbackMode: "DIRECT",
       }),
     ).toContain("/streams/channels/11111111-1111-1111-1111-111111111111/master");
+  });
+
+  it("resolves relative API paths against the configured API origin", () => {
+    expect(resolveApiUrl("/api/recordings/job-1/media?token=abc")).toContain("/api/recordings/job-1/media?token=abc");
   });
 });

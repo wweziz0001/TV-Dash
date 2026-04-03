@@ -2,6 +2,7 @@ import {
   ActivitySquare,
   BarChart3,
   Clapperboard,
+  Film,
   Grid2x2,
   LayoutDashboard,
   LogOut,
@@ -17,6 +18,7 @@ import { roleHasPermission } from "@tv-dash/shared";
 const primaryNav = [
   { to: "/", label: "Channels", icon: Clapperboard, end: true },
   { to: "/multiview", label: "Multi-View", icon: Grid2x2 },
+  { to: "/recordings", label: "Recordings", icon: Film },
 ];
 
 const adminNav = [

@@ -7,6 +7,8 @@ import type {
   LoginInput,
   PlaybackSessionEndInput,
   PlaybackSessionHeartbeatInput,
+  RecordingJobInput,
+  RecordingJobUpdateInput,
   ProgramEntryInput,
   SavedLayoutInput,
   StreamTestInput,
@@ -27,6 +29,7 @@ import type {
   EpgSourceDiagnostics,
   Favorite,
   ProgramEntry,
+  RecordingJob,
   SavedLayout,
   StreamTestResult,
   User,
@@ -154,6 +157,20 @@ export const api = {
   updateLayout: (id: string, payload: SavedLayoutInput, token: string) =>
     request<{ layout: SavedLayout }>(`/layouts/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
   deleteLayout: (id: string, token: string) => request<void>(`/layouts/${id}`, { method: "DELETE" }, token),
+  listRecordingJobs: (token: string, params?: URLSearchParams) =>
+    request<{ jobs: RecordingJob[] }>(`/recordings${params ? `?${params.toString()}` : ""}`, {}, token),
+  getRecordingJob: (id: string, token: string) => request<{ job: RecordingJob }>(`/recordings/${id}`, {}, token),
+  createRecordingJob: (payload: RecordingJobInput, token: string) =>
+    request<{ job: RecordingJob }>("/recordings", { method: "POST", body: JSON.stringify(payload) }, token),
+  updateRecordingJob: (id: string, payload: RecordingJobUpdateInput, token: string) =>
+    request<{ job: RecordingJob }>(`/recordings/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+  cancelRecordingJob: (id: string, token: string) =>
+    request<{ job: RecordingJob }>(`/recordings/${id}/cancel`, { method: "POST" }, token),
+  stopRecordingJob: (id: string, token: string) =>
+    request<{ job: RecordingJob }>(`/recordings/${id}/stop`, { method: "POST" }, token),
+  deleteRecordingJob: (id: string, token: string) => request<void>(`/recordings/${id}`, { method: "DELETE" }, token),
+  getRecordingPlaybackAccess: (id: string, token: string) =>
+    request<{ playbackUrl: string }>(`/recordings/${id}/playback-access`, {}, token),
   listEpgSources: (token: string) => request<{ sources: EpgSource[] }>("/epg/sources", {}, token),
   getEpgSourceDiagnostics: (id: string, token: string) =>
     request<{ diagnostics: EpgSourceDiagnostics }>(`/diagnostics/epg-sources/${id}`, {}, token),
@@ -217,4 +234,13 @@ export function getChannelPlaybackUrl(
   }
 
   return channel.masterHlsUrl;
+}
+
+export function resolveApiUrl(path: string) {
+  if (/^https?:\/\//.test(path)) {
+    return path;
+  }
+
+  const apiOrigin = API_BASE_URL.replace(/\/api$/, "");
+  return `${apiOrigin}${path}`;
 }

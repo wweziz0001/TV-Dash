@@ -5,6 +5,9 @@ import type {
   EpgImportStatus,
   EpgSourceType,
   LayoutType,
+  RecordingJobStatus,
+  RecordingMode,
+  RecordingRunStatus,
   PlaybackSessionState,
   PlaybackSessionType,
   ProgramEntrySource,
@@ -268,6 +271,72 @@ export interface ChannelGuideWindow {
   programmes: NowNextProgram[];
 }
 
+export interface RecordingRun {
+  id: string;
+  status: RecordingRunStatus;
+  outputFileName: string;
+  containerFormat: string;
+  ffmpegPid: number | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  exitCode: number | null;
+  exitSignal: string | null;
+  failureReason: string | null;
+  stderrTail: string | null;
+  fileSizeBytes: number | null;
+  durationSeconds: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RecordingAsset {
+  id: string;
+  channelId: string | null;
+  channelNameSnapshot: string;
+  channelSlugSnapshot: string;
+  title: string;
+  fileName: string;
+  mimeType: string;
+  containerFormat: string;
+  startedAt: string;
+  endedAt: string;
+  durationSeconds: number | null;
+  fileSizeBytes: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RecordingJob {
+  id: string;
+  channelId: string | null;
+  channelNameSnapshot: string;
+  channelSlugSnapshot: string;
+  title: string;
+  mode: RecordingMode;
+  status: RecordingJobStatus;
+  startAt: string;
+  endAt: string | null;
+  actualStartAt: string | null;
+  actualEndAt: string | null;
+  failureReason: string | null;
+  cancellationReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  channel: {
+    id: string;
+    name: string;
+    slug: string;
+    isActive: boolean;
+  } | null;
+  createdByUser: {
+    id: string;
+    username: string;
+    role: UserRole;
+  } | null;
+  latestRun: RecordingRun | null;
+  asset: RecordingAsset | null;
+}
+
 export interface AuthResponse {
   token: string;
   user: User;
@@ -318,6 +387,8 @@ export interface AuditEvent {
   detail: Record<string, string | number | boolean | null | undefined> | null;
   createdAt: string;
 }
+
+export type { RecordingJobStatus, RecordingMode, RecordingRunStatus };
 
 export interface AdminMonitoringSession {
   sessionId: string;

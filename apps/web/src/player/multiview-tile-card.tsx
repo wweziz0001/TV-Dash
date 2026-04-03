@@ -15,7 +15,7 @@ import { Select } from "@/components/ui/select";
 import { ChannelGuideCard } from "@/components/channels/channel-guide-card";
 import { cn } from "@/lib/utils";
 import { HlsPlayer, type PlayerDiagnostics, type PlayerStatus } from "@/player/hls-player";
-import type { Channel, ChannelNowNext, QualityOption } from "@/types/api";
+import type { Channel, ChannelNowNext, QualityOption, RecordingJob } from "@/types/api";
 import { getPlaybackTone } from "./playback-diagnostics";
 import type { LayoutDefinition } from "./layouts";
 import type { TileState } from "./multiview-layout";
@@ -36,8 +36,10 @@ interface MultiviewTileCardProps {
   isDragging: boolean;
   isDragTarget: boolean;
   canDragSwap: boolean;
+  recordingJob?: RecordingJob | null;
   onFocus: () => void;
   onToggleAudio: () => void;
+  onToggleRecording?: () => void;
   onOpenPicker: () => void;
   onClear: () => void;
   onPreferredQualityChange: (value: string) => void;
@@ -68,8 +70,10 @@ export function MultiviewTileCard({
   isDragging,
   isDragTarget,
   canDragSwap,
+  recordingJob = null,
   onFocus,
   onToggleAudio,
+  onToggleRecording = () => undefined,
   onOpenPicker,
   onClear,
   onPreferredQualityChange,
@@ -143,6 +147,20 @@ export function MultiviewTileCard({
         </Button>
         <Button aria-label={tile.isMuted ? "Unmute tile audio" : "Mute tile audio"} onClick={onToggleAudio} size="icon-sm" type="button" variant={tile.isMuted ? "secondary" : "primary"}>
           {tile.isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+        </Button>
+        <Button
+          aria-label={recordingJob?.status === "RECORDING" ? "Stop recording" : "Start recording now"}
+          disabled={!channel}
+          onClick={onToggleRecording}
+          size="sm"
+          type="button"
+          variant={recordingJob?.status === "RECORDING" ? "primary" : "secondary"}
+        >
+          <span
+            aria-hidden="true"
+            className={`h-2.5 w-2.5 rounded-full ${recordingJob?.status === "RECORDING" ? "bg-rose-300" : "bg-slate-300"}`}
+          />
+          {recordingJob?.status === "RECORDING" ? "Stop" : "REC"}
         </Button>
         <Button
           aria-label={isGuideOpen ? "Hide now and next guide" : "Show now and next guide"}
