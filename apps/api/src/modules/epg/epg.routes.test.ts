@@ -36,6 +36,10 @@ const mockPrisma = {
     update: vi.fn(),
     delete: vi.fn(),
   },
+  auditEvent: {
+    create: vi.fn(),
+    findMany: vi.fn(),
+  },
 };
 
 vi.mock("../../db/prisma.js", () => ({
@@ -64,6 +68,29 @@ describe("epgRoutes", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockPrisma.user.findUnique.mockImplementation(({ where }: { where?: { id?: string } }) =>
+      Promise.resolve(
+        where?.id === "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+          ? {
+              id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+              email: "admin@example.com",
+              username: "admin",
+              role: "ADMIN",
+              sessionVersion: 0,
+              createdAt: new Date("2026-04-02T00:00:00.000Z"),
+              updatedAt: new Date("2026-04-02T00:00:00.000Z"),
+            }
+          : {
+              id: "11111111-1111-1111-1111-111111111111",
+              email: "ops@example.com",
+              username: "ops-user",
+              role: "USER",
+              sessionVersion: 0,
+              createdAt: new Date("2026-04-02T00:00:00.000Z"),
+              updatedAt: new Date("2026-04-02T00:00:00.000Z"),
+            },
+      ),
+    );
     server = await buildServer();
   });
 
@@ -108,6 +135,37 @@ describe("epgRoutes", () => {
 
     expect(response.statusCode).toBe(201);
     expect(mockPrisma.epgSource.create).toHaveBeenCalled();
+    expect(mockPrisma.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "epg-source.create",
+          targetType: "epg-source",
+          targetName: "ops-xmltv",
+        }),
+      }),
+    );
+  });
+
+  it("rejects reserved upstream headers in EPG source configuration", async () => {
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/epg/sources",
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
+      payload: {
+        name: "Ops XMLTV",
+        slug: "ops-xmltv",
+        sourceType: "XMLTV",
+        url: "https://example.com/guide.xml",
+        isActive: true,
+        refreshIntervalMinutes: 360,
+        requestHeaders: {
+          authorization: "Basic secret",
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(mockPrisma.epgSource.create).not.toHaveBeenCalled();
   });
 
   it("maps duplicate EPG source slugs to 409", async () => {

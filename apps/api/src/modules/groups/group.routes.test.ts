@@ -29,6 +29,10 @@ const mockPrisma = {
     update: vi.fn(),
     delete: vi.fn(),
   },
+  auditEvent: {
+    create: vi.fn(),
+    findMany: vi.fn(),
+  },
 };
 
 vi.mock("../../db/prisma.js", () => ({
@@ -43,6 +47,29 @@ describe("groupRoutes", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockPrisma.user.findUnique.mockImplementation(({ where }: { where?: { id?: string } }) =>
+      Promise.resolve(
+        where?.id === "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+          ? {
+              id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+              email: "admin@example.com",
+              username: "admin",
+              role: "ADMIN",
+              sessionVersion: 0,
+              createdAt: new Date("2026-04-02T00:00:00.000Z"),
+              updatedAt: new Date("2026-04-02T00:00:00.000Z"),
+            }
+          : {
+              id: "11111111-1111-1111-1111-111111111111",
+              email: "ops@example.com",
+              username: "ops-user",
+              role: "USER",
+              sessionVersion: 0,
+              createdAt: new Date("2026-04-02T00:00:00.000Z"),
+              updatedAt: new Date("2026-04-02T00:00:00.000Z"),
+            },
+      ),
+    );
     server = await buildServer();
   });
 
@@ -79,6 +106,15 @@ describe("groupRoutes", () => {
         sortOrder: 1,
       },
     });
+    expect(mockPrisma.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "group.create",
+          targetType: "group",
+          targetName: "operations",
+        }),
+      }),
+    );
   });
 
   it("returns 409 for duplicate group slugs", async () => {
@@ -108,5 +144,21 @@ describe("groupRoutes", () => {
 
     expect(response.statusCode).toBe(400);
     expect(mockPrisma.channelGroup.delete).not.toHaveBeenCalled();
+  });
+
+  it("blocks group administration for non-admin users", async () => {
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/groups",
+      headers: createAuthHeaders(server, { role: "USER" }),
+      payload: {
+        name: "Operations",
+        slug: "operations",
+        sortOrder: 1,
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(mockPrisma.channelGroup.create).not.toHaveBeenCalled();
   });
 });

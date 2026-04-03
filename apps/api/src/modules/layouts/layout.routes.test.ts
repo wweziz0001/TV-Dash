@@ -43,6 +43,17 @@ describe("layoutRoutes", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockPrisma.user.findUnique.mockImplementation(({ where }: { where?: { id?: string } }) =>
+      Promise.resolve({
+        id: where?.id ?? "11111111-1111-1111-1111-111111111111",
+        email: "ops@example.com",
+        username: "ops-user",
+        role: "USER",
+        sessionVersion: 0,
+        createdAt: new Date("2026-04-02T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-02T00:00:00.000Z"),
+      }),
+    );
     server = await buildServer();
   });
 

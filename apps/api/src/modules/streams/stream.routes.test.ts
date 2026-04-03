@@ -50,6 +50,29 @@ describe("streamRoutes", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockPrisma.user.findUnique.mockImplementation(({ where }: { where?: { id?: string } }) =>
+      Promise.resolve(
+        where?.id === "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+          ? {
+              id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+              email: "admin@example.com",
+              username: "admin",
+              role: "ADMIN",
+              sessionVersion: 0,
+              createdAt: new Date("2026-04-02T00:00:00.000Z"),
+              updatedAt: new Date("2026-04-02T00:00:00.000Z"),
+            }
+          : {
+              id: "11111111-1111-1111-1111-111111111111",
+              email: "ops@example.com",
+              username: "ops-user",
+              role: "USER",
+              sessionVersion: 0,
+              createdAt: new Date("2026-04-02T00:00:00.000Z"),
+              updatedAt: new Date("2026-04-02T00:00:00.000Z"),
+            },
+      ),
+    );
     server = await buildServer();
   });
 
@@ -65,7 +88,7 @@ describe("streamRoutes", () => {
     const response = await server.inject({
       method: "POST",
       url: "/api/streams/test",
-      headers: createAuthHeaders(server),
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
       payload: {
         url: "not-a-url",
       },
@@ -73,6 +96,35 @@ describe("streamRoutes", () => {
 
     expect(response.statusCode).toBe(400);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("blocks stream inspection for non-admin users", async () => {
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/streams/test",
+      headers: createAuthHeaders(server, { role: "USER" }),
+      payload: {
+        url: "https://example.com/live.m3u8",
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("rejects reserved upstream headers in stream inspection", async () => {
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/streams/test",
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
+      payload: {
+        url: "https://example.com/live.m3u8",
+        requestHeaders: {
+          authorization: "Bearer secret",
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
   });
 
   it("passes configured request headers into stream inspection", async () => {
@@ -88,7 +140,7 @@ describe("streamRoutes", () => {
     const response = await server.inject({
       method: "POST",
       url: "/api/streams/test",
-      headers: createAuthHeaders(server),
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
       payload: {
         url: "https://example.com/live.m3u8",
         requestUserAgent: "OpsBot/1.0",
@@ -261,7 +313,7 @@ describe("streamRoutes", () => {
     const response = await server.inject({
       method: "GET",
       url: "/api/streams/metadata?url=https://example.com/live.m3u8",
-      headers: createAuthHeaders(server),
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
     });
 
     expect(response.statusCode).toBe(502);
