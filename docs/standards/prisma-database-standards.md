@@ -12,6 +12,9 @@ This document defines schema design, migration discipline, repository usage, and
   - `Favorite`
   - `SavedLayoutItem`
   - `ChannelQualityVariant`
+  - `EpgSourceChannel`
+  - `EpgChannelMapping`
+  - `ProgramEntry`
 
 ## Field Naming Rules
 
@@ -39,6 +42,14 @@ Current accepted nullable examples:
 - Collection relations are plural: `favorites`, `savedLayouts`, `items`.
 - Optional single relations remain singular: `group`, `channel`.
 - Always specify `onDelete` behavior intentionally for non-trivial relations.
+
+Guide-specific relation rule:
+
+- Imported guide concepts should be normalized:
+  - source configuration in `EpgSource`
+  - discovered XMLTV channel identities in `EpgSourceChannel`
+  - channel linkage in `EpgChannelMapping`
+  - concrete schedule rows in `ProgramEntry`
 
 ## Audit Field Rules
 
@@ -73,6 +84,8 @@ Current good examples:
 - unique `slug` fields
 - unique `[userId, channelId]` on `Favorite`
 - unique `[savedLayoutId, tileIndex]` on `SavedLayoutItem`
+- unique `[sourceId, xmltvChannelId]` on imported source channels
+- unique `[channelId]` on channel-to-guide mappings when one live mapping per channel is the intended rule
 
 When adding a new list endpoint, review whether a missing index will hurt it before shipping.
 
@@ -94,6 +107,12 @@ Migration review must check:
 - unique/index side effects
 - delete behavior on relations
 
+Guide-specific migration review must also check:
+
+- whether imported programme replacement is source-scoped and atomic
+- whether legacy direct guide-link fields are backfilled into normalized mapping tables before removal
+- whether large `ProgramEntry` write paths need indexes before release
+
 ## Seed Strategy
 
 - Seeds should produce a runnable operator experience, not just valid rows.
@@ -102,6 +121,7 @@ Migration review must check:
   - admin login
   - viewer login
   - grouped channels
+  - at least one mapped guide source/channel example when guide features depend on local data
   - at least one favorite
   - at least one saved layout
 
@@ -120,6 +140,7 @@ Do not turn the seed into a second application layer. Keep it readable and inten
 Use transactions when a change must not partially apply, such as:
 
 - multi-entity writes that must stay consistent
+- EPG imports that replace one source's imported channels and programme rows together
 - future layout save flows that perform dependent validation and writes together
 
 Do not use transactions just because multiple queries exist; use them when consistency requires atomicity.

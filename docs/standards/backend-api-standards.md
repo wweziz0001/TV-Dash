@@ -81,11 +81,13 @@ Repository input rule:
 Current stable module ownership:
 
 - `auth`: login and authenticated-user lookup
-- `channels`: logical channel catalog CRUD and browse lookups
+- `audit`: durable admin governance events and audit listing
+- `channels`: logical channel catalog CRUD, browse lookups, ingest-mode metadata, manual quality variants, playback-mode metadata, and playback-facing guide hints
+- `epg`: EPG source CRUD, XMLTV import orchestration, source-channel discovery, channel mapping, manual program CRUD, guide resolution, and now/next lookup
 - `groups`: channel group CRUD and counts
 - `favorites`: per-user favorite channel membership
 - `layouts`: per-user saved multiview walls
-- `diagnostics`: runtime observability snapshots and admin inspection endpoints
+- `diagnostics`: runtime observability snapshots, playback session tracking, and admin inspection endpoints
 - `streams`: stream inspection, metadata, and upstream test behavior
 - `health`: readiness endpoint
 
@@ -131,6 +133,12 @@ Rules:
 - log unexpected server errors with enough context for debugging
 - keep client-facing messages concise and actionable
 
+Guide-specific expectations:
+
+- XMLTV URL or file import failures should map to `502` when the upstream/read/parse work fails after validation succeeds
+- manual guide overlap conflicts should map to `409`
+- missing source, channel, mapping, or manual program resources should map to `404`
+
 ## Access Control Rules
 
 - Prefer explicit permission guards for protected routes over inline `request.user.role` checks.
@@ -150,6 +158,21 @@ Rules:
   - raw bearer tokens
   - raw upstream header values
   - full sensitive operational URLs
+
+Guide-management additions:
+
+- EPG source create, update, delete, and import operations should create sanitized audit events.
+- Channel-to-guide mapping changes and manual program mutations should also create durable audit events when they materially change operator-visible guide behavior.
+
+## Guide Management Rules
+
+- Guide source import must remain inside the `epg` module even when routes upload files or trigger URL refresh actions.
+- Channels should not own imported programme payloads directly; use dedicated mapping and program entities instead of mutating `Channel` with guide blobs.
+- Manual program precedence rules must be explicit, documented, and shared by:
+  - now/next endpoints
+  - future channel guide endpoints
+  - admin preview or diagnostics flows
+- Admin EPG APIs should return useful operational status, including import timestamps, result state, counts, and failure messages, without exposing raw upstream secrets.
 
 ## Observability Rules
 

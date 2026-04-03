@@ -11,6 +11,7 @@ Current automated coverage already exists for:
 - Fastify boot and health wiring
 - HLS master playlist parsing and synthetic master generation
 - runtime diagnostics snapshots and stream/EPG failure classification helpers
+- XMLTV parsing, guide resolution, and now/next lookup
 - quality option resolution
 - player diagnostics mapping for loading, retrying, buffering, failed, and recovered states
 - multi-view tile defaulting and single-audio behavior
@@ -82,6 +83,7 @@ These areas are release-critical and should gain or maintain automated coverage 
 - group CRUD
 - favorites add/remove
 - saved layouts create/update/delete/apply
+- EPG source import, mapping, manual entry, and now/next resolution
 - quality switching logic
 - multi-view layout resizing and audio ownership
 - device-aware multi-view layout fallback and viewport policy
@@ -146,6 +148,15 @@ These areas are release-critical and should gain or maintain automated coverage 
 - failure classification helpers for stream and XMLTV errors
 - playback session tracking, stale-session cleanup, and per-channel viewer-count aggregation when monitoring behavior changes
 - structured-log filtering behavior when the admin logs viewer contract changes
+
+### EPG And Guide Management
+
+- XMLTV parser normalization for channel ids, programme timing, categories, and images when parser behavior changes
+- EPG source validation for URL-vs-file mode and operational request metadata
+- import failure handling for unreadable XMLTV, network failures, and invalid uploads
+- channel mapping behavior when guide linkage rules or source-channel lookups change
+- manual program create, update, delete, and overlap rejection behavior
+- resolved guide-window and now/next precedence when manual and imported entries overlap
 
 ### Auth And Governance
 

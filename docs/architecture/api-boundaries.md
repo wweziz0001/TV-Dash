@@ -80,11 +80,11 @@ Repositories must not:
 - `audit`
   - durable admin governance events for sensitive operational actions
 - `channels`
-  - logical channel catalog CRUD, browse lookups, channel ingest-mode metadata, manual quality variants, proxy-mode metadata, and channel-to-EPG mapping fields
+  - logical channel catalog CRUD, browse lookups, channel ingest-mode metadata, manual quality variants, proxy-mode metadata, and playback-facing guide hints
 - `groups`
   - channel grouping/catalog structure
 - `epg`
-  - EPG source CRUD, XMLTV preview/lookup orchestration, and now/next response assembly
+  - EPG source CRUD, XMLTV import orchestration, source-channel discovery, channel mapping, manual program CRUD, guide resolution, and now/next response assembly
 - `favorites`
   - per-user pinned channels
 - `layouts`
@@ -115,11 +115,12 @@ Repositories must not:
 
 - EPG source configuration is a first-class backend domain, not a JSON blob hidden inside channel records.
 - XMLTV fetch/parsing orchestration belongs in the `epg` service layer.
-- Channels only store linkable EPG metadata:
-  - `epgSourceId`
-  - `epgChannelId`
-- Guide payload parsing, cache policy, and now/next assembly live behind the `epg` module boundary.
-- This milestone uses on-demand XMLTV fetch plus in-memory cache. Durable storage/background ingestion remains future work and should be added inside the `epg` module, not bolted onto route handlers.
+- Imported source channels belong in dedicated `EpgSourceChannel` records, not duplicated across channels.
+- Channel-to-guide linking belongs in dedicated `EpgChannelMapping` records, not direct mutable guide blobs on `Channel`.
+- Imported and manual guide rows belong in durable `ProgramEntry` records.
+- Manual guide rows may override imported rows, but that precedence rule must be resolved inside the `epg` module rather than inside pages or channel repositories.
+- Guide import, mapping, and now/next assembly live behind the `epg` module boundary.
+- This milestone uses explicit admin-triggered imports plus durable storage. Background refresh scheduling remains future work and should be added inside the `epg` module, not bolted onto route handlers.
 
 ## Error Handling Rules
 
@@ -129,7 +130,7 @@ Repositories must not:
 - missing owned resource: `404`
 - invalid or expired proxy token: `400`
 - upstream stream test failures: `502`
-- XMLTV upstream preview/fetch failures: `502`
+- XMLTV upstream fetch/import failures: `502`
 
 Keep those mappings stable unless the contract explicitly changes.
 
