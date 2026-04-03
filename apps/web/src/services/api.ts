@@ -61,6 +61,7 @@ function notifyAuthExpired(message: string) {
 
 async function request<T>(path: string, init: RequestInit = {}, token?: string | null): Promise<T> {
   const headers = new Headers(init.headers);
+  const method = (init.method ?? "GET").toUpperCase();
 
   if (token) {
     headers.set("authorization", `Bearer ${token}`);
@@ -70,9 +71,20 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string |
     headers.set("content-type", "application/json");
   }
 
+  if (method === "GET" || method === "HEAD") {
+    if (!headers.has("cache-control")) {
+      headers.set("cache-control", "no-cache, no-store, max-age=0");
+    }
+
+    if (!headers.has("pragma")) {
+      headers.set("pragma", "no-cache");
+    }
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers,
+    cache: init.cache ?? (method === "GET" || method === "HEAD" ? "no-store" : undefined),
   });
 
   if (response.status === 204) {

@@ -26,6 +26,7 @@ export function RecordingsPage() {
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
+  const [now, setNow] = useState(() => Date.now());
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [form, setForm] = useState(() =>
     createEmptyRecordingForm({
@@ -70,7 +71,8 @@ export function RecordingsPage() {
       return (await api.listRecordingJobs(token, params)).jobs;
     },
     enabled: Boolean(token),
-    refetchInterval: 5000,
+    refetchInterval: 2000,
+    refetchIntervalInBackground: true,
   });
 
   const libraryQueryParams = useMemo(() => {
@@ -225,6 +227,16 @@ export function RecordingsPage() {
 
   const activeJobs = useMemo(() => sortActiveRecordingJobs(activeJobsQuery.data ?? []), [activeJobsQuery.data]);
   const libraryJobs = libraryJobsQuery.data ?? [];
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
 
   function resetEditor() {
     const nextMode = normalizeRecordingMode(searchParams.get("mode"));
@@ -429,6 +441,7 @@ export function RecordingsPage() {
                     </>
                   }
                   job={job}
+                  now={now}
                   key={job.id}
                 />
               ))}
@@ -477,6 +490,7 @@ export function RecordingsPage() {
                   </>
                 }
                 job={job}
+                now={now}
                 key={job.id}
               />
             ))}
@@ -490,13 +504,21 @@ export function RecordingsPage() {
 function RecordingCard({
   job,
   actions,
+  now,
 }: {
   job: RecordingJob;
   actions?: ReactNode;
+  now: number;
 }) {
   const startedAt = job.actualStartAt ?? job.startAt;
   const endedAt = job.actualEndAt ?? job.endAt;
-  const displayDurationSeconds = job.asset?.durationSeconds ?? job.latestRun?.durationSeconds ?? null;
+  const displayDurationSeconds =
+    job.status === "RECORDING" && startedAt
+      ? Math.max(
+          job.asset?.durationSeconds ?? job.latestRun?.durationSeconds ?? 0,
+          Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000)),
+        )
+      : job.asset?.durationSeconds ?? job.latestRun?.durationSeconds ?? null;
   const displayFileSizeBytes = job.asset?.fileSizeBytes ?? job.latestRun?.fileSizeBytes ?? null;
   const isRecording = job.status === "RECORDING";
   const timingLabel = isRecording ? "Started" : "Starts";
