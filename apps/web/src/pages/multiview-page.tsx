@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
+import { usePlaybackSessionHeartbeat } from "@/features/observability/use-playback-session-heartbeat";
 import { isEditableKeyboardTarget } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import type { PlayerDiagnostics, PlayerStatus } from "@/player/hls-player";
@@ -164,6 +165,37 @@ export function MultiViewPage() {
     () => new Map((nowNextQuery.data ?? []).map((item) => [item.channelId, item])),
     [nowNextQuery.data],
   );
+  const playbackSessionDescriptors = useMemo(
+    () =>
+      tiles.flatMap((tile, index) => {
+        if (!tile.channelId) {
+          return [];
+        }
+
+        const diagnostics =
+          playerDiagnosticsByTile[index] ??
+          buildPlayerDiagnostics({
+            status: "loading",
+            muted: tile.isMuted,
+          });
+
+        return [
+          {
+            sessionKey: `multiview:${index}`,
+            channelId: tile.channelId,
+            sessionType: "MULTIVIEW" as const,
+            playbackState: diagnostics.status,
+            selectedQuality: tile.preferredQuality ?? "AUTO",
+            isMuted: tile.isMuted,
+            tileIndex: index,
+            failureKind: diagnostics.failureKind,
+          },
+        ];
+      }),
+    [playerDiagnosticsByTile, tiles],
+  );
+
+  usePlaybackSessionHeartbeat(token, playbackSessionDescriptors);
 
   const focusedTile = tiles[focusedTileIndex] ?? tiles[0];
   const focusedChannel = focusedTile?.channelId ? channelMap.get(focusedTile.channelId) ?? null : null;

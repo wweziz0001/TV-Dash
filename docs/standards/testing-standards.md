@@ -141,6 +141,8 @@ These areas are release-critical and should gain or maintain automated coverage 
 - health-state aggregation from real runtime observations
 - channel and EPG diagnostics response behavior for changed admin inspection endpoints
 - failure classification helpers for stream and XMLTV errors
+- playback session tracking, stale-session cleanup, and per-channel viewer-count aggregation when monitoring behavior changes
+- structured-log filtering behavior when the admin logs viewer contract changes
 
 ## Deferral Rule
 

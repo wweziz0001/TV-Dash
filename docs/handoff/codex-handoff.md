@@ -14,12 +14,14 @@ The current operator milestone also adds:
 - a denser operator layout pass that reduces oversized chrome and gives viewer surfaces more screen space
 - a compact manual quality-variant admin workflow with presets, normalization helpers, inline row validation, and faster repetitive entry controls
 - a first real observability layer with runtime stream/channel diagnostics, EPG diagnostics, structured backend event logs, and clearer playback-state reporting
+- a dedicated admin observability area with live viewer sessions, per-channel current viewer counts, recent failures, and a filterable logs viewer
 
 ## Current Architecture Summary
 
 - Monorepo with `apps/api`, `apps/web`, and `packages/shared`
 - Backend now follows explicit `routes -> services -> repositories -> prisma` boundaries inside `apps/api/src/modules`
 - Backend observability now includes a dedicated `diagnostics` module for admin inspection endpoints plus shared structured-log helpers
+- Playback session tracking now persists real active player heartbeats in PostgreSQL so admin monitoring pages can show who is watching what now
 - Frontend keeps app bootstrap in `app`, route screens in `pages`, shared UI in `components`, auth in `features`, request logic in `services`, and player-specific code in `player`
 - Shared API validation contracts live in `packages/shared`
 
@@ -86,7 +88,7 @@ tests/
 - `groups`: category/group CRUD
 - `favorites`: per-user pinned channels
 - `layouts`: saved multi-view walls
-- `diagnostics`: runtime observability snapshots for channels and EPG sources plus admin inspection endpoints
+- `diagnostics`: runtime observability snapshots, playback session tracking, structured log retention, and admin monitoring endpoints
 - `streams`: HLS metadata, stream test endpoints, and proxy gateway foundation
 - `health`: readiness endpoint
 
@@ -146,10 +148,14 @@ Key relationship rules:
 - Proxy playback URL selection happens in frontend service helpers, not inside the player lifecycle code.
 - Manual-variant channels must resolve through the backend stream master path so HLS.js receives one logical manifest.
 - Public channel responses may intentionally hide raw upstream stream URLs when proxy mode is enabled.
-- Runtime diagnostics are currently real but in-memory only:
+- Runtime diagnostics and log viewing are currently split:
   - stream proxy, synthetic master, and XMLTV flows record live observations
-  - admin diagnostics panels read those snapshots through `/api/diagnostics/...`
-  - process restart still clears the retained history
+  - admin diagnostics and observability pages read those snapshots through `/api/diagnostics/...`
+  - structured logs are retained in memory per API process and clear on restart
+- Active playback sessions are now persisted:
+  - single-view and multiview surfaces send authenticated heartbeats
+  - stale sessions expire after a bounded inactivity window
+  - per-channel viewer counts are aggregated from non-stale, non-ended playback sessions
 - Player state should flow upward through diagnostics callbacks for operator-facing surfaces instead of pages inferring status from raw HLS events.
 
 ## Testing Status
@@ -163,6 +169,8 @@ Current automated coverage includes:
 - XMLTV parser and now/next lookup tests
 - HlsPlayer component coverage for bounded retry timers and source replacement cleanup
 - diagnostics service, diagnostics route, and stream/XMLTV failure classification coverage
+- structured-log filtering coverage
+- playback session lifecycle, monitoring aggregation, and admin monitoring route coverage
 - playback diagnostics helper coverage for recovered vs failed state mapping
 - HlsPlayer regression coverage confirming multiview mute/unmute handoff does not recreate playback or request the source again
 - player quality option resolution tests
@@ -194,6 +202,7 @@ Optional but recommended for risky changes:
 - The proxy foundation currently buffers upstream asset bodies in memory instead of true streaming passthrough.
 - XMLTV data is loaded on demand into process memory only; there is no background ingestion job or durable programme storage yet.
 - Channel and EPG diagnostics are also process-memory only right now; restarts clear last-success/last-failure history and there is no long-term metrics sink yet.
+- Structured admin logs are also process-memory only right now; restarts clear the log viewer history and there is no durable event sink yet.
 - Proxy playback is intentionally exposed through unauthenticated asset paths because the current HLS client stack does not inject bearer headers into playlist/segment requests.
 - Manual-variant channels in `DIRECT` playback mode still rely on browser access to each upstream variant playlist and segment URL, so providers that require custom headers should use `PROXY` mode.
 - The admin form shows the intended synthetic master order and row-level validation state, but it still does not render a full unsaved master-playlist preview.
@@ -233,6 +242,16 @@ Optional but recommended for risky changes:
 - Admin inspection flows now exist in:
   - channel admin diagnostics panel
   - EPG source diagnostics panel
+- Admin observability now also includes:
+  - `/admin/observability` with live playback sessions
+  - current per-channel viewer counts with watcher lists
+  - recent failure/warning panels backed by structured logs
+  - a filterable logs viewer segmented by severity and category
+- Active session tracking works like this:
+  - `ChannelWatchPage` and `MultiViewPage` send authenticated playback heartbeat payloads
+  - each live player surface owns a stable playback session id
+  - sessions store user, channel, session type, playback state, quality, mute state, tile index, and timestamps
+  - admin monitoring excludes stale sessions by expiring rows whose heartbeat has gone quiet
 
 ## Operator UX Milestone Summary
 

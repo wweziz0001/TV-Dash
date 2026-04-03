@@ -11,6 +11,7 @@ As of `2026-04-02`, TV-Dash has:
   - channel, group, favorite, layout, and stream route validation/contract behavior via Fastify `inject`
   - HLS master playlist parsing plus synthetic master generation for manual variants
   - runtime diagnostics snapshots and stream/EPG failure classification helpers
+  - playback session heartbeat tracking, monitoring aggregation, and structured-log filtering
   - player retry timer cleanup and source replacement behavior
   - player diagnostics mapping for loading, retrying, buffering, failed, and recovered states
   - quality option resolution
@@ -98,6 +99,7 @@ If a change touches one of those flows and no automated regression exists yet, e
 
 - route-edge contract and validation coverage complete for channels, groups, favorites, layouts, and streams
 - diagnostics route coverage now exists for channel and EPG runtime inspection endpoints
+- monitoring route coverage now exists for admin observability snapshots
 - next step is database-backed Fastify integration coverage for auth, channels, groups, layouts, favorites, and streams
 - introduce isolated database strategy for tests
 

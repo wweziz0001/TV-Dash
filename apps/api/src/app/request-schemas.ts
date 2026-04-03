@@ -30,3 +30,13 @@ export const epgNowNextQuerySchema = z.object({
     .transform((value) => value.split(",").map((part) => part.trim()).filter(Boolean))
     .pipe(z.array(z.string().uuid()).min(1).max(20)),
 });
+
+export const monitoringLogsQuerySchema = z.object({
+  level: z.enum(["info", "warn", "error"]).optional(),
+  category: z.enum(["playback", "stream", "epg", "auth", "admin", "system"]).optional(),
+  actorUserId: z.string().uuid().optional(),
+  channelId: z.string().uuid().optional(),
+  sessionId: z.string().uuid().optional(),
+  search: optionalTrimmedString,
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+});

@@ -3,10 +3,14 @@ import type {
   ChannelInput,
   EpgSourceInput,
   LoginInput,
+  PlaybackSessionEndInput,
+  PlaybackSessionHeartbeatInput,
   SavedLayoutInput,
   StreamTestInput,
 } from "@tv-dash/shared";
 import type {
+  AdminLogEntry,
+  AdminMonitoringSnapshot,
   AuthResponse,
   Channel,
   ChannelConfig,
@@ -66,6 +70,22 @@ export const api = {
     request<{ channel: ChannelConfig }>(`/channels/${id}/config`, {}, token),
   getChannelDiagnostics: (id: string, token: string) =>
     request<{ diagnostics: ChannelDiagnostics }>(`/diagnostics/channels/${id}`, {}, token),
+  getAdminMonitoring: (token: string) =>
+    request<{ monitoring: AdminMonitoringSnapshot }>("/diagnostics/monitoring", {}, token),
+  listAdminLogs: (token: string, params?: URLSearchParams) =>
+    request<{ logs: AdminLogEntry[] }>(`/diagnostics/logs${params ? `?${params.toString()}` : ""}`, {}, token),
+  heartbeatPlaybackSessions: (payload: PlaybackSessionHeartbeatInput, token: string, keepalive = false) =>
+    request<void>(
+      "/diagnostics/playback-sessions/heartbeat",
+      { method: "POST", body: JSON.stringify(payload), keepalive },
+      token,
+    ),
+  endPlaybackSessions: (payload: PlaybackSessionEndInput, token: string, keepalive = false) =>
+    request<void>(
+      "/diagnostics/playback-sessions/end",
+      { method: "POST", body: JSON.stringify(payload), keepalive },
+      token,
+    ),
   getChannelBySlug: (slug: string, token: string | null) =>
     request<{ channel: Channel }>(`/channels/slug/${slug}`, {}, token),
   createChannel: (payload: ChannelInput, token: string) =>

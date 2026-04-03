@@ -135,6 +135,9 @@ Rules:
 
 - Prefer structured logs with stable `event` names and typed detail fields over ad-hoc string logs.
 - Do not log raw bearer tokens, upstream header values, or full query-string URLs.
+- Playback session heartbeats must represent real active player surfaces, not synthetic counters or decorative analytics.
+- High-volume heartbeat updates should update session state without emitting a new structured log on every refresh.
+- Session lifecycle logs should stay focused on useful state changes such as started, failed, recovered, and ended.
 - For upstream failures, classify the failure before logging or returning it when practical.
 - Runtime diagnostics are allowed to stay in-memory for now, but they must summarize real observations instead of decorative placeholder states.
 - High-volume success paths such as proxied asset delivery should record lightweight diagnostics without emitting noisy success logs on every request.

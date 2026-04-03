@@ -1,4 +1,14 @@
-import { BarChart3, Clapperboard, Grid2x2, LayoutDashboard, LogOut, RadioTower, ShieldCheck, Star } from "lucide-react";
+import {
+  ActivitySquare,
+  BarChart3,
+  Clapperboard,
+  Grid2x2,
+  LayoutDashboard,
+  LogOut,
+  RadioTower,
+  ShieldCheck,
+  Star,
+} from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "@/features/auth/auth-context";
 import { cn } from "@/lib/utils";
@@ -9,6 +19,7 @@ const primaryNav = [
 ];
 
 const adminNav = [
+  { to: "/admin/observability", label: "Observability", icon: ActivitySquare },
   { to: "/admin/channels", label: "Admin Channels", icon: LayoutDashboard },
   { to: "/admin/groups", label: "Admin Groups", icon: ShieldCheck },
   { to: "/admin/epg", label: "Admin EPG", icon: RadioTower },

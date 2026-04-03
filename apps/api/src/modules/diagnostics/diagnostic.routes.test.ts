@@ -36,6 +36,11 @@ const mockPrisma = {
     update: vi.fn(),
     delete: vi.fn(),
   },
+  playbackSession: {
+    findMany: vi.fn(),
+    updateMany: vi.fn(),
+    upsert: vi.fn(),
+  },
 };
 
 vi.mock("../../db/prisma.js", () => ({
@@ -191,5 +196,104 @@ describe("diagnosticRoutes", () => {
         },
       },
     });
+  });
+
+  it("returns monitoring snapshots for admins", async () => {
+    mockPrisma.channel.findMany.mockResolvedValue([
+      {
+        id: "11111111-1111-1111-1111-111111111111",
+        name: "Pulse 24",
+        slug: "pulse-24",
+        logoUrl: null,
+        sourceMode: "MASTER_PLAYLIST",
+        masterHlsUrl: null,
+        playbackMode: "PROXY",
+        groupId: null,
+        group: null,
+        epgSourceId: null,
+        epgChannelId: null,
+        epgSource: null,
+        isActive: true,
+        sortOrder: 1,
+        qualityVariants: [],
+        favorites: [],
+        playbackSessions: [],
+        layoutItems: [],
+        createdAt: new Date("2026-04-03T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-03T00:00:00.000Z"),
+      },
+    ]);
+    mockPrisma.playbackSession.updateMany.mockResolvedValue({ count: 0 });
+    mockPrisma.playbackSession.findMany.mockResolvedValue([
+      {
+        id: "session-1",
+        userId: "user-1",
+        channelId: "11111111-1111-1111-1111-111111111111",
+        sessionType: "SINGLE_VIEW",
+        playbackState: "playing",
+        selectedQuality: "AUTO",
+        isMuted: false,
+        tileIndex: null,
+        failureKind: null,
+        startedAt: new Date("2026-04-03T05:00:00.000Z"),
+        lastSeenAt: new Date("2026-04-03T05:00:10.000Z"),
+        endedAt: null,
+        user: {
+          id: "user-1",
+          username: "ops-user",
+          role: "USER",
+        },
+        channel: {
+          id: "11111111-1111-1111-1111-111111111111",
+          name: "Pulse 24",
+          slug: "pulse-24",
+          playbackMode: "PROXY",
+          sourceMode: "MASTER_PLAYLIST",
+          isActive: true,
+        },
+      },
+    ]);
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/diagnostics/monitoring",
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      monitoring: {
+        summary: {
+          activeSessionCount: 1,
+          activeChannelCount: 1,
+        },
+        sessions: [
+          {
+            sessionId: "session-1",
+            user: {
+              username: "ops-user",
+            },
+          },
+        ],
+        channelViewerCounts: [
+          {
+            channel: {
+              slug: "pulse-24",
+            },
+            viewerCount: 1,
+          },
+        ],
+      },
+    });
+  });
+
+  it("blocks monitoring snapshots for non-admin users", async () => {
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/diagnostics/monitoring",
+      headers: createAuthHeaders(server, { role: "USER" }),
+    });
+
+    expect(response.statusCode).toBe(403);
   });
 });
