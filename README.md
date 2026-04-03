@@ -1,6 +1,100 @@
-# TV-Dash
+<a href="https://tvdash.com/" target="_blank" rel="noopener">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" alt="TvDash" srcset="https://excalidraw.nyc3.cdn.digitaloceanspaces.com/github/excalidraw_github_cover_2_dark.png" />
+    <img alt="TvDash" src="https://excalidraw.nyc3.cdn.digitaloceanspaces.com/github/excalidraw_github_cover_2.png" />
+  </picture>
+</a>
 
-TV-Dash is a self-hosted IPTV and Web TV control surface built for operators who need real HLS playback, manual quality switching, and multi-view monitoring from one browser-based workspace.
+<h4 align="center">
+  <a href="https://tvdash.com">TV Dash</a> |
+  <a href="https://blog.tvdash.com">Blog</a> |
+  <a href="https://docs.tvdash.com">Documentation</a> |
+</h4>
+
+<div align="center">
+  <h2>
+    TvDash is a self-hosted IPTV and Web TV control surface. </br>
+    HLS playback, Quality switching, and Multi-view. </br>
+  <br />
+  </h2>
+</div>
+
+<br />
+<p align="center">
+  <a href="https://github.com/wweziz0001/TV-Dash/blob/main/LICENSE">
+    <img alt="Excalidraw is released under the MIT license." src="https://img.shields.io/badge/license-MIT-blue.svg"  /></a>
+  <a href="https://www.npmjs.com/package/@tvdash/tvdash">
+    <img alt="npm downloads/month" src="https://img.shields.io/npm/dm/@tvdash/tvdash"  /></a>
+  <a href="https://docs.tvdash.com/docs/introduction/contributing">
+    <img alt="PRs welcome!" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat"  /></a>
+  <a href="https://discord.gg/tvdash">
+    <img alt="Chat on Discord" src="https://img.shields.io/discord/723672430744174682?color=738ad6&label=Chat%20on%20Discord&logo=discord&logoColor=ffffff&widge=false"/></a>
+  <a href="https://deepwiki.com/tvdash/tvdash">
+    <img alt="Ask DeepWiki" src="https://deepwiki.com/badge.svg" /></a>
+  <a href="https://twitter.com/tvdash">
+    <img alt="Follow TvDash on Twitter" src="https://img.shields.io/twitter/follow/excalidraw.svg?label=follow+@TvDash&style=social&logo=twitter"/></a>
+</p>
+
+<div align="center">
+  <figure>
+    <a href="https://tvdash.com" target="_blank" rel="noopener">
+      <img src="https://excalidraw.nyc3.cdn.digitaloceanspaces.com/github%2Fproduct_showcase.png" alt="Product showcase" />
+    </a>
+    <figcaption>
+      <p align="center">
+        Watch live channels with flexible quality control and multi-view monitoring.
+      </p>
+    </figcaption>
+  </figure>
+</div>
+
+
+## Current Features
+
+TvDash currently supports:
+
+- 📺 Live TV channel management.
+- 🗂️ Channel groups and categories.
+- ▶️ HLS live stream playback.
+- ⚙️ Automatic and manual quality switching.
+- 🧩 Single-channel viewing mode.
+- 🖥️ Multi-view / split-screen watching.
+- ⭐ Favorites support.
+- 💾 Saved viewing layouts.
+- 🧠 Master playlist channel support.
+- 🔧 Manual quality-variant channel support.
+- 🪄 Synthetic master playlist generation for manual variants.
+- 📡 Stream monitoring and diagnostics.
+- 👥 Live viewer/session monitoring.
+- 👁️ See who is watching right now.
+- 📊 Per-channel current viewer counts.
+- 📝 Admin logs / observability tools.
+- 📋 Admin monitoring dashboard summary.
+- 🏗️ Structured project architecture and engineering standards.
+- 🧪 Test coverage for critical flows.
+- 📚 Handoff, documentation, and development governance.
+
+## Planned Features
+
+TvDash will support soon:
+
+- 📅 Full EPG / TV guide support.
+- 📝 Manual program schedule entry per channel.
+- 🌐 Import program schedules from external sources.
+- ⏭️ Now / Next program display.
+- ⏺️ Live channel recording.
+- ⏰ Timed recording.
+- 🗓️ Scheduled recording.
+- 🎞️ Recorded media library.
+- 📂 Recorded content browsing and playback.
+- 🔐 Security, access control, and admin hardening.
+- 👤 Role-based permissions.
+- 🧾 Audit trail for admin actions.
+- 📱 Mobile and tablet optimized experience.
+- 📺 TV / large-screen operator layouts.
+- 🚀 Deployment and release readiness improvements.
+- 📼 DVR / recording foundation expansion.
+- ✨ Final enterprise polish and platform hardening.
 
 ## Stack
 
@@ -8,53 +102,6 @@ TV-Dash is a self-hosted IPTV and Web TV control surface built for operators who
 - Backend: Node.js, Fastify, Prisma, Zod
 - Database: PostgreSQL
 - Shared contracts: workspace package with shared Zod schemas and types
-
-## Current Features
-
-TV-Dash currently supports:
-
-📺 Live TV channel management.
-🗂️ Channel groups and categories.
-▶️ HLS live stream playback.
-⚙️ Automatic and manual quality switching.
-🧩 Single-channel viewing mode.
-🖥️ Multi-view / split-screen watching.
-⭐ Favorites support.
-💾 Saved viewing layouts.
-🧠 Master playlist channel support.
-🔧 Manual quality-variant channel support.
-🪄 Synthetic master playlist generation for manual variants.
-📡 Stream monitoring and diagnostics.
-👥 Live viewer/session monitoring.
-👁️ See who is watching right now.
-📊 Per-channel current viewer counts.
-📝 Admin logs / observability tools.
-📋 Admin monitoring dashboard summary.
-🏗️ Structured project architecture and engineering standards.
-🧪 Test coverage for critical flows.
-📚 Handoff, documentation, and development governance.
-
-## Planned Features
-
-TV-Dash will support soon:
-
-📅 Full EPG / TV guide support.
-📝 Manual program schedule entry per channel.
-🌐 Import program schedules from external sources.
-⏭️ Now / Next program display.
-⏺️ Live channel recording.
-⏰ Timed recording.
-🗓️ Scheduled recording.
-🎞️ Recorded media library.
-📂 Recorded content browsing and playback.
-🔐 Security, access control, and admin hardening.
-👤 Role-based permissions.
-🧾 Audit trail for admin actions.
-📱 Mobile and tablet optimized experience.
-📺 TV / large-screen operator layouts.
-🚀 Deployment and release readiness improvements.
-📼 DVR / recording foundation expansion.
-✨ Final enterprise polish and platform hardening.
 
 ## Implemented MVP
 
