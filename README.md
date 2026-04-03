@@ -1,7 +1,7 @@
 <a href="https://tvdash.com/" target="_blank" rel="noopener">
   <picture>
     <source media="(prefers-color-scheme: dark)" alt="TvDash" srcset="/docs/tvdash-banner.png" />
-    <img alt="TvDash" src="/docs/tvdash-banner.png" />
+    <img alt="TvDash" src="https://wweziz0001.github.io/TV-Dash/docs/tvdash-banner.png" />
   </picture>
 </a>
 
