@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RecordingRuleInput, RecordingWeekday } from "@tv-dash/shared";
-import { PauseCircle, PlayCircle, RefreshCw, Square, Trash2 } from "lucide-react";
+import { PauseCircle, PlayCircle, RefreshCw, ShieldCheck, ShieldOff, Square, Trash2 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { PageHeader } from "@/components/layout/page-header";
@@ -20,13 +20,24 @@ import {
   type RecordingRuleFormIssue,
   validateRecordingRuleForm,
 } from "@/components/recordings/recording-rule-form-state";
+import {
+  buildRecordingLibraryQueryParams,
+  buildRecordingLibrarySummary,
+  createDefaultRecordingLibraryFilters,
+  type RecordingLibraryFilters,
+  type RecordingLibraryModeFilter,
+  type RecordingLibraryProtectionFilter,
+  type RecordingLibrarySortOption,
+  type RecordingLibraryStatusFilter,
+} from "@/components/recordings/recording-library-state";
+import { RecordingRetentionBadge } from "@/components/recordings/recording-retention-badge";
 import { RecordingStatusBadge } from "@/components/recordings/recording-status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
-import { api } from "@/services/api";
+import { api, resolveApiUrl } from "@/services/api";
 import type {
   RecordingJob,
   RecordingJobStatus,
@@ -35,7 +46,6 @@ import type {
 } from "@/types/api";
 
 const ACTIVE_RECORDING_STATUSES: RecordingJobStatus[] = ["PENDING", "SCHEDULED", "RECORDING"];
-const DEFAULT_LIBRARY_STATUSES: RecordingJobStatus[] = ["COMPLETED", "FAILED", "CANCELED"];
 const RULE_WEEKDAYS: RecordingWeekday[] = [
   "MONDAY",
   "TUESDAY",
@@ -56,8 +66,7 @@ export function RecordingsPage() {
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [showJobValidation, setShowJobValidation] = useState(false);
   const [showRuleValidation, setShowRuleValidation] = useState(false);
-  const [librarySearch, setLibrarySearch] = useState("");
-  const [libraryStatusFilter, setLibraryStatusFilter] = useState<"ALL" | RecordingJobStatus>("ALL");
+  const [libraryFilters, setLibraryFilters] = useState<RecordingLibraryFilters>(() => createDefaultRecordingLibraryFilters());
   const [jobForm, setJobForm] = useState(() =>
     createEmptyRecordingForm({
       channelId: searchParams.get("channelId") ?? "",
@@ -133,16 +142,8 @@ export function RecordingsPage() {
   });
 
   const libraryQueryParams = useMemo(() => {
-    const params = new URLSearchParams({
-      status: (libraryStatusFilter === "ALL" ? DEFAULT_LIBRARY_STATUSES : [libraryStatusFilter]).join(","),
-    });
-
-    if (librarySearch.trim()) {
-      params.set("search", librarySearch.trim());
-    }
-
-    return params;
-  }, [librarySearch, libraryStatusFilter]);
+    return buildRecordingLibraryQueryParams(libraryFilters);
+  }, [libraryFilters]);
 
   const libraryJobsQuery = useQuery({
     queryKey: ["recordings-library", token, libraryQueryParams.toString()],
@@ -280,6 +281,23 @@ export function RecordingsPage() {
     },
   });
 
+  const toggleProtectionMutation = useMutation({
+    mutationFn: async (job: RecordingJob) => {
+      if (!token) {
+        throw new Error("Missing session");
+      }
+
+      return (await api.updateRecordingRetention(job.id, !job.isProtected, token)).job;
+    },
+    onSuccess: async (job) => {
+      toast.success(job.isProtected ? "Recording protected" : "Recording returned to automatic retention");
+      await invalidateRecordingQueries(queryClient, token, job.id);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to update recording retention");
+    },
+  });
+
   const deleteRuleMutation = useMutation({
     mutationFn: async (rule: RecordingRule) => {
       if (!token) {
@@ -328,6 +346,7 @@ export function RecordingsPage() {
 
   const activeJobs = useMemo(() => sortActiveRecordingJobs(activeJobsQuery.data ?? []), [activeJobsQuery.data]);
   const libraryJobs = libraryJobsQuery.data ?? [];
+  const librarySummary = useMemo(() => buildRecordingLibrarySummary(libraryJobs), [libraryJobs]);
   const recordingRules = recordingRulesQuery.data ?? [];
   const ruleProgramPrefill = useMemo(() => buildRulePrefillFromSearchParams(searchParams), [searchParams]);
 
@@ -446,6 +465,13 @@ export function RecordingsPage() {
       ...current,
       mode: nextMode,
       ...(current.startAtLocal || current.endAtLocal ? {} : buildDefaultWindow(nextMode)),
+    }));
+  }
+
+  function updateLibraryFilters(patch: Partial<RecordingLibraryFilters>) {
+    setLibraryFilters((current) => ({
+      ...current,
+      ...patch,
     }));
   }
 
@@ -932,18 +958,103 @@ export function RecordingsPage() {
       </div>
 
       <Panel className="overflow-hidden" density="flush">
-        <div className="grid gap-3 border-b border-slate-800/80 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+        <div className="border-b border-slate-800/80 px-4 py-4">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Recordings library</p>
+              <p className="mt-1.5 text-sm text-slate-400">
+                Search by title, programme, or channel, filter by origin and retention state, and jump straight into playback or cleanup actions without digging through a raw file list.
+              </p>
+            </div>
+            <div className="text-[12px] text-slate-500">
+              Retention defaults: {libraryJobs[0]?.retention.maxAgeDays ?? 30} days, newest{" "}
+              {libraryJobs[0]?.retention.maxRecordingsPerChannel ?? 25} per channel, failed cleanup after{" "}
+              {libraryJobs[0]?.retention.failedCleanupHours ?? 24} hours.
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <LibrarySummaryCard label="Visible recordings" value={String(librarySummary.total)} />
+            <LibrarySummaryCard label="Completed" value={String(librarySummary.completed)} />
+            <LibrarySummaryCard label="Failed" value={String(librarySummary.failed)} />
+            <LibrarySummaryCard label="Protected" value={String(librarySummary.protectedCount)} />
+          </div>
+        </div>
+
+        <div className="grid gap-3 border-b border-slate-800/80 px-4 py-4 xl:grid-cols-6">
           <Input
-            onChange={(event) => setLibrarySearch(event.target.value)}
-            placeholder="Search recordings by title or channel"
-            value={librarySearch}
+            onChange={(event) => updateLibraryFilters({ search: event.target.value })}
+            placeholder="Search title, programme, channel, or filename"
+            value={libraryFilters.search}
           />
-          <Select onChange={(event) => setLibraryStatusFilter(event.target.value as "ALL" | RecordingJobStatus)} value={libraryStatusFilter}>
+          <Select
+            onChange={(event) => updateLibraryFilters({ channelId: event.target.value })}
+            value={libraryFilters.channelId}
+          >
+            <option value="">All channels</option>
+            {(channelsQuery.data ?? []).map((channel) => (
+              <option key={channel.id} value={channel.id}>
+                {channel.name}
+              </option>
+            ))}
+          </Select>
+          <Select
+            onChange={(event) => updateLibraryFilters({ mode: event.target.value as RecordingLibraryModeFilter })}
+            value={libraryFilters.mode}
+          >
+            <option value="ALL">All origins</option>
+            <option value="IMMEDIATE">Immediate</option>
+            <option value="TIMED">Timed</option>
+            <option value="SCHEDULED">Scheduled</option>
+            <option value="EPG_PROGRAM">Guide programme</option>
+            <option value="RECURRING_RULE">Recurring</option>
+          </Select>
+          <Select
+            onChange={(event) => updateLibraryFilters({ status: event.target.value as RecordingLibraryStatusFilter })}
+            value={libraryFilters.status}
+          >
             <option value="ALL">All library statuses</option>
             <option value="COMPLETED">Completed</option>
             <option value="FAILED">Failed</option>
             <option value="CANCELED">Canceled</option>
           </Select>
+          <Select
+            onChange={(event) =>
+              updateLibraryFilters({ protection: event.target.value as RecordingLibraryProtectionFilter })
+            }
+            value={libraryFilters.protection}
+          >
+            <option value="ALL">All retention states</option>
+            <option value="PROTECTED">Protected only</option>
+            <option value="UNPROTECTED">Auto-retained only</option>
+          </Select>
+          <Select
+            onChange={(event) => updateLibraryFilters({ sort: event.target.value as RecordingLibrarySortOption })}
+            value={libraryFilters.sort}
+          >
+            <option value="RECORDED_DESC">Newest first</option>
+            <option value="RECORDED_ASC">Oldest first</option>
+            <option value="TITLE_ASC">Title A-Z</option>
+            <option value="TITLE_DESC">Title Z-A</option>
+            <option value="CHANNEL_ASC">Channel A-Z</option>
+            <option value="STATUS_ASC">Status</option>
+          </Select>
+        </div>
+
+        <div className="grid gap-3 border-b border-slate-800/80 px-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <Input
+            onChange={(event) => updateLibraryFilters({ recordedFrom: event.target.value })}
+            type="date"
+            value={libraryFilters.recordedFrom}
+          />
+          <Input
+            onChange={(event) => updateLibraryFilters({ recordedTo: event.target.value })}
+            type="date"
+            value={libraryFilters.recordedTo}
+          />
+          <Button onClick={() => setLibraryFilters(createDefaultRecordingLibraryFilters())} size="sm" variant="secondary">
+            Clear filters
+          </Button>
         </div>
 
         {libraryJobsQuery.isLoading && !libraryJobs.length ? (
@@ -964,6 +1075,10 @@ export function RecordingsPage() {
                         </Button>
                       </Link>
                     ) : null}
+                    <Button onClick={() => toggleProtectionMutation.mutate(job)} size="sm" variant="secondary">
+                      {job.isProtected ? <ShieldOff className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+                      {job.isProtected ? "Auto retain" : "Keep forever"}
+                    </Button>
                     <Button onClick={() => deleteMutation.mutate(job)} size="sm" variant="ghost">
                       <Trash2 className="h-4 w-4" />
                       Delete
@@ -1003,59 +1118,91 @@ function RecordingCard({
   const displayFileSizeBytes = job.asset?.fileSizeBytes ?? job.latestRun?.fileSizeBytes ?? null;
   const isRecording = job.status === "RECORDING";
   const timingLabel = isRecording ? "Started" : "Starts";
-  const durationLabel =
-    displayDurationSeconds !== null
-      ? `${isRecording ? "Elapsed" : "Recorded"} ${formatDuration(displayDurationSeconds)}`
-      : isRecording
-        ? "Elapsed 0s"
-        : "Duration pending";
-  const fileSizeLabel =
-    displayFileSizeBytes !== null
-      ? `${isRecording ? "Captured" : "File size"} ${formatFileSize(displayFileSizeBytes)}`
-      : isRecording
-        ? "Captured 0 KB"
-        : "File size pending";
+  const thumbnailUrl = job.asset?.thumbnailUrl ? resolveApiUrl(job.asset.thumbnailUrl) : null;
+  const deleteAfterLabel = job.retention.deleteAfter ? formatDateTime(job.retention.deleteAfter) : null;
 
   return (
     <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)_auto]">
+        <div className="overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/80">
+          {thumbnailUrl ? (
+            <img alt={`${job.title} preview`} className="aspect-video h-full w-full object-cover" src={thumbnailUrl} />
+          ) : (
+            <div className="flex aspect-video items-center justify-center px-4 text-center text-[12px] text-slate-500">
+              {job.asset ? "Preview available when thumbnail extraction succeeds." : "No playable media preview yet."}
+            </div>
+          )}
+        </div>
+
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate text-sm font-semibold text-white">{job.title}</p>
             <RecordingStatusBadge status={job.status} />
             <RecordingOriginBadge mode={job.mode} />
+            <RecordingRetentionBadge job={job} />
           </div>
           <p className="mt-1.5 text-[13px] text-slate-400">
             {job.channelNameSnapshot} · {timingLabel} {formatDateTime(startedAt)}
             {job.endAt ? ` · Ends ${formatDateTime(job.endAt)}` : ""}
           </p>
+
+          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            <MetadataPill label={isRecording ? "Elapsed" : "Duration"} value={displayDurationSeconds !== null ? formatDuration(displayDurationSeconds) : "Pending"} />
+            <MetadataPill label={isRecording ? "Captured" : "File size"} value={displayFileSizeBytes !== null ? formatFileSize(displayFileSizeBytes) : "Pending"} />
+            <MetadataPill label="Recorded" value={formatDateTime(startedAt)} />
+            <MetadataPill label="Quality" value={job.requestedQualityLabel ?? "Source default"} />
+          </div>
+
           {job.program?.title ? (
-            <p className="mt-1 text-[12px] text-fuchsia-100">
+            <p className="mt-3 text-[12px] text-fuchsia-100">
               Guide programme: {job.program.title}
+              {job.program.category ? ` · ${job.program.category}` : ""}
               {job.program.startAt ? ` · ${formatDateTime(job.program.startAt)}` : ""}
             </p>
           ) : null}
+          {job.program?.description ? <p className="mt-1 text-[12px] text-slate-400">{job.program.description}</p> : null}
           {job.recordingRule?.titleTemplate ? (
             <p className="mt-1 text-[12px] text-amber-100">
               Recurring rule: {job.recordingRule.titleTemplate}
               {job.recordingRule.recurrenceType ? ` · ${formatRecordingRuleRecurrence(job.recordingRule as RecordingRule)}` : ""}
             </p>
           ) : null}
-          <p className="mt-1 text-[12px] text-slate-500">
+          <p className="mt-2 text-[12px] text-slate-500">
             Padding: start {job.paddingBeforeMinutes} min early · end {job.paddingAfterMinutes} min late
           </p>
-          {job.requestedQualityLabel ? (
-            <p className="mt-1 text-[12px] text-slate-500">Recording quality: {job.requestedQualityLabel}</p>
+          {job.asset?.storagePath ? <p className="mt-1 text-[12px] text-slate-500">Storage: {job.asset.storagePath}</p> : null}
+          {deleteAfterLabel ? (
+            <p className="mt-1 text-[12px] text-slate-500">
+              {job.isProtected ? "Protected from cleanup" : `Eligible for cleanup after ${deleteAfterLabel}`}
+            </p>
           ) : null}
-          <p className="mt-1.5 text-[13px] text-slate-500">{durationLabel} · {fileSizeLabel}</p>
           {job.failureReason ? <p className="mt-2 text-[13px] text-amber-200">Failure: {job.failureReason}</p> : null}
           {job.cancellationReason ? <p className="mt-2 text-[13px] text-slate-400">Canceled: {job.cancellationReason}</p> : null}
           {endedAt && job.status === "COMPLETED" ? (
             <p className="mt-2 text-[12px] text-slate-500">Completed at {formatDateTime(endedAt)}</p>
           ) : null}
         </div>
-        {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+
+        {actions ? <div className="flex flex-wrap content-start gap-2">{actions}</div> : null}
       </div>
+    </div>
+  );
+}
+
+function LibrarySummaryCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 px-4 py-3">
+      <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{label}</p>
+      <p className="mt-1.5 text-lg font-semibold text-white">{value}</p>
+    </div>
+  );
+}
+
+function MetadataPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-800/80 bg-slate-900/70 px-3 py-2">
+      <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">{label}</p>
+      <p className="mt-1 text-[12px] text-slate-200">{value}</p>
     </div>
   );
 }

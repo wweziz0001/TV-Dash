@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, PlayCircle } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { PageHeader } from "@/components/layout/page-header";
+import { RecordingOriginBadge } from "@/components/recordings/recording-origin-badge";
+import { RecordingRetentionBadge } from "@/components/recordings/recording-retention-badge";
 import { RecordingStatusBadge } from "@/components/recordings/recording-status-badge";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -22,18 +24,6 @@ export function RecordingPlaybackPage() {
       return (await api.getRecordingJob(id, token)).job;
     },
     enabled: Boolean(token && id),
-  });
-
-  const playbackAccessQuery = useQuery({
-    queryKey: ["recording-playback-access", id, token],
-    queryFn: async () => {
-      if (!token) {
-        throw new Error("Missing session");
-      }
-
-      return (await api.getRecordingPlaybackAccess(id, token)).playbackUrl;
-    },
-    enabled: Boolean(token && id && recordingQuery.data?.asset),
   });
 
   const job = recordingQuery.data;
@@ -61,12 +51,13 @@ export function RecordingPlaybackPage() {
       ) : (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_360px]">
           <Panel className="p-3">
-            {job.asset && playbackAccessQuery.data ? (
+            {job.asset?.playbackUrl ? (
               <video
                 className="aspect-video w-full rounded-2xl border border-slate-800/80 bg-black"
                 controls
                 preload="metadata"
-                src={resolveApiUrl(playbackAccessQuery.data)}
+                poster={job.asset.thumbnailUrl ? resolveApiUrl(job.asset.thumbnailUrl) : undefined}
+                src={resolveApiUrl(job.asset.playbackUrl)}
               />
             ) : (
               <div className="flex aspect-video items-center justify-center rounded-2xl border border-dashed border-slate-700/80 bg-slate-950/70 p-6 text-center">
@@ -74,7 +65,7 @@ export function RecordingPlaybackPage() {
                   <PlayCircle className="mx-auto h-10 w-10 text-slate-500" />
                   <p className="mt-3 text-sm text-slate-300">
                     {job.asset
-                      ? "Preparing playback access..."
+                      ? "Playable media is ready, but a browser playback URL is still being prepared."
                       : "This recording does not have playable media yet."}
                   </p>
                 </div>
@@ -85,8 +76,17 @@ export function RecordingPlaybackPage() {
           <Panel className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <RecordingStatusBadge status={job.status} />
+              <RecordingOriginBadge mode={job.mode} />
+              <RecordingRetentionBadge job={job} />
               <p className="text-sm text-slate-400">{job.channelNameSnapshot}</p>
             </div>
+            {job.program?.title ? (
+              <div className="rounded-2xl border border-fuchsia-400/20 bg-fuchsia-500/10 px-4 py-3 text-sm text-fuchsia-100">
+                {job.program.title}
+                {job.program.category ? ` · ${job.program.category}` : ""}
+                {job.program.description ? ` · ${job.program.description}` : ""}
+              </div>
+            ) : null}
             <DetailRow label="Mode" value={job.mode} />
             <DetailRow label="Started" value={formatDateTime(job.actualStartAt ?? job.startAt)} />
             <DetailRow label="Ended" value={job.actualEndAt ? formatDateTime(job.actualEndAt) : "Still active"} />
@@ -98,6 +98,11 @@ export function RecordingPlaybackPage() {
               label="File size"
               value={job.asset?.fileSizeBytes ? formatFileSize(job.asset.fileSizeBytes) : "Pending"}
             />
+            <DetailRow label="Retention" value={job.isProtected ? "Keep forever" : `${job.retention.maxAgeDays} day retention`} />
+            <DetailRow label="Storage path" value={job.asset?.storagePath ?? "Pending"} />
+            {job.retention.deleteAfter ? (
+              <DetailRow label="Cleanup after" value={formatDateTime(job.retention.deleteAfter)} />
+            ) : null}
             {job.failureReason ? <p className="text-sm text-amber-200">Failure: {job.failureReason}</p> : null}
             {job.cancellationReason ? <p className="text-sm text-slate-400">Canceled: {job.cancellationReason}</p> : null}
           </Panel>
