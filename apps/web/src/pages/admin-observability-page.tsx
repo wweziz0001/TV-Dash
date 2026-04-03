@@ -74,6 +74,7 @@ export function AdminObservabilityPage() {
 
   const monitoring = monitoringQuery.data;
   const activeSessions = monitoring?.sessions ?? [];
+  const watchingNowSurfaces = useMemo(() => buildWatchingNowSurfaces(activeSessions), [activeSessions]);
 
   return (
     <div className="space-y-6">
@@ -130,48 +131,17 @@ export function AdminObservabilityPage() {
           <SectionHeader
             icon={Activity}
             title="Who Is Watching What Now"
-            subtitle={`${activeSessions.length} live playback session(s) across single-view and multiview surfaces.`}
+            subtitle={`${activeSessions.length} live playback session(s) grouped into ${watchingNowSurfaces.length} active viewing surface(s).`}
             timestamp={monitoring?.generatedAt}
           />
           {monitoringQuery.isLoading && !monitoring ? (
             <EmptyState label="Loading live session telemetry..." />
-          ) : !activeSessions.length ? (
+          ) : !watchingNowSurfaces.length ? (
             <EmptyState label="No active viewer sessions are reporting right now." />
           ) : (
-            <div className="divide-y divide-slate-800/80">
-              {activeSessions.map((session) => (
-                <div key={session.sessionId} className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_auto]">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-semibold text-white">{session.user.username}</p>
-                      <Badge size="sm">{session.sessionType === "SINGLE_VIEW" ? "Single view" : `Multiview${typeof session.tileIndex === "number" ? ` tile ${session.tileIndex + 1}` : ""}`}</Badge>
-                      <Badge className={getPlaybackStateBadgeClassName(session.playbackState)} size="sm">
-                        {session.playbackState}
-                      </Badge>
-                      {session.failureKind ? (
-                        <Badge className="border-rose-400/30 bg-rose-500/10 text-rose-200" size="sm">
-                          {session.failureKind}
-                        </Badge>
-                      ) : null}
-                    </div>
-                    <p className="mt-1 truncate text-[13px] text-slate-300">
-                      {session.channel ? session.channel.name : "Channel unavailable"}
-                    </p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      {session.channel ? `${session.channel.slug} · ${session.selectedQuality ?? "AUTO"}` : "Channel metadata missing"}
-                    </p>
-                  </div>
-
-                  <div className="grid gap-1.5 text-[12px] text-slate-400">
-                    <p>Started {formatTimestamp(session.startedAt)}</p>
-                    <p>Last active {formatTimestamp(session.lastSeenAt)}</p>
-                    <p>{session.isMuted ? "Muted output" : "Audio live"}</p>
-                  </div>
-
-                  <div className="flex items-start justify-end">
-                    <Badge size="sm">{session.user.role === "ADMIN" ? "Admin" : "User"}</Badge>
-                  </div>
-                </div>
+            <div className="space-y-3 px-3 py-3">
+              {watchingNowSurfaces.map((surface) => (
+                <WatchingNowSurfaceCard key={surface.id} surface={surface} />
               ))}
             </div>
           )}
@@ -302,6 +272,205 @@ export function AdminObservabilityPage() {
       </p>
     </div>
   );
+}
+
+interface WatchingNowSurface {
+  id: string;
+  sessionType: AdminMonitoringSession["sessionType"];
+  pageLabel: string;
+  playbackState: AdminMonitoringSession["playbackState"] | "mixed";
+  startedAt: string;
+  lastSeenAt: string;
+  user: AdminMonitoringSession["user"];
+  failureKinds: string[];
+  channels: Array<{
+    sessionId: string;
+    name: string;
+    slug: string;
+    selectedQuality: string | null;
+    isMuted: boolean;
+    tileIndex: number | null;
+    playbackState: AdminMonitoringSession["playbackState"];
+  }>;
+}
+
+function WatchingNowSurfaceCard({ surface }: { surface: WatchingNowSurface }) {
+  const audioLiveCount = surface.channels.filter((channel) => !channel.isMuted).length;
+  const mutedCount = surface.channels.length - audioLiveCount;
+
+  return (
+    <div className="rounded-[1.35rem] border border-slate-800/80 bg-slate-950/70 p-4 shadow-[0_18px_50px_-35px_rgba(34,211,238,0.35)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-sm font-semibold text-white">{surface.user.username}</p>
+            <Badge className="border-cyan-400/20 bg-cyan-500/10 text-cyan-100" size="sm">
+              {surface.pageLabel}
+            </Badge>
+            <Badge className={getPlaybackStateBadgeClassName(surface.playbackState)} size="sm">
+              {surface.playbackState}
+            </Badge>
+            <Badge size="sm">{surface.channels.length} channel(s)</Badge>
+            {surface.failureKinds.map((failureKind) => (
+              <Badge className="border-rose-400/30 bg-rose-500/10 text-rose-200" key={`${surface.id}-${failureKind}`} size="sm">
+                {failureKind}
+              </Badge>
+            ))}
+          </div>
+          <p className="mt-2 text-[12px] text-slate-400">
+            {surface.sessionType === "MULTIVIEW"
+              ? "Watching through the multiview wall with all active channels grouped together."
+              : "Watching through the single channel watch page."}
+          </p>
+        </div>
+
+        <div className="flex items-start gap-2">
+          <Badge size="sm">{surface.user.role === "ADMIN" ? "Admin" : "User"}</Badge>
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-2xl border border-slate-800/80 bg-slate-900/65 p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Channels</p>
+          <Badge className="border-slate-700/70 bg-slate-950/70 text-slate-300" size="sm">
+            {audioLiveCount > 0 ? `${audioLiveCount} audio live` : "Muted output"}
+            {mutedCount > 0 ? ` · ${mutedCount} muted` : ""}
+          </Badge>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {surface.channels.map((channel) => (
+            <div
+              className="min-w-[10rem] rounded-2xl border border-slate-700/80 bg-slate-950/80 px-3 py-2.5"
+              key={channel.sessionId}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-[13px] font-semibold text-white">{channel.name}</p>
+                {typeof channel.tileIndex === "number" ? (
+                  <Badge className="border-slate-700/70 bg-slate-900/90 text-slate-300" size="sm">
+                    Tile {channel.tileIndex + 1}
+                  </Badge>
+                ) : null}
+              </div>
+              <p className="mt-1 text-[11px] text-slate-500">
+                {channel.slug} · {channel.selectedQuality ?? "AUTO"} · {channel.isMuted ? "Muted" : "Audio live"}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-1.5 text-[12px] text-slate-400 md:grid-cols-2">
+        <p>Started {formatTimestamp(surface.startedAt)}</p>
+        <p>Last active {formatTimestamp(surface.lastSeenAt)}</p>
+      </div>
+    </div>
+  );
+}
+
+function buildWatchingNowSurfaces(sessions: AdminMonitoringSession[]): WatchingNowSurface[] {
+  const surfaces = new Map<string, WatchingNowSurface>();
+
+  sessions.forEach((session) => {
+    const groupingKey =
+      session.sessionType === "MULTIVIEW" ? `${session.user.id}:MULTIVIEW` : `${session.sessionId}:SINGLE_VIEW`;
+    const existingSurface = surfaces.get(groupingKey);
+
+    if (!existingSurface) {
+      surfaces.set(groupingKey, {
+        id: groupingKey,
+        sessionType: session.sessionType,
+        pageLabel: session.sessionType === "MULTIVIEW" ? "Multiview page" : "Watch page",
+        playbackState: session.playbackState,
+        startedAt: session.startedAt,
+        lastSeenAt: session.lastSeenAt,
+        user: session.user,
+        failureKinds: session.failureKind ? [session.failureKind] : [],
+        channels: session.channel
+          ? [
+              {
+                sessionId: session.sessionId,
+                name: session.channel.name,
+                slug: session.channel.slug,
+                selectedQuality: session.selectedQuality,
+                isMuted: session.isMuted,
+                tileIndex: session.tileIndex,
+                playbackState: session.playbackState,
+              },
+            ]
+          : [],
+      });
+      return;
+    }
+
+    existingSurface.startedAt =
+      new Date(session.startedAt).getTime() < new Date(existingSurface.startedAt).getTime() ? session.startedAt : existingSurface.startedAt;
+    existingSurface.lastSeenAt =
+      new Date(session.lastSeenAt).getTime() > new Date(existingSurface.lastSeenAt).getTime() ? session.lastSeenAt : existingSurface.lastSeenAt;
+    existingSurface.playbackState = mergeSurfacePlaybackState(existingSurface.playbackState, session.playbackState);
+
+    if (session.failureKind && !existingSurface.failureKinds.includes(session.failureKind)) {
+      existingSurface.failureKinds.push(session.failureKind);
+    }
+
+    if (session.channel) {
+      existingSurface.channels.push({
+        sessionId: session.sessionId,
+        name: session.channel.name,
+        slug: session.channel.slug,
+        selectedQuality: session.selectedQuality,
+        isMuted: session.isMuted,
+        tileIndex: session.tileIndex,
+        playbackState: session.playbackState,
+      });
+    }
+  });
+
+  return [...surfaces.values()]
+    .map((surface) => ({
+      ...surface,
+      channels: [...surface.channels].sort((left, right) => {
+        const leftTileIndex = left.tileIndex ?? Number.MAX_SAFE_INTEGER;
+        const rightTileIndex = right.tileIndex ?? Number.MAX_SAFE_INTEGER;
+
+        if (leftTileIndex !== rightTileIndex) {
+          return leftTileIndex - rightTileIndex;
+        }
+
+        return left.name.localeCompare(right.name);
+      }),
+    }))
+    .sort((left, right) => new Date(right.lastSeenAt).getTime() - new Date(left.lastSeenAt).getTime());
+}
+
+function mergeSurfacePlaybackState(
+  currentState: WatchingNowSurface["playbackState"],
+  nextState: AdminMonitoringSession["playbackState"],
+): WatchingNowSurface["playbackState"] {
+  if (currentState === nextState) {
+    return currentState;
+  }
+
+  if (currentState === "error" || nextState === "error") {
+    return "error";
+  }
+
+  if (isAttentionPlaybackState(currentState) || isAttentionPlaybackState(nextState)) {
+    return "mixed";
+  }
+
+  if (currentState === "playing" && nextState !== "playing") {
+    return "mixed";
+  }
+
+  if (currentState !== "playing" && nextState === "playing") {
+    return "mixed";
+  }
+
+  return "mixed";
+}
+
+function isAttentionPlaybackState(state: WatchingNowSurface["playbackState"]) {
+  return state === "retrying" || state === "buffering" || state === "loading";
 }
 
 function SummaryCard({
@@ -497,20 +666,21 @@ function formatTimestamp(value: string) {
   }).format(new Date(value));
 }
 
-function getPlaybackStateBadgeClassName(state: AdminMonitoringSession["playbackState"]) {
-  if (state === "playing") {
-    return "border-emerald-400/30 bg-emerald-500/10 text-emerald-200";
+function getPlaybackStateBadgeClassName(state: AdminMonitoringSession["playbackState"] | "mixed") {
+  switch (state) {
+    case "playing":
+      return "border-emerald-400/30 bg-emerald-500/10 text-emerald-200";
+    case "mixed":
+      return "border-cyan-400/30 bg-cyan-500/10 text-cyan-100";
+    case "error":
+      return "border-rose-400/30 bg-rose-500/10 text-rose-200";
+    case "retrying":
+    case "buffering":
+    case "loading":
+      return "border-amber-400/30 bg-amber-500/10 text-amber-100";
+    default:
+      return "";
   }
-
-  if (state === "error") {
-    return "border-rose-400/30 bg-rose-500/10 text-rose-200";
-  }
-
-  if (state === "retrying" || state === "buffering" || state === "loading") {
-    return "border-amber-400/30 bg-amber-500/10 text-amber-100";
-  }
-
-  return "";
 }
 
 function getLogLevelBadgeClassName(level: MonitoringLogLevel) {
