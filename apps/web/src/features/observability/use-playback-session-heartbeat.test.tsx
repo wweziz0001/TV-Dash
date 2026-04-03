@@ -107,7 +107,59 @@ describe("usePlaybackSessionHeartbeat", () => {
         sessionIds: ["11111111-1111-1111-1111-111111111111"],
       },
       "token-1",
-      false,
+      true,
+    );
+  });
+
+  it("ends active sessions when the page is being closed", () => {
+    const descriptors: PlaybackSessionDescriptor[] = [
+      {
+        sessionKey: "watch:channel-1",
+        channelId: "11111111-1111-1111-1111-111111111111",
+        sessionType: "SINGLE_VIEW",
+        playbackState: "playing",
+        selectedQuality: "AUTO",
+        isMuted: false,
+        failureKind: null,
+      },
+    ];
+
+    render(<HookHarness descriptors={descriptors} />);
+
+    window.dispatchEvent(new Event("pagehide"));
+
+    expect(mockEndPlaybackSessions).toHaveBeenCalledWith(
+      {
+        sessionIds: ["11111111-1111-1111-1111-111111111111"],
+      },
+      "token-1",
+      true,
+    );
+  });
+
+  it("ends active sessions when the auth token disappears", () => {
+    const descriptors: PlaybackSessionDescriptor[] = [
+      {
+        sessionKey: "watch:channel-1",
+        channelId: "11111111-1111-1111-1111-111111111111",
+        sessionType: "SINGLE_VIEW",
+        playbackState: "playing",
+        selectedQuality: "AUTO",
+        isMuted: false,
+        failureKind: null,
+      },
+    ];
+
+    const view = render(<HookHarness descriptors={descriptors} token="token-1" />);
+
+    view.rerender(<HookHarness descriptors={[]} token={null} />);
+
+    expect(mockEndPlaybackSessions).toHaveBeenCalledWith(
+      {
+        sessionIds: ["11111111-1111-1111-1111-111111111111"],
+      },
+      "token-1",
+      true,
     );
   });
 });

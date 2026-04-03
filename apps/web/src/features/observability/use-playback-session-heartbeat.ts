@@ -28,10 +28,10 @@ export function usePlaybackSessionHeartbeat(token: string | null, descriptors: P
   const sessionIdsByKeyRef = useRef(new Map<string, string>());
   const descriptorsRef = useRef(descriptors);
   const tokenRef = useRef(token);
+  const previousTokenRef = useRef(token);
   const previousKeysRef = useRef<string[]>([]);
 
   descriptorsRef.current = descriptors;
-  tokenRef.current = token;
 
   function getSessionId(sessionKey: string) {
     const existingSessionId = sessionIdsByKeyRef.current.get(sessionKey);
@@ -44,8 +44,14 @@ export function usePlaybackSessionHeartbeat(token: string | null, descriptors: P
     return nextSessionId;
   }
 
-  async function sendHeartbeat(currentDescriptors: PlaybackSessionDescriptor[], keepalive = false) {
-    if (!tokenRef.current || !currentDescriptors.length) {
+  async function sendHeartbeat(
+    currentDescriptors: PlaybackSessionDescriptor[],
+    keepalive = false,
+    tokenOverride?: string | null,
+  ) {
+    const activeToken = tokenOverride ?? tokenRef.current;
+
+    if (!activeToken || !currentDescriptors.length) {
       return;
     }
 
@@ -62,11 +68,17 @@ export function usePlaybackSessionHeartbeat(token: string | null, descriptors: P
       })),
     };
 
-    await api.heartbeatPlaybackSessions(payload, tokenRef.current, keepalive);
+    await api.heartbeatPlaybackSessions(payload, activeToken, keepalive);
   }
 
-  async function endSessionsForKeys(sessionKeys: string[], keepalive = false) {
-    if (!tokenRef.current || !sessionKeys.length) {
+  async function endSessionsForKeys(
+    sessionKeys: string[],
+    keepalive = false,
+    tokenOverride?: string | null,
+  ) {
+    const activeToken = tokenOverride ?? tokenRef.current;
+
+    if (!activeToken || !sessionKeys.length) {
       return;
     }
 
@@ -78,14 +90,24 @@ export function usePlaybackSessionHeartbeat(token: string | null, descriptors: P
       return;
     }
 
-    await api.endPlaybackSessions({ sessionIds }, tokenRef.current, keepalive);
+    await api.endPlaybackSessions({ sessionIds }, activeToken, keepalive);
     sessionKeys.forEach((sessionKey) => {
       sessionIdsByKeyRef.current.delete(sessionKey);
     });
   }
 
   useEffect(() => {
+    const previousToken = previousTokenRef.current;
+    tokenRef.current = token;
+    previousTokenRef.current = token;
+
     if (!token) {
+      const activeKeys = [...sessionIdsByKeyRef.current.keys()];
+
+      if (previousToken && activeKeys.length) {
+        void endSessionsForKeys(activeKeys, true, previousToken);
+      }
+
       previousKeysRef.current = [];
       sessionIdsByKeyRef.current.clear();
       return;
@@ -96,7 +118,7 @@ export function usePlaybackSessionHeartbeat(token: string | null, descriptors: P
     previousKeysRef.current = currentKeys;
 
     if (removedKeys.length) {
-      void endSessionsForKeys(removedKeys);
+      void endSessionsForKeys(removedKeys, true);
     }
 
     if (descriptors.length) {
@@ -111,6 +133,24 @@ export function usePlaybackSessionHeartbeat(token: string | null, descriptors: P
       window.clearInterval(intervalId);
     };
   }, [descriptors, token]);
+
+  useEffect(() => {
+    function handlePageHide() {
+      const activeKeys = [...sessionIdsByKeyRef.current.keys()];
+
+      if (activeKeys.length) {
+        void endSessionsForKeys(activeKeys, true);
+      }
+    }
+
+    window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("beforeunload", handlePageHide);
+
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("beforeunload", handlePageHide);
+    };
+  }, []);
 
   useEffect(
     () => () => {
