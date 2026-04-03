@@ -9,6 +9,53 @@ TV-Dash is a self-hosted IPTV and Web TV control surface built for operators who
 - Database: PostgreSQL
 - Shared contracts: workspace package with shared Zod schemas and types
 
+## Current Features
+
+TV-Dash currently supports:
+
+📺 Live TV channel management.
+🗂️ Channel groups and categories.
+▶️ HLS live stream playback.
+⚙️ Automatic and manual quality switching.
+🧩 Single-channel viewing mode.
+🖥️ Multi-view / split-screen watching.
+⭐ Favorites support.
+💾 Saved viewing layouts.
+🧠 Master playlist channel support.
+🔧 Manual quality-variant channel support.
+🪄 Synthetic master playlist generation for manual variants.
+📡 Stream monitoring and diagnostics.
+👥 Live viewer/session monitoring.
+👁️ See who is watching right now.
+📊 Per-channel current viewer counts.
+📝 Admin logs / observability tools.
+📋 Admin monitoring dashboard summary.
+🏗️ Structured project architecture and engineering standards.
+🧪 Test coverage for critical flows.
+📚 Handoff, documentation, and development governance.
+
+## Planned Features
+
+TV-Dash will support soon:
+
+📅 Full EPG / TV guide support.
+📝 Manual program schedule entry per channel.
+🌐 Import program schedules from external sources.
+⏭️ Now / Next program display.
+⏺️ Live channel recording.
+⏰ Timed recording.
+🗓️ Scheduled recording.
+🎞️ Recorded media library.
+📂 Recorded content browsing and playback.
+🔐 Security, access control, and admin hardening.
+👤 Role-based permissions.
+🧾 Audit trail for admin actions.
+📱 Mobile and tablet optimized experience.
+📺 TV / large-screen operator layouts.
+🚀 Deployment and release readiness improvements.
+📼 DVR / recording foundation expansion.
+✨ Final enterprise polish and platform hardening.
+
 ## Implemented MVP
 
 - Admin authentication with seeded `ADMIN` and `USER` accounts
