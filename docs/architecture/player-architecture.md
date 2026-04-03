@@ -110,15 +110,28 @@ Do not add silent infinite retry loops. Any retry policy change must consider mu
 
 - supported layouts are defined centrally in `player/layouts.ts`
 - tile counts come from layout definitions, not inline page conditionals
+- device-aware layout availability is now explicit:
+  - mobile phones only expose `1x1` and `1+2`
+  - tablets cap multi-view at `2x2`
+  - desktops can use `1+4`
+  - large-screen / TV-like viewports unlock `3x3`
 - background tiles should prefer lower startup quality where possible
 - saved layout hydration should restore tile order and focus state without leaking stale per-tile quality metadata
 - tile swapping or reassignment must move tile-scoped status and quality metadata together so operator context stays coherent
 - focused-tile keyboard shortcuts should stay intentionally small and operator-oriented rather than becoming a global hotkey subsystem
+- touch-first devices may intentionally disable drag-swap affordances when replacement, focus, and saved-layout flows are the more reliable interaction model
 - any layout above current supported sizes must be evaluated for:
   - CPU/GPU impact
   - network concurrency
   - autoplay behavior
   - audio ownership rules
+
+## Fullscreen And Focus Policy
+
+- single-view fullscreen should target the player frame, not trigger a navigation reset
+- multi-view tile fullscreen should keep the same focused tile before and after exiting fullscreen
+- fullscreen must preserve current diagnostics, mute state, and selected quality instead of rebuilding playback purely for presentation
+- immersive playback controls must stay available through explicit buttons or stable keyboard shortcuts instead of hover-only affordances
 
 ## Performance Safeguards
 

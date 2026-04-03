@@ -1,5 +1,96 @@
 # Codex Session Log
 
+## `2026-04-03T06:25:00+03:00`
+
+### Objective
+
+Improve real device usability in TV-Dash by making channel browsing, single-view playback, multi-view layouts, and navigation work better across mobile, tablet, desktop, and TV-like screens without weakening the operator-first experience.
+
+### Work Completed
+
+- created the requested working branch `013-mobile-tv-layouts-and-device-experience`
+- added a device-aware multiview viewport policy with explicit layout availability by screen class:
+  - phones: `1x1` and `1+2`
+  - tablets: up to `2x2`
+  - desktops: up to `1+4`
+  - large-screen / TV-like displays: full `3x3`
+- improved single-view usability across device sizes by:
+  - replacing the old viewport-locked player height with a more practical aspect-ratio-first frame on small screens
+  - adding an explicit fullscreen toggle that preserves playback state
+  - turning the support panels into a responsive companion grid instead of one long desktop-only sidebar
+- improved mobile and tablet browsing ergonomics by:
+  - increasing touch-target sizing for compact buttons, inputs, and selects on smaller screens
+  - making page-header actions stack cleanly on small screens
+  - tightening dashboard filtering/card behavior so tablet widths reuse horizontal space sooner
+- improved the app shell for real device use by:
+  - converting the sidebar into a more practical top navigation experience on small screens
+  - keeping primary/admin nav reachable through horizontal scrolling instead of a tall stacked menu block
+  - widening the max layout width for large-screen operator usage
+- improved channel switching and multi-view control usability by:
+  - converting the picker dialog into a more mobile-friendly sheet with body scroll locking
+  - making tile quality control wrap more cleanly
+  - labeling tiles more clearly for monitor-style scanning
+  - disabling drag-swap affordances on touch-first devices where HTML drag-and-drop is unreliable
+- improved large-screen / TV-like monitoring density by increasing multi-view tile sizing rules and unlocking larger wall presets only where they stay readable
+- added targeted frontend tests for:
+  - device-aware multi-view layout fallback and viewport policy
+  - touch-first tile drag-affordance disabling
+  - picker dialog scroll locking while open
+
+### Files Added Or Changed
+
+- frontend device/profile and multiview policy:
+  - `apps/web/src/lib/device-profile.ts`
+  - `apps/web/src/lib/use-device-profile.ts`
+  - `apps/web/src/player/multiview-viewport.ts`
+  - `apps/web/src/player/multiview-viewport.test.ts`
+- responsive shell, browsing, and player UX:
+  - `apps/web/src/components/layout/app-shell.tsx`
+  - `apps/web/src/components/layout/page-header.tsx`
+  - `apps/web/src/components/ui/button.tsx`
+  - `apps/web/src/components/ui/input.tsx`
+  - `apps/web/src/components/ui/select.tsx`
+  - `apps/web/src/components/channels/channel-card.tsx`
+  - `apps/web/src/components/channels/channel-picker-dialog.tsx`
+  - `apps/web/src/pages/dashboard-page.tsx`
+  - `apps/web/src/pages/channel-watch-page.tsx`
+  - `apps/web/src/pages/multiview-page.tsx`
+  - `apps/web/src/player/layouts.ts`
+  - `apps/web/src/player/multiview-tile-card.tsx`
+- tests:
+  - `apps/web/src/components/channels/channel-picker-dialog.test.tsx`
+  - `apps/web/src/player/multiview-tile-card.test.tsx`
+- docs:
+  - `docs/architecture/player-architecture.md`
+  - `docs/architecture/testing-strategy.md`
+  - `docs/standards/testing-standards.md`
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- Treated responsiveness as workflow policy rather than pure styling by adding one multiview device-policy seam instead of scattering breakpoint-specific conditionals through the page.
+- Kept desktop compactness by making touch-target growth responsive for smaller screens only instead of enlarging the whole app globally.
+- Chose to limit multi-view density on phones/tablets rather than forcing every saved wall unchanged, because legibility and operability matter more than layout parity.
+- Disabled tile drag-swap on touch-first devices instead of shipping a fragile pseudo-drag interaction; assign/replace, focus, fullscreen, and saved-layout flows remain the supported touch path.
+
+### Verification Run
+
+- `npm run test -w apps/web -- multiview-viewport.test.ts multiview-tile-card.test.tsx channel-picker-dialog.test.tsx`
+- `npm run lint -w apps/web`
+- `npm run test -w apps/web`
+- `npm run build -w apps/web`
+
+### Remaining Risk
+
+- Route-level responsive regression coverage for the full dashboard, single-view page, and multiview page is still missing; current coverage focuses on the extracted device-policy and component seams.
+- Touch-first multi-view intentionally disables drag-swap instead of replacing it with a dedicated touch reorder workflow.
+- Large-screen layouts now use space better, but the player chunk warning remains and route-level lazy loading is still the next major frontend performance win.
+
+### Exact Suggested Next Task
+
+Add route-level frontend regression coverage for device-specific dashboard, single-view fullscreen, and multiview saved-layout fallback behavior, then evaluate whether touch-safe tile reordering is worth introducing as a separate workflow.
+
 ## `2026-04-03T05:55:00+03:00`
 
 ### Objective

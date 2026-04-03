@@ -15,9 +15,9 @@ const styles: Record<ButtonVariant, string> = {
 
 const sizeStyles: Record<ButtonSize, string> = {
   md: "h-9 rounded-xl px-3 text-[13px]",
-  sm: "h-[1.875rem] rounded-lg px-2.5 text-[12px]",
+  sm: "h-10 rounded-xl px-3 text-[13px] sm:h-[1.875rem] sm:rounded-lg sm:px-2.5 sm:text-[12px]",
   "icon-md": "h-9 w-9 rounded-xl p-0",
-  "icon-sm": "h-[1.875rem] w-[1.875rem] rounded-lg p-0",
+  "icon-sm": "h-10 w-10 rounded-xl p-0 sm:h-[1.875rem] sm:w-[1.875rem] sm:rounded-lg",
 };
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

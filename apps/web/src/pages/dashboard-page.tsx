@@ -108,13 +108,13 @@ export function DashboardPage() {
         title="Channel operations dashboard"
         description="Filter by category, jump into a single channel, or send a feed straight into a multi-view wall."
         actions={
-          <Button onClick={() => setShowFavoritesOnly((value) => !value)} size="sm" variant="secondary">
+          <Button className="w-full sm:w-auto" onClick={() => setShowFavoritesOnly((value) => !value)} size="sm" variant="secondary">
             <Star className="h-4 w-4" />
             {showFavoritesOnly ? "Show all channels" : "Favorites only"}
           </Button>
         }
       >
-        <div className="grid gap-3 lg:grid-cols-[1.5fr_0.7fr_0.45fr]">
+        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-[1.5fr_0.7fr_0.45fr]">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <Input
@@ -133,7 +133,7 @@ export function DashboardPage() {
               </option>
             ))}
           </Select>
-          <Panel className="flex items-center gap-2.5 border-cyan-400/10 bg-cyan-500/5 p-2.5" density="compact">
+          <Panel className="flex items-center gap-2.5 border-cyan-400/10 bg-cyan-500/5 p-2.5 md:col-span-2 2xl:col-span-1" density="compact">
             <Sparkles className="h-4 w-4 text-accent" />
             <div>
               <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Visible</p>

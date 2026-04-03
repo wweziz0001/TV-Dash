@@ -16,6 +16,7 @@ The current operator milestone also adds:
 - a first real observability layer with runtime stream/channel diagnostics, EPG diagnostics, structured backend event logs, and clearer playback-state reporting
 - a dedicated admin observability area with live viewer sessions, per-channel current viewer counts, recent failures, and a filterable logs viewer
 - a hardened auth/access baseline with session-version invalidation, explicit permission guards, admin-only stream inspection, and a durable admin audit trail
+- a device-ux pass that makes mobile browsing practical, improves tablet watch/multiview behavior, and gives large-screen walls clearer layout policy
 
 ## Current Architecture Summary
 
@@ -136,10 +137,34 @@ Key relationship rules:
 - saved multi-view serialization/hydration helpers live in `player/multiview-state.ts`
 - focused-tile keyboard navigation lives in `player/multiview-shortcuts.ts`
 - multiview tile chrome, quick actions, and drag/swap affordances live in `player/multiview-tile-card.tsx`
+- device-aware multiview layout policy now lives in `player/multiview-viewport.ts`
 - multiview audio handoff now stays inside control-state synchronization only:
   - root cause was `HlsPlayer` treating `initialBias` as a source-lifecycle dependency, so mute/unmute handoff tore down HLS and re-requested manifests
   - `HlsPlayer` now rebuilds playback only for real source changes or explicit retries, while mute state and preferred-quality updates sync separately
   - `MultiviewTileCard` no longer keys `HlsPlayer` by `tileIndex:channelId`, so same-source focus/metadata changes do not force React remounts
+
+## Device Experience Overview
+
+- Mobile:
+  - app shell navigation now stays usable without a tall desktop-only sidebar block
+  - small-screen buttons, inputs, and selects now use larger touch targets while desktop keeps compact sizing
+  - single-view now uses an aspect-ratio-first player frame instead of a viewport-locked desktop height, and it adds an explicit fullscreen action
+  - quick channel switching now opens in a more phone-friendly sheet with scroll locking
+- Tablet / mid-size:
+  - dashboard and watch filters/panels now reuse horizontal space sooner instead of stacking blindly until desktop breakpoints
+  - single-view side panels now fan into a two-column support grid when the player stays primary
+  - multi-view supports `1x1`, `1+2`, and `2x2` layouts only
+- Desktop / large screen:
+  - the shell max width is wider so operator layouts waste less space on large monitors
+  - multi-view tile minimum sizes and focus layouts scale up more deliberately for wall-style monitoring
+  - large-screen / TV-like viewports unlock dense `3x3` monitoring again
+
+## Intentional Device Limits
+
+- Phones intentionally do not expose `2x2`, `1+4`, or `3x3` multi-view walls because those tiles stop being monitor-usable at that size.
+- Tablets intentionally stop at `2x2`; denser walls remain desktop / TV work.
+- Touch-first devices intentionally disable drag-swap affordances for tiles; the supported workflows there are assign/replace, focus, fullscreen, and saved-layout application.
+- Saved layouts can load into a smaller supported fallback layout on smaller devices; the page now prefers legibility over forcing every saved wall unchanged.
 
 ## Important Conventions
 
@@ -187,7 +212,9 @@ Current automated coverage includes:
 - multi-view tile default/audio ownership tests
 - multi-view layout serialization, hydration, and tile-scoped state reset tests
 - multi-view tile swapping and keyboard shortcut helper tests
+- device-aware multi-view viewport policy tests
 - multiview tile-card regression coverage confirming focus/metadata changes do not remount the player when the source is unchanged
+- channel-picker component coverage for scroll locking while the dialog is open
 - guide-state display logic and channel-picker component tests
 - channel admin form and playback URL helper tests
 - compact manual quality-variant admin workflow coverage for presets, duplication, sorting, normalization, and inline validation
@@ -219,8 +246,14 @@ Optional but recommended for risky changes:
 - Manual-variant channels in `DIRECT` playback mode still rely on browser access to each upstream variant playlist and segment URL, so providers that require custom headers should use `PROXY` mode.
 - The admin form shows the intended synthetic master order and row-level validation state, but it still does not render a full unsaved master-playlist preview.
 - route-level React coverage for the full multiview page is still missing; current frontend regression coverage focuses on the new workflow helpers and picker component seams.
+- responsive behavior is now much better on phones and tablets, but there is still no route-level viewport regression coverage for the full dashboard, single-view, or multi-view pages.
 - drag-swap still reloads the affected positions because tile positions remain the player-instance boundary and the swap is a real source move across slots; this branch intentionally only fixes mute/unmute audio handoff reloads.
+- touch-first multi-view intentionally disables tile drag-swap; a future branch could add a dedicated touch-safe reorder flow if operators need it often.
 - `admin-channels-page.tsx`, `admin-epg-sources-page.tsx`, `multiview-page.tsx`, and `player/hls-player.tsx` are still valid but near the current complexity ceiling defined in the standards docs.
+
+## Recommended Next Task
+
+Add route-level responsive regression coverage for dashboard browsing, single-view fullscreen/control visibility, and multi-view saved-layout fallback behavior so the new device-specific UX rules stay protected end to end.
 
 ## Observability Milestone Summary
 

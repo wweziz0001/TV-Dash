@@ -21,7 +21,7 @@ export function ChannelCard({
   return (
     <Panel className="flex h-full flex-col gap-3 p-3" density="compact">
       <div className="flex items-start justify-between gap-2.5">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-11 w-16 items-center justify-center overflow-hidden rounded-xl border border-slate-800/80 bg-slate-950">
             {channel.logoUrl ? (
               <img alt={channel.name} className="h-full w-full object-cover" src={channel.logoUrl} />
@@ -29,8 +29,8 @@ export function ChannelCard({
               <span className="text-xs uppercase tracking-[0.28em] text-slate-500">TV</span>
             )}
           </div>
-          <div>
-            <p className="text-sm font-semibold text-white">{channel.name}</p>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-white">{channel.name}</p>
             <p className="text-[13px] text-slate-400">{channel.group?.name ?? "Ungrouped"}</p>
           </div>
         </div>
@@ -60,13 +60,13 @@ export function ChannelCard({
       <ChannelGuideCard guide={guide} hasEpgSource={Boolean(channel.epgSource)} />
 
       <div className="mt-auto flex flex-wrap gap-2">
-        <Link className="flex-1" to={`/watch/${channel.slug}`}>
+        <Link className="min-w-[9rem] flex-1" to={`/watch/${channel.slug}`}>
           <Button className="w-full" size="sm">
             <PlayCircle className="h-4 w-4" />
             Watch
           </Button>
         </Link>
-        <Link className="flex-1" to={`/multiview?channels=${channel.id}`}>
+        <Link className="min-w-[9rem] flex-1" to={`/multiview?channels=${channel.id}`}>
           <Button className="w-full" size="sm" variant="secondary">
             <LayoutTemplate className="h-4 w-4" />
             Multi-View

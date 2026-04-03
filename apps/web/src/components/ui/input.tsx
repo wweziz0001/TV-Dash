@@ -7,7 +7,7 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 
 const sizeStyles = {
   md: "h-10 rounded-xl px-3.5 text-sm",
-  sm: "h-[2.125rem] rounded-lg px-3 text-[13px]",
+  sm: "h-10 rounded-xl px-3.5 text-sm sm:h-[2.125rem] sm:rounded-lg sm:px-3 sm:text-[13px]",
 };
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ uiSize = "md", ...props }, ref) {

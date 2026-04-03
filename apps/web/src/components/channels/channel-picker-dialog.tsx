@@ -42,6 +42,7 @@ export function ChannelPickerDialog({
       return;
     }
 
+    const previousOverflow = document.body.style.overflow;
     const timeout = window.setTimeout(() => {
       inputRef.current?.focus();
     }, 10);
@@ -52,9 +53,11 @@ export function ChannelPickerDialog({
       }
     }
 
+    document.body.style.overflow = "hidden";
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
+      document.body.style.overflow = previousOverflow;
       window.clearTimeout(timeout);
       window.removeEventListener("keydown", handleKeyDown);
     };
@@ -77,21 +80,21 @@ export function ChannelPickerDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-[960px] rounded-[1.5rem] border border-slate-800/90 bg-slate-900/95 p-4 shadow-glow">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/75 p-3 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="flex max-h-[min(92vh,48rem)] w-full max-w-[960px] flex-col rounded-[1.5rem] border border-slate-800/90 bg-slate-900/95 p-4 shadow-glow sm:p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-[11px] uppercase tracking-[0.24em] text-accent/80">Channel Picker</p>
             <h2 className="mt-1.5 text-xl font-semibold text-white">{title}</h2>
             <p className="mt-1.5 text-[13px] text-slate-400">{description}</p>
           </div>
-          <Button onClick={onClose} size="sm" variant="ghost">
+          <Button className="shrink-0" onClick={onClose} size="sm" variant="ghost">
             <X className="h-4 w-4" />
             Close
           </Button>
         </div>
 
-        <div className="mt-4 flex flex-col gap-2.5 lg:flex-row">
+        <div className="mt-4 flex flex-col gap-2.5 sm:flex-row">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <Input
@@ -104,13 +107,13 @@ export function ChannelPickerDialog({
             />
           </div>
           {allowClear && onClear ? (
-            <Button onClick={onClear} size="sm" variant="secondary">
+            <Button className="w-full sm:w-auto" onClick={onClear} size="sm" variant="secondary">
               Clear tile
             </Button>
           ) : null}
         </div>
 
-        <div className="mt-4 max-h-[62vh] space-y-2 overflow-y-auto pr-1">
+        <div className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
           {filteredChannels.map((channel) => {
             const guideState = getChannelGuideState({
               hasEpgSource: Boolean(channel.epgSource),
@@ -127,7 +130,7 @@ export function ChannelPickerDialog({
                 onClick={() => onSelect(channel.id)}
                 type="button"
               >
-                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-white">{channel.name}</p>
