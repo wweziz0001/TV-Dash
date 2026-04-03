@@ -399,6 +399,37 @@ export function findManualProgramById(id: string) {
   });
 }
 
+export function findProgramEntryById(id: string) {
+  return prisma.programEntry.findUnique({
+    where: { id },
+    include: {
+      channel: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          isActive: true,
+        },
+      },
+      sourceChannel: {
+        select: {
+          id: true,
+          externalId: true,
+          source: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              sourceType: true,
+              isActive: true,
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
 export function createManualProgram(data: ProgramEntryInput) {
   return prisma.programEntry.create({
     data: mapManualProgramInput(data),

@@ -24,6 +24,7 @@ import {
   findEpgSourceById,
   findEpgSourceImportConfigById,
   findManualProgramById,
+  findProgramEntryById,
   findOverlappingManualPrograms,
   listEpgSourceChannels,
   listEpgSources,
@@ -537,6 +538,42 @@ export async function deleteManualProgramEntry(id: string) {
 export async function getManualProgramEntry(id: string) {
   const programme = await findManualProgramById(id);
   return mapProgramEntry(programme);
+}
+
+export async function getProgramEntryById(id: string) {
+  const programme = await findProgramEntryById(id);
+
+  if (!programme) {
+    return null;
+  }
+
+  return {
+    id: programme.id,
+    sourceKind: programme.sourceKind,
+    channelId: programme.channelId,
+    title: programme.title,
+    subtitle: programme.subtitle ?? null,
+    description: programme.description ?? null,
+    category: programme.category ?? null,
+    imageUrl: programme.imageUrl ?? null,
+    startAt: programme.startAt.toISOString(),
+    endAt: programme.endAt?.toISOString() ?? null,
+    channel: programme.channel
+      ? {
+          id: programme.channel.id,
+          name: programme.channel.name,
+          slug: programme.channel.slug,
+          isActive: programme.channel.isActive,
+        }
+      : null,
+    sourceChannel: programme.sourceChannel
+      ? {
+          id: programme.sourceChannel.id,
+          externalId: programme.sourceChannel.externalId,
+          source: programme.sourceChannel.source,
+        }
+      : null,
+  };
 }
 
 export async function getResolvedGuideForChannel(channelId: string, startAt: Date, endAt: Date) {

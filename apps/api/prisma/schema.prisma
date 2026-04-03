@@ -64,7 +64,24 @@ enum RecordingMode {
   IMMEDIATE
   TIMED
   SCHEDULED
-  EPG
+  EPG_PROGRAM
+  RECURRING_RULE
+}
+
+enum RecordingRecurrenceType {
+  DAILY
+  WEEKLY
+  WEEKDAYS
+}
+
+enum RecordingWeekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
 }
 
 enum RecordingJobStatus {
@@ -95,6 +112,7 @@ model User {
   savedLayouts     SavedLayout[]
   playbackSessions PlaybackSession[]
   recordingJobs    RecordingJob[]
+  recordingRules   RecordingRule[]
   auditEvents      AuditEvent[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
@@ -132,6 +150,7 @@ model Channel {
   layoutItems       SavedLayoutItem[]
   playbackSessions  PlaybackSession[]
   recordingJobs     RecordingJob[]
+  recordingRules    RecordingRule[]
   recordingAssets   RecordingAsset[]
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
@@ -229,10 +248,43 @@ model ProgramEntry {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   recordingJobs     RecordingJob[]
+  originRecordingRules RecordingRule[] @relation("RecordingRuleOriginProgram")
 
   @@index([channelId, sourceKind, startAt])
   @@index([sourceChannelId, startAt])
   @@index([sourceId, sourceKind, startAt])
+}
+
+model RecordingRule {
+  id                         String                  @id @default(uuid()) @db.Uuid
+  channelId                  String                  @db.Uuid
+  channel                    Channel                 @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  createdByUserId            String                  @db.Uuid
+  createdByUser              User                    @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  titleTemplate              String
+  recurrenceType             RecordingRecurrenceType
+  weekdays                   RecordingWeekday[]
+  startsAt                   DateTime
+  durationMinutes            Int
+  timeZone                   String
+  paddingBeforeMinutes       Int                     @default(0)
+  paddingAfterMinutes        Int                     @default(0)
+  requestedQualitySelector   String?
+  requestedQualityLabel      String?
+  originProgramEntryId       String?                 @db.Uuid
+  originProgramEntry         ProgramEntry?           @relation("RecordingRuleOriginProgram", fields: [originProgramEntryId], references: [id], onDelete: SetNull)
+  originProgramTitleSnapshot String?
+  originProgramStartAt       DateTime?
+  originProgramEndAt         DateTime?
+  matchProgramTitle          String?
+  isActive                   Boolean                 @default(true)
+  jobs                       RecordingJob[]
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
+
+  @@index([createdByUserId, isActive, createdAt])
+  @@index([channelId, isActive, createdAt])
+  @@index([isActive, createdAt])
 }
 
 model RecordingJob {
@@ -243,6 +295,12 @@ model RecordingJob {
   channelSlugSnapshot String
   programEntryId      String?            @db.Uuid
   programEntry        ProgramEntry?      @relation(fields: [programEntryId], references: [id], onDelete: SetNull)
+  programTitleSnapshot String?
+  programStartAt      DateTime?
+  programEndAt        DateTime?
+  recordingRuleId     String?            @db.Uuid
+  recordingRule       RecordingRule?     @relation(fields: [recordingRuleId], references: [id], onDelete: SetNull)
+  recordingRuleNameSnapshot String?
   createdByUserId     String             @db.Uuid
   createdByUser       User               @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
   title               String
@@ -250,6 +308,8 @@ model RecordingJob {
   requestedQualityLabel String?
   mode                RecordingMode
   status              RecordingJobStatus @default(PENDING)
+  paddingBeforeMinutes Int               @default(0)
+  paddingAfterMinutes Int                @default(0)
   startAt             DateTime
   endAt               DateTime?
   actualStartAt       DateTime?
@@ -264,7 +324,9 @@ model RecordingJob {
   @@index([createdByUserId, status, startAt])
   @@index([channelId, startAt])
   @@index([programEntryId, startAt])
+  @@index([recordingRuleId, startAt])
   @@index([status, startAt])
+  @@unique([recordingRuleId, startAt])
 }
 
 model RecordingRun {

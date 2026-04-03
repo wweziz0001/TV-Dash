@@ -75,6 +75,11 @@ export const recordingJobsQuerySchema = z.object({
   channelId: z.string().uuid().optional(),
 });
 
+export const recordingRulesQuerySchema = z.object({
+  channelId: z.string().uuid().optional(),
+  isActive: z.enum(["true", "false"]).optional(),
+});
+
 export const recordingPlaybackQuerySchema = z.object({
   token: z.string().min(20),
 });
