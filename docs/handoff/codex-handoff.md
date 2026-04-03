@@ -124,6 +124,10 @@ Key relationship rules:
 - saved multi-view serialization/hydration helpers live in `player/multiview-state.ts`
 - focused-tile keyboard navigation lives in `player/multiview-shortcuts.ts`
 - multiview tile chrome, quick actions, and drag/swap affordances live in `player/multiview-tile-card.tsx`
+- multiview audio handoff now stays inside control-state synchronization only:
+  - root cause was `HlsPlayer` treating `initialBias` as a source-lifecycle dependency, so mute/unmute handoff tore down HLS and re-requested manifests
+  - `HlsPlayer` now rebuilds playback only for real source changes or explicit retries, while mute state and preferred-quality updates sync separately
+  - `MultiviewTileCard` no longer keys `HlsPlayer` by `tileIndex:channelId`, so same-source focus/metadata changes do not force React remounts
 
 ## Important Conventions
 
@@ -149,10 +153,12 @@ Current automated coverage includes:
 - HLS playlist rewrite and proxy token tests
 - XMLTV parser and now/next lookup tests
 - HlsPlayer component coverage for bounded retry timers and source replacement cleanup
+- HlsPlayer regression coverage confirming multiview mute/unmute handoff does not recreate playback or request the source again
 - player quality option resolution tests
 - multi-view tile default/audio ownership tests
 - multi-view layout serialization, hydration, and tile-scoped state reset tests
 - multi-view tile swapping and keyboard shortcut helper tests
+- multiview tile-card regression coverage confirming focus/metadata changes do not remount the player when the source is unchanged
 - guide-state display logic and channel-picker component tests
 - channel admin form and playback URL helper tests
 - compact manual quality-variant admin workflow coverage for presets, duplication, sorting, normalization, and inline validation
@@ -180,6 +186,7 @@ Optional but recommended for risky changes:
 - Manual-variant channels in `DIRECT` playback mode still rely on browser access to each upstream variant playlist and segment URL, so providers that require custom headers should use `PROXY` mode.
 - The admin form shows the intended synthetic master order and row-level validation state, but it still does not render a full unsaved master-playlist preview.
 - route-level React coverage for the full multiview page is still missing; current frontend regression coverage focuses on the new workflow helpers and picker component seams.
+- drag-swap still reloads the affected positions because tile positions remain the player-instance boundary and the swap is a real source move across slots; this branch intentionally only fixes mute/unmute audio handoff reloads.
 - `admin-channels-page.tsx`, `admin-epg-sources-page.tsx`, `multiview-page.tsx`, and `player/hls-player.tsx` are still valid but near the current complexity ceiling defined in the standards docs.
 
 ## Operator UX Milestone Summary
