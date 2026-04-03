@@ -10,13 +10,21 @@ interface ChannelQueryParams {
 
 export const publicChannelInclude = {
   group: true,
-  epgSource: {
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      sourceType: true,
-      isActive: true,
+  epgMapping: {
+    include: {
+      sourceChannel: {
+        include: {
+          source: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              sourceType: true,
+              isActive: true,
+            },
+          },
+        },
+      },
     },
   },
   qualityVariants: {
@@ -27,23 +35,43 @@ export const publicChannelInclude = {
       id: true,
     },
   },
+  manualPrograms: {
+    select: {
+      id: true,
+    },
+    take: 1,
+  },
 } satisfies Prisma.ChannelInclude;
 
 const channelConfigInclude = {
   group: true,
-  epgSource: {
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      sourceType: true,
-      isActive: true,
-      url: true,
-      refreshIntervalMinutes: true,
+  epgMapping: {
+    include: {
+      sourceChannel: {
+        include: {
+          source: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              sourceType: true,
+              isActive: true,
+              url: true,
+              refreshIntervalMinutes: true,
+            },
+          },
+        },
+      },
     },
   },
   qualityVariants: {
     orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
+  },
+  manualPrograms: {
+    select: {
+      id: true,
+    },
+    take: 1,
   },
 } satisfies Prisma.ChannelInclude;
 
@@ -69,19 +97,28 @@ const streamChannelSelect = {
 const epgLookupChannelSelect = {
   id: true,
   name: true,
-  epgChannelId: true,
-  epgSource: {
+  epgMapping: {
     select: {
-      id: true,
-      name: true,
-      slug: true,
-      sourceType: true,
-      url: true,
-      isActive: true,
-      refreshIntervalMinutes: true,
-      requestUserAgent: true,
-      requestReferrer: true,
-      requestHeaders: true,
+      sourceChannel: {
+        select: {
+          id: true,
+          externalId: true,
+          source: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              sourceType: true,
+              url: true,
+              isActive: true,
+              refreshIntervalMinutes: true,
+              requestUserAgent: true,
+              requestReferrer: true,
+              requestHeaders: true,
+            },
+          },
+        },
+      },
     },
   },
 } satisfies Prisma.ChannelSelect;
@@ -128,8 +165,6 @@ function mapChannelPersistenceInput(data: ChannelInput): Prisma.ChannelUnchecked
     upstreamReferrer: data.upstreamReferrer,
     upstreamHeaders: Object.keys(data.upstreamHeaders).length ? data.upstreamHeaders : Prisma.DbNull,
     groupId: data.groupId ?? null,
-    epgSourceId: data.epgSourceId ?? null,
-    epgChannelId: data.epgChannelId ?? null,
     isActive: data.isActive,
     sortOrder: data.sortOrder,
   };

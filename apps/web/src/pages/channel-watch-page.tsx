@@ -284,7 +284,7 @@ export function ChannelWatchPage() {
             <ChannelGuideCard
               className="mt-3"
               guide={nowNext}
-              hasEpgSource={Boolean(channel.epgSource)}
+              hasEpgSource={Boolean(channel.epgSource || channel.hasManualPrograms)}
               isLoading={nowNextQuery.isLoading}
               variant="detailed"
             />
@@ -304,7 +304,12 @@ export function ChannelWatchPage() {
                 {channel.playbackMode === "PROXY" ? playbackUrl : channel.masterHlsUrl}
               </p>
               <p>
-                Guide link: {channel.epgSource ? `${channel.epgSource.name} / ${channel.epgChannelId}` : "not configured"}
+                Guide link:{" "}
+                {channel.epgSource
+                  ? `${channel.epgSource.name} / ${channel.epgChannelId}`
+                  : channel.hasManualPrograms
+                    ? "manual programme entries"
+                    : "not configured"}
               </p>
             </div>
           </Panel>

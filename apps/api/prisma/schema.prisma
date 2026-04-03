@@ -31,7 +31,19 @@ enum ChannelSourceMode {
 }
 
 enum EpgSourceType {
-  XMLTV
+  XMLTV_URL
+  XMLTV_FILE
+}
+
+enum EpgImportStatus {
+  NEVER_IMPORTED
+  SUCCEEDED
+  FAILED
+}
+
+enum ProgramEntrySource {
+  IMPORTED
+  MANUAL
 }
 
 enum PlaybackSessionType {
@@ -86,19 +98,16 @@ model Channel {
   upstreamHeaders   Json?
   groupId           String?            @db.Uuid
   group             ChannelGroup?      @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  epgSourceId       String?            @db.Uuid
-  epgSource         EpgSource?         @relation(fields: [epgSourceId], references: [id], onDelete: SetNull)
-  epgChannelId      String?
   isActive          Boolean            @default(true)
   sortOrder         Int                @default(0)
   qualityVariants   ChannelQualityVariant[]
+  epgMapping        EpgChannelMapping?
+  manualPrograms    ProgramEntry[]
   favorites         Favorite[]
   layoutItems       SavedLayoutItem[]
   playbackSessions  PlaybackSession[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
-
-  @@index([epgSourceId, epgChannelId])
 }
 
 model ChannelQualityVariant {
@@ -124,16 +133,78 @@ model EpgSource {
   id                     String        @id @default(uuid()) @db.Uuid
   name                   String
   slug                   String        @unique
-  sourceType             EpgSourceType @default(XMLTV)
-  url                    String
+  sourceType             EpgSourceType @default(XMLTV_URL)
+  url                    String?
+  uploadedFileName       String?
   isActive               Boolean       @default(true)
-  refreshIntervalMinutes Int           @default(360)
+  refreshIntervalMinutes Int?
   requestUserAgent       String?
   requestReferrer        String?
   requestHeaders         Json?
-  channels               Channel[]
+  lastImportStartedAt    DateTime?
+  lastImportedAt         DateTime?
+  lastImportStatus       EpgImportStatus @default(NEVER_IMPORTED)
+  lastImportMessage      String?
+  lastImportChannelCount Int?
+  lastImportProgramCount Int?
+  sourceChannels         EpgSourceChannel[]
+  importedPrograms       ProgramEntry[]
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
+}
+
+model EpgSourceChannel {
+  id            String            @id @default(uuid()) @db.Uuid
+  sourceId      String            @db.Uuid
+  source        EpgSource         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  externalId    String
+  displayName   String
+  displayNames  Json?
+  iconUrl       String?
+  isAvailable   Boolean           @default(true)
+  lastSeenAt    DateTime?
+  mapping       EpgChannelMapping?
+  programs      ProgramEntry[]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@unique([sourceId, externalId])
+  @@index([sourceId, isAvailable, displayName])
+}
+
+model EpgChannelMapping {
+  id              String           @id @default(uuid()) @db.Uuid
+  channelId       String           @unique @db.Uuid
+  channel         Channel          @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  sourceChannelId String           @unique @db.Uuid
+  sourceChannel   EpgSourceChannel @relation(fields: [sourceChannelId], references: [id], onDelete: Cascade)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model ProgramEntry {
+  id               String             @id @default(uuid()) @db.Uuid
+  sourceKind       ProgramEntrySource
+  sourceId         String?            @db.Uuid
+  source           EpgSource?         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceChannelId  String?            @db.Uuid
+  sourceChannel    EpgSourceChannel?  @relation(fields: [sourceChannelId], references: [id], onDelete: Cascade)
+  channelId        String?            @db.Uuid
+  channel          Channel?           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  externalProgramId String?
+  title            String
+  subtitle         String?
+  description      String?
+  category         String?
+  imageUrl         String?
+  startAt          DateTime
+  endAt            DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([channelId, sourceKind, startAt])
+  @@index([sourceChannelId, startAt])
+  @@index([sourceId, sourceKind, startAt])
 }
 
 model Favorite {

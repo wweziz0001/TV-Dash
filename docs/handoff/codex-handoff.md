@@ -10,6 +10,7 @@ The current operator milestone also adds:
 - focused-tile quick actions and keyboard shortcuts
 - searchable quick channel switching in single-view and multiview
 - now/next guide context on dashboard cards, multiview tiles, and single-view detail panels
+- durable EPG source import, channel mapping, and manual guide management
 - clearer saved-layout save/update/load ergonomics
 - a denser operator layout pass that reduces oversized chrome and gives viewer surfaces more screen space
 - a compact manual quality-variant admin workflow with presets, normalization helpers, inline row validation, and faster repetitive entry controls
@@ -26,6 +27,7 @@ The current operator milestone also adds:
 - Backend observability now includes a dedicated `diagnostics` module for admin inspection endpoints plus shared structured-log helpers
 - Backend governance now also includes an `audit` module for durable admin action records with sanitized detail fields
 - Playback session tracking now persists real active player heartbeats in PostgreSQL so admin monitoring pages can show who is watching what now
+- Guide source imports, source-channel discovery, channel mappings, and persisted programme rows now also live in PostgreSQL
 - Frontend keeps app bootstrap in `app`, route screens in `pages`, shared UI in `components`, auth in `features`, request logic in `services`, and player-specific code in `player`
 - Shared API validation contracts live in `packages/shared`
 
@@ -88,8 +90,8 @@ tests/
 
 - `auth`: login and current user lookup
 - `audit`: durable admin governance events and audit listing
-- `channels`: logical channel catalog CRUD, browse lookups, ingest-mode metadata, manual quality variants, playback-mode metadata, and channel-to-EPG linking
-- `epg`: EPG source CRUD, XMLTV preview/loading, and now/next lookup
+- `channels`: logical channel catalog CRUD, browse lookups, ingest-mode metadata, manual quality variants, playback-mode metadata, and playback-facing guide hints
+- `epg`: EPG source CRUD, XMLTV import, source-channel discovery, channel mapping, manual program entry, resolved guide windows, and now/next lookup
 - `groups`: category/group CRUD
 - `favorites`: per-user pinned channels
 - `layouts`: saved multi-view walls
@@ -109,6 +111,9 @@ Main models:
 - `Channel`
 - `ChannelQualityVariant`
 - `EpgSource`
+- `EpgSourceChannel`
+- `EpgChannelMapping`
+- `ProgramEntry`
 - `Favorite`
 - `SavedLayout`
 - `SavedLayoutItem`
@@ -116,9 +121,13 @@ Main models:
 Key relationship rules:
 
 - a channel optionally belongs to a group
-- a channel may optionally point to one EPG source and one EPG channel id
+- a channel may optionally have one `EpgChannelMapping`
 - a channel may be configured in `MASTER_PLAYLIST` or `MANUAL_VARIANTS` source mode
 - manual-variant channels store ordered `ChannelQualityVariant` rows instead of one upstream master URL
+- an EPG source may be `XMLTV_URL` or `XMLTV_FILE`
+- imported XMLTV channel identities live in `EpgSourceChannel`
+- imported and manual guide rows live in `ProgramEntry`
+- manual guide rows belong to channels directly and take precedence over overlapping imported rows when guide windows are resolved
 - channels may play either in `DIRECT` or `PROXY` mode
 - favorites are per-user per-channel
 - saved layouts are per-user and contain ordered tile items
@@ -180,6 +189,10 @@ Key relationship rules:
 - Proxy playback URL selection happens in frontend service helpers, not inside the player lifecycle code.
 - Manual-variant channels must resolve through the backend stream master path so HLS.js receives one logical manifest.
 - Public channel responses may intentionally hide raw upstream stream URLs when proxy mode is enabled.
+- Guide mapping and manual programme management belong to the `epg` module and admin EPG screen, not to channel CRUD routes.
+- Guide resolution follows one practical precedence rule:
+  - manual program entries override overlapping imported rows for the same channel
+  - imported rows are still used for uncovered gaps before and after the manual window
 - Runtime diagnostics and log viewing are currently split:
   - stream proxy, synthetic master, and XMLTV flows record live observations
   - admin diagnostics and observability pages read those snapshots through `/api/diagnostics/...`
@@ -201,7 +214,7 @@ Current automated coverage includes:
 - Fastify inject coverage for auth login/me/logout session-version behavior and admin audit-event listing
 - HLS master playlist parsing and synthetic master generation tests
 - HLS playlist rewrite and proxy token tests
-- XMLTV parser and now/next lookup tests
+- XMLTV parser, guide resolver, manual-program validation, and now/next lookup tests
 - HlsPlayer component coverage for bounded retry timers and source replacement cleanup
 - diagnostics service, diagnostics route, and stream/XMLTV failure classification coverage
 - structured-log filtering coverage
@@ -238,8 +251,10 @@ Optional but recommended for risky changes:
 - Admin reorder remains sort-order based rather than drag-and-drop.
 - Manual variant rows now support presets, duplication, and auto-sort, but they still use button-driven ordering rather than drag-and-drop.
 - The proxy foundation currently buffers upstream asset bodies in memory instead of true streaming passthrough.
-- XMLTV data is loaded on demand into process memory only; there is no background ingestion job or durable programme storage yet.
-- Channel and EPG diagnostics are also process-memory only right now; restarts clear last-success/last-failure history and there is no long-term metrics sink yet.
+- There is still no background import scheduler yet; XMLTV URL and file ingestion currently run from explicit admin actions.
+- There is no full time-grid guide UI yet; the current milestone focuses on source management, mapping, manual entry, and now/next foundations.
+- Imported programme rows are replaced per source import rather than versioned historically, so rollback and audit-by-program are still future work.
+- Channel and EPG runtime diagnostics are still partly process-memory oriented right now; restarts clear transient diagnostic history even though source import status and guide rows are persisted.
 - Structured admin logs are also process-memory only right now; restarts clear the log viewer history and there is no durable event sink yet.
 - Proxy playback is intentionally exposed through unauthenticated asset paths because the current HLS client stack does not inject bearer headers into playlist/segment requests.
 - Audit events are durable and queryable, but they currently store sanitized summaries rather than before/after diffs for every admin change.
@@ -253,7 +268,7 @@ Optional but recommended for risky changes:
 
 ## Recommended Next Task
 
-Add route-level responsive regression coverage for dashboard browsing, single-view fullscreen/control visibility, and multi-view saved-layout fallback behavior so the new device-specific UX rules stay protected end to end.
+Add a scheduled EPG refresh worker plus a first full channel guide page so persisted programme data can stay fresh automatically and the new guide foundation can be used beyond now/next.
 
 ## Observability Milestone Summary
 
@@ -396,7 +411,7 @@ Add route-level responsive regression coverage for dashboard browsing, single-vi
 - The quick switcher is local to the current page and does not yet expose cross-app command palette behavior.
 - The player bundle warning remains; density corrections did not address route-level code splitting yet.
 
-## Proxy And EPG Foundation Summary
+## Proxy And Guide Foundation Summary
 
 - Channels now support real playback mode and upstream request configuration:
   - `playbackMode`
@@ -409,12 +424,33 @@ Add route-level responsive regression coverage for dashboard browsing, single-vi
   - master playlists are rewritten to signed asset URLs
   - upstream request headers/referrer/user-agent are applied centrally
 - Public channel payloads now hide the upstream URL when proxy mode is enabled, while admin config endpoints still expose the raw URL for diagnostics.
-- TV-Dash now has first-class EPG source configuration plus channel-to-guide linking through `epgSourceId` and `epgChannelId`.
-- The backend can preview XMLTV channel ids and serve real now/next responses from on-demand XMLTV fetches.
+- TV-Dash now has first-class guide management with three real source paths:
+  - XMLTV import from URL
+  - XMLTV import from uploaded file
+  - manual programme entry from the admin UI
+- Guide import works like this:
+  - admins create an `EpgSource`
+  - URL sources fetch XMLTV from the configured upstream
+  - file sources accept uploaded XMLTV content during import
+  - source channels are normalized into `EpgSourceChannel`
+  - source imports replace that source's previously imported `ProgramEntry` rows
+  - import status, counts, timestamps, and failure messages are stored on the source
+- Channel mapping now works like this:
+  - imported XMLTV channel ids are not stored directly on `Channel`
+  - `EpgChannelMapping` links one TV-Dash channel to one imported source channel
+  - the admin EPG page manages those mappings per source
+- Manual program entry now works like this:
+  - admins can create, edit, browse, and delete manual `ProgramEntry` rows
+  - manual rows validate start/end times and reject overlapping manual entries on the same channel
+  - manual rows override imported rows when the resolved guide window is assembled
+- Now/next resolution now works like this:
+  - the backend resolves a channel guide window from mapped imported rows plus manual rows
+  - overlapping manual windows trim imported coverage instead of duplicating entries
+  - dashboard cards, multiview tiles, and the single-view watch page consume the same now/next contract
 - Admin UI now includes:
-  - expanded channel controls for proxy mode, upstream headers, and EPG mapping
-  - a dedicated EPG source management page with XMLTV preview
-- Tests now cover proxy rewriting/token behavior, XMLTV parsing, EPG routes, proxy routes, and frontend helper logic for the new contracts.
+  - expanded channel controls for proxy mode and upstream headers
+  - a dedicated EPG management page with source CRUD, import actions, mapping tools, source diagnostics, and manual program controls
+- Tests now cover proxy rewriting/token behavior, XMLTV parsing, guide resolution, EPG routes, proxy routes, and frontend helper logic for the new contracts.
 
 ## Flexible Channel Ingest Summary
 
@@ -447,7 +483,7 @@ Add route-level responsive regression coverage for dashboard browsing, single-vi
 
 1. Add route-level React tests for the denser watch and multiview layouts so critical operator surfaces have regression coverage beyond helper/component seams.
 2. Add admin-side helper UX around manual variant metadata defaults and provider-specific ladder presets if operators start onboarding many non-master channels.
-3. Add a real background XMLTV ingestion/caching job so now/next and future guide views do not depend on on-demand source fetches.
+3. Add a real background XMLTV refresh scheduler plus import retention policy so sources can refresh automatically without manual admin action.
 4. Complete the next stream proxy milestone by switching asset delivery from buffered fetches to streaming passthrough and validating more HLS edge cases around large segment traffic.
 5. Add route-level lazy loading to reduce the large player bundle warning.
 

@@ -166,7 +166,7 @@ export function MultiviewTileCard({
           <X className="h-4 w-4" />
         </Button>
         <div className="flex w-full items-center gap-1.5 rounded-xl border border-slate-800/80 bg-slate-950/70 px-2.5 py-1 sm:ml-auto sm:w-auto sm:min-w-[88px] sm:rounded-lg sm:px-2 sm:py-0">
-          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Quality</span>
+          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500"></span>
           <Select
             className="h-7 border-0 bg-transparent px-0 text-[11px] focus:border-transparent sm:h-6"
             disabled={!channel}
@@ -187,7 +187,7 @@ export function MultiviewTileCard({
         <div className="mb-2">
           <ChannelGuideCard
             guide={guide}
-            hasEpgSource={Boolean(channel?.epgSource)}
+            hasEpgSource={Boolean(channel?.epgSource || channel?.hasManualPrograms)}
             isLoading={guideLoading}
             variant="compact"
           />

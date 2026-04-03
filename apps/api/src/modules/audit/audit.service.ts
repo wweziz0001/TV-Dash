@@ -77,7 +77,6 @@ export function summarizeChannelAuditDetail(channel: ChannelInput) {
     manualVariantCount: channel.sourceMode === "MANUAL_VARIANTS" ? channel.manualVariants.length : 0,
     hasLogoUrl: Boolean(channel.logoUrl),
     hasGroup: Boolean(channel.groupId),
-    hasEpgLink: Boolean(channel.epgSourceId && channel.epgChannelId),
     hasUserAgent: Boolean(channel.upstreamUserAgent),
     hasReferrer: Boolean(channel.upstreamReferrer),
     upstreamHeaderCount: Object.keys(channel.upstreamHeaders).length,

@@ -109,7 +109,7 @@ export function ChannelGuideCard({
 }
 
 function GuideStateIcon({ kind }: { kind: ReturnType<typeof getChannelGuideState>["kind"] }) {
-  if (kind === "source-error") {
+  if (kind === "source-error" || kind === "source-inactive") {
     return <AlertTriangle className="h-4 w-4 text-amber-300" />;
   }
 

@@ -116,7 +116,7 @@ export function ChannelPickerDialog({
         <div className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
           {filteredChannels.map((channel) => {
             const guideState = getChannelGuideState({
-              hasEpgSource: Boolean(channel.epgSource),
+              hasEpgSource: Boolean(channel.epgSource || channel.hasManualPrograms),
               guide: nowNextByChannelId?.get(channel.id),
             });
 

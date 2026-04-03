@@ -14,7 +14,6 @@ function Harness({ initialForm = emptyChannelForm }: { initialForm?: ChannelAdmi
 
   return (
     <ChannelAdminFormFields
-      epgSources={[]}
       form={form}
       groups={[]}
       onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}

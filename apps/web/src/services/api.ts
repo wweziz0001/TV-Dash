@@ -1,10 +1,13 @@
 import type {
+  EpgChannelMappingInput,
+  EpgSourceFileImportInput,
   ChannelGroupInput,
   ChannelInput,
   EpgSourceInput,
   LoginInput,
   PlaybackSessionEndInput,
   PlaybackSessionHeartbeatInput,
+  ProgramEntryInput,
   SavedLayoutInput,
   StreamTestInput,
 } from "@tv-dash/shared";
@@ -18,10 +21,12 @@ import type {
   ChannelDiagnostics,
   ChannelGroup,
   ChannelNowNext,
-  EpgPreviewChannel,
+  ChannelGuideWindow,
+  EpgSourceChannel,
   EpgSource,
   EpgSourceDiagnostics,
   Favorite,
+  ProgramEntry,
   SavedLayout,
   StreamTestResult,
   User,
@@ -157,8 +162,32 @@ export const api = {
   updateEpgSource: (id: string, payload: EpgSourceInput, token: string) =>
     request<{ source: EpgSource }>(`/epg/sources/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
   deleteEpgSource: (id: string, token: string) => request<void>(`/epg/sources/${id}`, { method: "DELETE" }, token),
-  previewEpgSourceChannels: (id: string, token: string) =>
-    request<{ source: EpgSource; channels: EpgPreviewChannel[] }>(`/epg/sources/${id}/channels`, {}, token),
+  importEpgSourceFromUrl: (id: string, token: string) =>
+    request<{ source: EpgSource }>(`/epg/sources/${id}/import-url`, { method: "POST" }, token),
+  importEpgSourceFromFile: (id: string, payload: EpgSourceFileImportInput, token: string) =>
+    request<{ source: EpgSource }>(`/epg/sources/${id}/import-file`, { method: "POST", body: JSON.stringify(payload) }, token),
+  previewEpgSourceChannels: (id: string, token: string, params?: URLSearchParams) =>
+    request<{ source: EpgSource; channels: EpgSourceChannel[] }>(
+      `/epg/sources/${id}/channels${params ? `?${params.toString()}` : ""}`,
+      {},
+      token,
+    ),
+  updateEpgChannelMapping: (payload: EpgChannelMappingInput, token: string) =>
+    request<{ mapping: unknown }>("/epg/mappings", { method: "POST", body: JSON.stringify(payload) }, token),
+  listManualPrograms: (token: string, params?: URLSearchParams) =>
+    request<{ programs: ProgramEntry[] }>(`/epg/programs/manual${params ? `?${params.toString()}` : ""}`, {}, token),
+  createManualProgram: (payload: ProgramEntryInput, token: string) =>
+    request<{ program: ProgramEntry }>("/epg/programs/manual", { method: "POST", body: JSON.stringify(payload) }, token),
+  updateManualProgram: (id: string, payload: ProgramEntryInput, token: string) =>
+    request<{ program: ProgramEntry }>(`/epg/programs/manual/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+  deleteManualProgram: (id: string, token: string) =>
+    request<void>(`/epg/programs/manual/${id}`, { method: "DELETE" }, token),
+  getChannelGuideWindow: (channelId: string, startAt: string, endAt: string, token: string) =>
+    request<{ guide: ChannelGuideWindow }>(
+      `/epg/channels/${channelId}/guide?${new URLSearchParams({ startAt, endAt }).toString()}`,
+      {},
+      token,
+    ),
   getNowNext: (channelIds: string[], token: string) =>
     request<{ items: ChannelNowNext[] }>(
       `/epg/now-next?${new URLSearchParams({ channelIds: channelIds.join(",") }).toString()}`,

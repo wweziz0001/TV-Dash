@@ -1,10 +1,15 @@
-import type { EpgSourceInput } from "@tv-dash/shared";
+import type {
+  EpgChannelMappingInput,
+  EpgSourceFileImportInput,
+  EpgSourceInput,
+  ProgramEntryInput,
+} from "@tv-dash/shared";
 import {
   sanitizeUrl,
   summarizeUpstreamRequestConfig,
   writeStructuredLog,
 } from "../../app/structured-log.js";
-import { normalizeUpstreamHeaders, buildUpstreamHeaders } from "../../app/upstream-request.js";
+import { buildUpstreamHeaders, normalizeUpstreamHeaders } from "../../app/upstream-request.js";
 import { getChannelsForEpgLookup } from "../channels/channel.service.js";
 import {
   recordChannelGuideStatus,
@@ -13,58 +18,177 @@ import {
 } from "../diagnostics/diagnostic.service.js";
 import {
   createEpgSource,
+  createManualProgram,
   deleteEpgSource,
+  deleteManualProgram,
   findEpgSourceById,
+  findEpgSourceImportConfigById,
+  findManualProgramById,
+  findOverlappingManualPrograms,
+  listEpgSourceChannels,
   listEpgSources,
+  listImportedProgramsForSourceChannels,
+  listManualPrograms,
+  listManualProgramsForChannels,
+  markEpgSourceImportFailure,
+  replaceImportedGuideData,
   updateEpgSource,
+  updateManualProgram,
+  upsertEpgChannelMapping,
 } from "./epg.repository.js";
 import { classifyEpgFailure } from "./epg-diagnostics.js";
-import { getNowNextProgramme, parseXmltvDocument } from "./xmltv-parser.js";
+import { getNowNextProgrammes, resolveGuideProgrammes, type GuideProgramRecord } from "./guide-resolver.js";
+import { parseXmltvDocument } from "./xmltv-parser.js";
 
-const xmltvCache = new Map<string, { expiresAt: number; document: ReturnType<typeof parseXmltvDocument> }>();
-
-type EpgSourceLike = {
+type EpgSourceImportConfig = Awaited<ReturnType<typeof findEpgSourceImportConfigById>>;
+type EpgSourceSummaryLike = {
   id: string;
   name: string;
   slug: string;
-  sourceType: "XMLTV";
+  sourceType: "XMLTV_URL" | "XMLTV_FILE";
+  url: string | null;
+  uploadedFileName: string | null;
   isActive: boolean;
+  refreshIntervalMinutes: number | null;
   requestUserAgent: string | null;
   requestReferrer: string | null;
   requestHeaders: unknown;
-  url?: string;
-  refreshIntervalMinutes?: number;
-  createdAt?: Date;
-  updatedAt?: Date;
-  _count?: {
-    channels: number;
+  lastImportStartedAt: Date | null;
+  lastImportedAt: Date | null;
+  lastImportStatus: "NEVER_IMPORTED" | "SUCCEEDED" | "FAILED";
+  lastImportMessage: string | null;
+  lastImportChannelCount: number | null;
+  lastImportProgramCount: number | null;
+  sourceChannels: Array<{
+    isAvailable?: boolean;
+    mapping?: { id: string } | null;
+  }>;
+  _count: {
+    importedPrograms: number;
   };
+  createdAt: Date;
+  updatedAt: Date;
 };
 
-function mapEpgSource<TSource extends EpgSourceLike | null>(source: TSource) {
+function countMappedSourceChannels(
+  sourceChannels:
+    | Array<{
+        isAvailable?: boolean;
+        mapping?: {
+          id: string;
+        } | null;
+      }>
+    | undefined,
+) {
+  return (sourceChannels ?? []).filter((channel) => Boolean(channel.mapping)).length;
+}
+
+function countAvailableSourceChannels(
+  sourceChannels:
+    | Array<{
+        isAvailable?: boolean;
+      }>
+    | undefined,
+) {
+  return (sourceChannels ?? []).filter((channel) => channel.isAvailable).length;
+}
+
+function mapEpgSource(source: EpgSourceSummaryLike | null) {
   if (!source) {
     return null;
   }
 
   return {
-    ...source,
+    id: source.id,
+    name: source.name,
+    slug: source.slug,
+    sourceType: source.sourceType,
+    url: source.url ?? null,
+    uploadedFileName: source.uploadedFileName ?? null,
+    isActive: source.isActive,
+    refreshIntervalMinutes: source.refreshIntervalMinutes ?? null,
     requestUserAgent: source.requestUserAgent ?? null,
     requestReferrer: source.requestReferrer ?? null,
     requestHeaders: normalizeUpstreamHeaders(source.requestHeaders),
+    lastImportStartedAt: source.lastImportStartedAt?.toISOString() ?? null,
+    lastImportedAt: source.lastImportedAt?.toISOString() ?? null,
+    lastImportStatus: source.lastImportStatus,
+    lastImportMessage: source.lastImportMessage ?? null,
+    lastImportChannelCount: source.lastImportChannelCount ?? null,
+    lastImportProgramCount: source.lastImportProgramCount ?? null,
+    sourceChannelCount: source.sourceChannels.length,
+    availableChannelCount: countAvailableSourceChannels(source.sourceChannels),
+    mappedChannelCount: countMappedSourceChannels(source.sourceChannels),
+    importedProgramCount: source._count.importedPrograms,
+    createdAt: source.createdAt.toISOString(),
+    updatedAt: source.updatedAt.toISOString(),
   };
 }
 
-async function loadXmltvSource(
-  source: Required<Pick<EpgSourceLike, "id" | "url" | "refreshIntervalMinutes" | "requestUserAgent" | "requestReferrer" | "requestHeaders">>,
-) {
-  const cached = xmltvCache.get(source.id);
+function mapSourceChannel(channel: Awaited<ReturnType<typeof listEpgSourceChannels>>[number]) {
+  const rawDisplayNames = Array.isArray(channel.displayNames)
+    ? channel.displayNames
+    : typeof channel.displayNames === "string"
+      ? [channel.displayNames]
+      : [];
 
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.document;
+  return {
+    id: channel.id,
+    externalId: channel.externalId,
+    displayName: channel.displayName,
+    displayNames: rawDisplayNames.filter((value): value is string => typeof value === "string"),
+    iconUrl: channel.iconUrl ?? null,
+    isAvailable: channel.isAvailable,
+    lastSeenAt: channel.lastSeenAt?.toISOString() ?? null,
+    source: channel.source,
+    mapping: channel.mapping
+      ? {
+          id: channel.mapping.id,
+          channel: channel.mapping.channel,
+        }
+      : null,
+  };
+}
+
+function mapProgramEntry(programme:
+  Awaited<ReturnType<typeof listManualPrograms>>[number] |
+  Awaited<ReturnType<typeof findManualProgramById>>
+) {
+  if (!programme) {
+    return null;
+  }
+
+  return {
+    id: programme.id,
+    sourceKind: programme.sourceKind,
+    channelId: programme.channelId,
+    title: programme.title,
+    subtitle: programme.subtitle ?? null,
+    description: programme.description ?? null,
+    category: programme.category ?? null,
+    imageUrl: programme.imageUrl ?? null,
+    startAt: programme.startAt.toISOString(),
+    endAt: programme.endAt?.toISOString() ?? null,
+    createdAt: programme.createdAt.toISOString(),
+    updatedAt: programme.updatedAt.toISOString(),
+    channel: programme.channel
+      ? {
+          id: programme.channel.id,
+          name: programme.channel.name,
+          slug: programme.channel.slug,
+          isActive: programme.channel.isActive,
+        }
+      : null,
+  };
+}
+
+async function fetchXmltvFromUrl(source: NonNullable<EpgSourceImportConfig>) {
+  if (!source.url) {
+    throw new Error("XMLTV URL source is missing its URL");
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), 15_000);
 
   try {
     const response = await fetch(source.url, {
@@ -83,82 +207,240 @@ async function loadXmltvSource(
       throw new Error(`EPG upstream returned ${response.status}`);
     }
 
-    const xml = await response.text();
-    recordEpgObservation(source.id, "fetch", {
+    return response.text();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function importXmltvDocumentForSource(params: {
+  source: NonNullable<EpgSourceImportConfig>;
+  xmlContent: string;
+  uploadedFileName?: string | null;
+  observationSource: "XMLTV_LOAD";
+}) {
+  const importedAt = new Date();
+
+  try {
+    const document = parseXmltvDocument(params.xmlContent);
+    const importedSource = await replaceImportedGuideData({
+      sourceId: params.source.id,
+      uploadedFileName: params.uploadedFileName ?? null,
+      importedAt,
+      channels: document.channels.map((channel) => ({
+        externalId: channel.id,
+        displayName: channel.displayNames[0] ?? channel.id,
+        displayNames: channel.displayNames,
+        iconUrl: channel.iconUrl,
+      })),
+      programmes: document.programmes.map((programme) => ({
+        sourceChannelExternalId: programme.channelId,
+        externalProgramId: programme.externalId,
+        title: programme.title,
+        subtitle: programme.subtitle,
+        description: programme.description,
+        category: programme.category,
+        imageUrl: programme.imageUrl,
+        startAt: programme.start,
+        endAt: programme.stop,
+      })),
+    });
+
+    recordEpgObservation(params.source.id, "fetch", {
       status: "success",
-      source: "XMLTV_LOAD",
+      source: params.observationSource,
       detail: {
-        sourceUrl: sanitizeUrl(source.url),
+        sourceType: params.source.sourceType,
+        sourceUrl: params.source.url ? sanitizeUrl(params.source.url) : null,
       },
     });
-    const document = parseXmltvDocument(xml);
-    const expiresAt = new Date(Date.now() + source.refreshIntervalMinutes * 60_000);
-
-    recordEpgObservation(source.id, "parse", {
+    recordEpgObservation(params.source.id, "parse", {
       status: "success",
-      source: "XMLTV_LOAD",
+      source: params.observationSource,
       detail: {
         channelCount: document.channels.length,
         programmeCount: document.programmes.length,
       },
     });
     recordEpgCacheState({
-      sourceId: source.id,
-      expiresAt,
+      sourceId: params.source.id,
+      expiresAt:
+        params.source.sourceType === "XMLTV_URL" && params.source.refreshIntervalMinutes
+          ? new Date(importedAt.getTime() + params.source.refreshIntervalMinutes * 60_000)
+          : importedAt,
       channelCount: document.channels.length,
       programmeCount: document.programmes.length,
     });
 
-    xmltvCache.set(source.id, {
-      expiresAt: expiresAt.getTime(),
-      document,
+    writeStructuredLog("info", {
+      event: "epg.import.succeeded",
+      epgSourceId: params.source.id,
+      detail: {
+        sourceType: params.source.sourceType,
+        channelCount: document.channels.length,
+        programmeCount: document.programmes.length,
+        uploadedFileName: params.uploadedFileName ?? null,
+      },
     });
 
-    return document;
+    return mapEpgSource(importedSource);
   } catch (error) {
     const classification = classifyEpgFailure(error);
-    const subsystem = classification.failureKind === "epg-parse" ? "parse" : "fetch";
+    const message = error instanceof Error ? error.message : "Unable to import XMLTV";
 
-    recordEpgObservation(source.id, subsystem, {
+    await markEpgSourceImportFailure(params.source.id, message, importedAt);
+    recordEpgObservation(params.source.id, classification.failureKind === "epg-parse" ? "parse" : "fetch", {
       status: "failure",
-      source: "XMLTV_LOAD",
+      source: params.observationSource,
       reason: classification.message,
       failureKind: classification.failureKind,
       retryable: classification.retryable,
       detail: {
-        sourceUrl: sanitizeUrl(source.url),
-        statusCode: classification.statusCode,
+        sourceType: params.source.sourceType,
+        sourceUrl: params.source.url ? sanitizeUrl(params.source.url) : null,
+        uploadedFileName: params.uploadedFileName ?? null,
       },
     });
-
     writeStructuredLog(classification.failureKind === "epg-parse" ? "error" : "warn", {
-      event: classification.failureKind === "epg-parse" ? "epg.parse.failed" : "epg.fetch.failed",
-      epgSourceId: source.id,
+      event: "epg.import.failed",
+      epgSourceId: params.source.id,
       failureKind: classification.failureKind,
       retryable: classification.retryable,
       statusCode: classification.statusCode,
       detail: {
-        sourceUrl: sanitizeUrl(source.url),
+        sourceType: params.source.sourceType,
+        sourceUrl: params.source.url ? sanitizeUrl(params.source.url) : null,
+        uploadedFileName: params.uploadedFileName ?? null,
         ...summarizeUpstreamRequestConfig({
-          requestUserAgent: source.requestUserAgent,
-          requestReferrer: source.requestReferrer,
-          requestHeaders: normalizeUpstreamHeaders(source.requestHeaders),
+          requestUserAgent: params.source.requestUserAgent,
+          requestReferrer: params.source.requestReferrer,
+          requestHeaders: normalizeUpstreamHeaders(params.source.requestHeaders),
         }),
       },
     });
-
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
+function mapGuideProgram(programme: GuideProgramRecord) {
+  return {
+    id: programme.id,
+    sourceKind: programme.sourceKind,
+    title: programme.title,
+    subtitle: programme.subtitle,
+    description: programme.description,
+    category: programme.category,
+    imageUrl: programme.imageUrl,
+    start: programme.startAt.toISOString(),
+    stop: programme.endAt?.toISOString() ?? null,
+  };
+}
+
+function asGuideProgramRecord(programme: {
+  id: string;
+  sourceKind: "IMPORTED" | "MANUAL";
+  title: string;
+  subtitle: string | null;
+  description: string | null;
+  category: string | null;
+  imageUrl: string | null;
+  startAt: Date;
+  endAt: Date | null;
+}) {
+  return {
+    id: programme.id,
+    sourceKind: programme.sourceKind,
+    title: programme.title,
+    subtitle: programme.subtitle,
+    description: programme.description,
+    category: programme.category,
+    imageUrl: programme.imageUrl,
+    startAt: programme.startAt,
+    endAt: programme.endAt,
+  } satisfies GuideProgramRecord;
+}
+
+async function assertNoManualProgrammeOverlap(payload: ProgramEntryInput, excludeId?: string) {
+  const overlapping = await findOverlappingManualPrograms({
+    channelId: payload.channelId,
+    startAt: new Date(payload.startAt),
+    endAt: new Date(payload.endAt),
+    excludeId,
+  });
+
+  if (overlapping.length > 0) {
+    throw new Error("Manual programme overlaps an existing manual entry on this channel");
+  }
+}
+
+async function getResolvedGuideDataForChannels(
+  channelIds: string[],
+  range: {
+    rangeStart: Date;
+    rangeEnd: Date;
+  },
+) {
+  const channels = await getChannelsForEpgLookup(channelIds);
+  const manualPrograms = await listManualProgramsForChannels(channelIds, range.rangeStart, range.rangeEnd);
+  const sourceChannelIds = channels
+    .map((channel) => channel.epgMapping?.sourceChannel?.id)
+    .filter((value): value is string => Boolean(value));
+  const importedPrograms =
+    sourceChannelIds.length > 0
+      ? await listImportedProgramsForSourceChannels(sourceChannelIds, range.rangeStart, range.rangeEnd)
+      : [];
+
+  const manualProgramsByChannelId = new Map<string, GuideProgramRecord[]>();
+  const importedProgramsBySourceChannelId = new Map<string, GuideProgramRecord[]>();
+
+  for (const programme of manualPrograms) {
+    const list = manualProgramsByChannelId.get(programme.channelId ?? "");
+    const record = asGuideProgramRecord(programme);
+
+    if (list) {
+      list.push(record);
+      continue;
+    }
+
+    manualProgramsByChannelId.set(programme.channelId ?? "", [record]);
+  }
+
+  for (const programme of importedPrograms) {
+    const list = importedProgramsBySourceChannelId.get(programme.sourceChannelId ?? "");
+    const record = asGuideProgramRecord(programme);
+
+    if (list) {
+      list.push(record);
+      continue;
+    }
+
+    importedProgramsBySourceChannelId.set(programme.sourceChannelId ?? "", [record]);
+  }
+
+  return channels.map((channel) => {
+    const mapping = channel.epgMapping?.sourceChannel ?? null;
+    const manual = manualProgramsByChannelId.get(channel.id) ?? [];
+    const imported = mapping ? importedProgramsBySourceChannelId.get(mapping.id) ?? [] : [];
+    const resolved = resolveGuideProgrammes({
+      imported,
+      manual,
+    });
+
+    return {
+      channel,
+      manual,
+      imported,
+      resolved,
+    };
+  });
+}
+
 export function listConfiguredEpgSources() {
-  return listEpgSources().then((sources) => sources.map((source) => mapEpgSource(source)));
+  return listEpgSources().then((sources) => sources.map((source) => mapEpgSource(source)).filter(Boolean));
 }
 
 export function getEpgSource(id: string) {
-  return findEpgSourceById(id).then(mapEpgSource);
+  return findEpgSourceById(id).then((source) => mapEpgSource(source));
 }
 
 export function createConfiguredEpgSource(payload: EpgSourceInput) {
@@ -170,120 +452,191 @@ export function updateConfiguredEpgSource(id: string, payload: EpgSourceInput) {
 }
 
 export function deleteConfiguredEpgSource(id: string) {
-  xmltvCache.delete(id);
   return deleteEpgSource(id);
 }
 
-export async function previewEpgSourceChannels(id: string) {
+export async function importConfiguredEpgSourceFromUrl(id: string) {
+  const source = await findEpgSourceImportConfigById(id);
+
+  if (!source) {
+    return null;
+  }
+
+  if (source.sourceType !== "XMLTV_URL") {
+    throw new Error("Only XMLTV URL sources support refresh-from-url");
+  }
+
+  const xmlContent = await fetchXmltvFromUrl(source);
+
+  return importXmltvDocumentForSource({
+    source,
+    xmlContent,
+    observationSource: "XMLTV_LOAD",
+  });
+}
+
+export async function importConfiguredEpgSourceFromFile(id: string, payload: EpgSourceFileImportInput) {
+  const source = await findEpgSourceImportConfigById(id);
+
+  if (!source) {
+    return null;
+  }
+
+  if (source.sourceType !== "XMLTV_FILE") {
+    throw new Error("Only XMLTV file sources accept uploaded XMLTV files");
+  }
+
+  return importXmltvDocumentForSource({
+    source,
+    xmlContent: payload.xmlContent,
+    uploadedFileName: payload.fileName,
+    observationSource: "XMLTV_LOAD",
+  });
+}
+
+export async function listImportedSourceChannels(id: string, search?: string) {
   const source = await findEpgSourceById(id);
 
   if (!source) {
     return null;
   }
 
-  const document = await loadXmltvSource(source);
+  const channels = await listEpgSourceChannels(id, search);
 
   return {
     source: mapEpgSource(source),
-    channels: document.channels,
+    channels: channels.map(mapSourceChannel),
+  };
+}
+
+export async function updateChannelGuideMapping(payload: EpgChannelMappingInput) {
+  const result = await upsertEpgChannelMapping(payload);
+  return result;
+}
+
+export function listManualProgramEntries(channelId?: string) {
+  return listManualPrograms(channelId).then((programmes) => programmes.map((programme) => mapProgramEntry(programme)));
+}
+
+export async function createManualProgramEntry(payload: ProgramEntryInput) {
+  await assertNoManualProgrammeOverlap(payload);
+  const programme = await createManualProgram(payload);
+  return mapProgramEntry(programme);
+}
+
+export async function updateManualProgramEntry(id: string, payload: ProgramEntryInput) {
+  await assertNoManualProgrammeOverlap(payload, id);
+  const programme = await updateManualProgram(id, payload);
+  return mapProgramEntry(programme);
+}
+
+export async function deleteManualProgramEntry(id: string) {
+  return deleteManualProgram(id);
+}
+
+export async function getManualProgramEntry(id: string) {
+  const programme = await findManualProgramById(id);
+  return mapProgramEntry(programme);
+}
+
+export async function getResolvedGuideForChannel(channelId: string, startAt: Date, endAt: Date) {
+  const channelData = (
+    await getResolvedGuideDataForChannels([channelId], {
+      rangeStart: startAt,
+      rangeEnd: endAt,
+    })
+  )[0];
+
+  if (!channelData) {
+    return null;
+  }
+
+  const programmes = channelData.resolved.filter((programme) => {
+    if (programme.startAt >= endAt) {
+      return false;
+    }
+
+    return !programme.endAt || programme.endAt > startAt;
+  });
+
+  return {
+    channelId,
+    programmes: programmes.map(mapGuideProgram),
   };
 }
 
 export async function getNowNextForChannels(channelIds: string[]) {
-  const channels = await getChannelsForEpgLookup(channelIds);
-  const results = [];
-  const sourceDocuments = new Map<string, ReturnType<typeof parseXmltvDocument>>();
+  const now = new Date();
+  const resolvedGuideData = await getResolvedGuideDataForChannels(channelIds, {
+    rangeStart: new Date(now.getTime() - 24 * 60 * 60_000),
+    rangeEnd: new Date(now.getTime() + 48 * 60 * 60_000),
+  });
 
-  for (const channel of channels) {
-    if (!channel.epgSource || !channel.epgChannelId) {
+  return resolvedGuideData.map(({ channel, manual, imported, resolved }) => {
+    const mapping = channel.epgMapping?.sourceChannel ?? null;
+    const hasGuideConfiguration = Boolean(mapping?.source) || manual.length > 0;
+    const activeSourceIsUnavailable = Boolean(mapping?.source && !mapping.source.isActive && manual.length === 0);
+
+    if (!hasGuideConfiguration) {
       recordChannelGuideStatus({
         channelId: channel.id,
         status: "unconfigured",
-        sourceId: channel.epgSource?.id ?? null,
-        epgChannelId: channel.epgChannelId ?? null,
+        sourceId: mapping?.source.id ?? null,
+        epgChannelId: mapping?.externalId ?? null,
       });
-      results.push({
+      return {
         channelId: channel.id,
         status: "UNCONFIGURED" as const,
         now: null,
         next: null,
-      });
-      continue;
+      };
     }
 
-    if (!channel.epgSource.isActive) {
+    if (activeSourceIsUnavailable) {
       recordChannelGuideStatus({
         channelId: channel.id,
         status: "source-inactive",
-        sourceId: channel.epgSource.id,
-        epgChannelId: channel.epgChannelId,
+        sourceId: mapping?.source.id ?? null,
+        epgChannelId: mapping?.externalId ?? null,
       });
-      results.push({
+      return {
         channelId: channel.id,
-        status: "UNCONFIGURED" as const,
+        status: "SOURCE_INACTIVE" as const,
         now: null,
         next: null,
+      };
+    }
+
+    if (mapping?.source && imported.length === 0 && manual.length === 0) {
+      recordChannelGuideStatus({
+        channelId: channel.id,
+        status: "no-data",
+        sourceId: mapping.source.id,
+        epgChannelId: mapping.externalId,
       });
-      continue;
+      return {
+        channelId: channel.id,
+        status: "NO_DATA" as const,
+        now: null,
+        next: null,
+      };
     }
 
-    const cacheKey = channel.epgSource.id;
-    let document = sourceDocuments.get(cacheKey);
-
-    if (!document) {
-      try {
-        document = await loadXmltvSource(channel.epgSource);
-        sourceDocuments.set(cacheKey, document);
-      } catch {
-        recordChannelGuideStatus({
-          channelId: channel.id,
-          status: "source-error",
-          sourceId: channel.epgSource.id,
-          epgChannelId: channel.epgChannelId,
-        });
-        results.push({
-          channelId: channel.id,
-          status: "SOURCE_ERROR" as const,
-          now: null,
-          next: null,
-        });
-        continue;
-      }
-    }
-
-    const { now, next } = getNowNextProgramme(document.programmes, channel.epgChannelId);
-    const status = now || next ? ("READY" as const) : ("NO_DATA" as const);
+    const { now: current, next } = getNowNextProgrammes(resolved, now);
+    const status = current || next ? ("READY" as const) : ("NO_DATA" as const);
 
     recordChannelGuideStatus({
       channelId: channel.id,
       status: status === "READY" ? "ready" : "no-data",
-      sourceId: channel.epgSource.id,
-      epgChannelId: channel.epgChannelId,
+      sourceId: mapping?.source.id ?? null,
+      epgChannelId: mapping?.externalId ?? null,
     });
 
-    results.push({
+    return {
       channelId: channel.id,
       status,
-      now: now
-        ? {
-            title: now.title,
-            subtitle: now.subtitle,
-            description: now.description,
-            start: now.start.toISOString(),
-            stop: now.stop?.toISOString() ?? null,
-          }
-        : null,
-      next: next
-        ? {
-            title: next.title,
-            subtitle: next.subtitle,
-            description: next.description,
-            start: next.start.toISOString(),
-            stop: next.stop?.toISOString() ?? null,
-          }
-        : null,
-    });
-  }
-
-  return results;
+      now: current ? mapGuideProgram(current) : null,
+      next: next ? mapGuideProgram(next) : null,
+    };
+  });
 }

@@ -2,16 +2,21 @@ import { normalizeUpstreamHeaders } from "../../app/upstream-request.js";
 import type { ChannelConfigRecord, PublicChannelRecord } from "./channel.repository.js";
 
 export function mapPublicChannel(record: PublicChannelRecord) {
-  const { qualityVariants, ...channel } = record;
+  const { qualityVariants, epgMapping, manualPrograms, ...channel } = record;
   const activeVariants = Array.isArray(qualityVariants) ? qualityVariants : [];
+  const manualProgramItems = Array.isArray(manualPrograms) ? manualPrograms : [];
+  const sourceChannel = epgMapping?.sourceChannel ?? null;
+  const source = sourceChannel?.source ?? null;
 
   return {
     ...channel,
     masterHlsUrl: channel.playbackMode === "PROXY" ? null : channel.masterHlsUrl,
     manualVariantCount: activeVariants.length,
-    epgSourceId: channel.epgSourceId ?? null,
-    epgChannelId: channel.epgChannelId ?? null,
-    epgSource: channel.epgSource ?? null,
+    hasManualPrograms: manualProgramItems.length > 0,
+    epgSourceId: source?.id ?? null,
+    epgSourceChannelId: sourceChannel?.id ?? null,
+    epgChannelId: sourceChannel?.externalId ?? null,
+    epgSource: source,
   };
 }
 

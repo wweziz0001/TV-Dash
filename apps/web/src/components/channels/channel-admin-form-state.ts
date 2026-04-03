@@ -1,5 +1,5 @@
 import { channelInputSchema, type ChannelInput } from "@tv-dash/shared";
-import type { ChannelConfig, ChannelGroup, EpgSource } from "@/types/api";
+import type { ChannelConfig, ChannelGroup } from "@/types/api";
 import { normalizeManualVariantLabel, type ManualVariantDraft } from "./channel-manual-variants";
 
 export type ChannelManualVariantFormValue = ManualVariantDraft;
@@ -18,8 +18,6 @@ export interface ChannelAdminFormValue {
   upstreamUserAgent: string;
   upstreamReferrer: string;
   upstreamHeadersText: string;
-  epgSourceId: string;
-  epgChannelId: string;
 }
 
 export interface ChannelFormValidationIssue {
@@ -61,8 +59,6 @@ export const emptyChannelForm: ChannelAdminFormValue = {
   upstreamUserAgent: "",
   upstreamReferrer: "",
   upstreamHeadersText: "",
-  epgSourceId: "",
-  epgChannelId: "",
 };
 
 export function formatHeadersJson(headers: Record<string, string>) {
@@ -216,8 +212,8 @@ export function buildChannelInput(form: ChannelAdminFormValue): ChannelInput {
     upstreamUserAgent: form.upstreamUserAgent,
     upstreamReferrer: form.upstreamReferrer,
     upstreamHeaders: parseHeadersJson(form.upstreamHeadersText),
-    epgSourceId: form.epgSourceId || null,
-    epgChannelId: form.epgChannelId || null,
+    epgSourceId: null,
+    epgChannelId: null,
   };
 
   if (form.sourceMode === "MASTER_PLAYLIST") {
@@ -272,14 +268,11 @@ export function buildChannelFormFromConfig(channel: ChannelConfig): ChannelAdmin
     upstreamUserAgent: channel.upstreamUserAgent ?? "",
     upstreamReferrer: channel.upstreamReferrer ?? "",
     upstreamHeadersText: formatHeadersJson(channel.upstreamHeaders),
-    epgSourceId: channel.epgSourceId ?? "",
-    epgChannelId: channel.epgChannelId ?? "",
   };
 }
 
 export interface ChannelAdminFormFieldsProps {
   form: ChannelAdminFormValue;
   groups: ChannelGroup[];
-  epgSources: EpgSource[];
   onChange: (patch: Partial<ChannelAdminFormValue>) => void;
 }

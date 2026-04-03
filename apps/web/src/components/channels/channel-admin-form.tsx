@@ -21,7 +21,7 @@ export {
   validateChannelForm,
 } from "./channel-admin-form-state";
 
-export function ChannelAdminFormFields({ form, groups, epgSources, onChange }: ChannelAdminFormFieldsProps) {
+export function ChannelAdminFormFields({ form, groups, onChange }: ChannelAdminFormFieldsProps) {
   const validation = validateChannelForm(form);
   const sourceIssues =
     form.sourceMode === "MASTER_PLAYLIST"
@@ -161,22 +161,6 @@ export function ChannelAdminFormFields({ form, groups, epgSources, onChange }: C
           <FieldMessage tone="rose">{getValidationMessages(validation, "upstreamHeadersText")[0]}</FieldMessage>
         ) : null}
       </Field>
-
-      <div className="grid gap-3 md:grid-cols-2">
-        <Field label="EPG Source">
-          <Select onChange={(event) => onChange({ epgSourceId: event.target.value })} uiSize="sm" value={form.epgSourceId}>
-            <option value="">No guide source</option>
-            {epgSources.map((source) => (
-              <option key={source.id} value={source.id}>
-                {source.name} {source.isActive ? "" : "(inactive)"}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="EPG Channel ID / tvg-id">
-          <Input onChange={(event) => onChange({ epgChannelId: event.target.value })} uiSize="sm" value={form.epgChannelId} />
-        </Field>
-      </div>
 
       <Field label="Sort order">
         <Input

@@ -1,5 +1,129 @@
 # Codex Session Log
 
+## `2026-04-03T08:10:00+03:00`
+
+### Objective
+
+Add a real EPG/program guide management foundation to TV-Dash with XMLTV URL import, XMLTV file import, manual program entry, channel mapping, persisted now/next data, and an admin workflow that is practical for repeated operations.
+
+### Work Completed
+
+- created the requested working branch `014-epg-import-manual-entry-and-guide-management`
+- replaced the old lightweight source-backed EPG foundation with durable guide persistence by adding:
+  - `EpgSource` import status fields
+  - `EpgSourceChannel` for imported XMLTV channel identities
+  - `EpgChannelMapping` for normalized channel-to-guide linkage
+  - `ProgramEntry` for imported and manual schedule rows
+- added a migration that also backfills legacy direct channel guide linkage into the new normalized mapping tables before removing the old `Channel.epgSourceId` and `Channel.epgChannelId` storage
+- upgraded the backend `epg` module to support:
+  - EPG source create/update/delete
+  - XMLTV import from URL
+  - XMLTV import from uploaded file
+  - source-channel discovery per source
+  - channel mapping writes
+  - manual program create/update/delete/list
+  - resolved guide-window lookup per channel
+  - persisted now/next lookup from imported plus manual data
+- implemented one explicit guide precedence rule:
+  - manual program entries override overlapping imported entries for the same channel
+  - imported entries still fill uncovered gaps before and after the manual window
+- added overlap handling for manual program entry so conflicting manual rows on the same channel are rejected intentionally instead of silently stacking
+- updated channel-facing backend responses so existing player and browse surfaces still receive practical guide hints even though guide linkage now lives in dedicated EPG tables
+- rewrote the admin EPG page into a real guide-operations workflow with:
+  - source CRUD
+  - URL refresh
+  - XMLTV file upload/import
+  - imported source-channel browsing
+  - channel mapping controls
+  - manual program create/edit/delete controls
+  - source status, counts, timestamps, and failure feedback
+- removed old channel-form EPG mapping responsibility so guide mapping and manual schedule work now live in the admin EPG surface instead of channel CRUD
+- extended now/next consumers on dashboard/watch/multiview flows to handle the richer persisted guide foundation and the new `SOURCE_INACTIVE` state
+- added or updated targeted tests for:
+  - XMLTV parser normalization
+  - guide-resolution precedence
+  - EPG route contracts
+  - diagnostics behavior affected by the new guide foundation
+  - channel admin form compatibility with the shared DTO shape
+
+### Files Added Or Changed
+
+- shared contracts:
+  - `packages/shared/src/index.ts`
+- Prisma schema, migration, and seed:
+  - `apps/api/prisma/schema.prisma`
+  - `apps/api/prisma/migrations/20260403070000_epg_guide_management_foundation/migration.sql`
+  - `apps/api/prisma/seed.ts`
+- backend EPG/domain work:
+  - `apps/api/src/modules/epg/epg.repository.ts`
+  - `apps/api/src/modules/epg/epg.service.ts`
+  - `apps/api/src/modules/epg/epg.routes.ts`
+  - `apps/api/src/modules/epg/xmltv-parser.ts`
+  - `apps/api/src/modules/epg/guide-resolver.ts`
+  - `apps/api/src/app/request-schemas.ts`
+  - `apps/api/src/modules/channels/channel.repository.ts`
+  - `apps/api/src/modules/channels/channel-mappers.ts`
+  - `apps/api/src/modules/diagnostics/diagnostic.service.ts`
+  - `apps/api/src/modules/audit/audit.service.ts`
+- frontend/admin and now-next consumers:
+  - `apps/web/src/pages/admin-epg-sources-page.tsx`
+  - `apps/web/src/pages/admin-channels-page.tsx`
+  - `apps/web/src/components/channels/channel-admin-form-state.ts`
+  - `apps/web/src/components/channels/channel-admin-form.tsx`
+  - `apps/web/src/components/channels/channel-card.tsx`
+  - `apps/web/src/components/channels/channel-picker-dialog.tsx`
+  - `apps/web/src/pages/channel-watch-page.tsx`
+  - `apps/web/src/pages/multiview-page.tsx`
+  - `apps/web/src/player/multiview-tile-card.tsx`
+  - `apps/web/src/services/api.ts`
+  - `apps/web/src/types/api.ts`
+- tests:
+  - `apps/api/src/modules/epg/guide-resolver.test.ts`
+  - `apps/api/src/modules/epg/xmltv-parser.test.ts`
+  - `apps/api/src/modules/epg/epg.routes.test.ts`
+  - `apps/api/src/modules/diagnostics/diagnostic.routes.test.ts`
+  - `apps/api/src/modules/channels/channel.routes.test.ts`
+  - `apps/web/src/components/channels/channel-admin-form-state.test.ts`
+  - `apps/web/src/components/channels/channel-admin-form.test.tsx`
+  - `apps/web/src/components/channels/channel-guide-state.test.ts`
+- docs:
+  - `docs/architecture/api-boundaries.md`
+  - `docs/standards/backend-api-standards.md`
+  - `docs/standards/prisma-database-standards.md`
+  - `docs/standards/testing-standards.md`
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- Normalized imported guide identities into dedicated `EpgSourceChannel` and `EpgChannelMapping` tables instead of leaving EPG linkage on `Channel`, because future guide pages and recording/scheduler work need cleaner ownership boundaries.
+- Stored imported XMLTV programme rows durably in `ProgramEntry` instead of keeping the old on-demand/in-memory fetch model, but deliberately stopped short of building a background job system in the same branch.
+- Chose one explicit precedence rule where manual entries override overlapping imported entries, because that gives operators a practical correction path without inventing a larger versioning system yet.
+- Kept XMLTV URL and XMLTV file import as explicit admin-triggered actions so the workflow is real today while leaving scheduler/retention concerns as the next milestone.
+- Moved guide mapping and manual program operations into the dedicated admin EPG screen instead of the channel form, because channel CRUD and schedule operations had become two separate admin workflows.
+
+### Verification Run
+
+- `npm run db:generate -w apps/api`
+- `npm run lint -w apps/api`
+- `npm run lint -w apps/web`
+- `npm run test -w apps/api -- epg xmltv guide-resolver diagnostic.service diagnostic.routes channel-input`
+- `npm run test -w apps/web -- channel-admin-form-state.test.ts channel-admin-form.test.tsx channel-guide-state.test.ts`
+- `npm run lint`
+- `npm run build`
+- `npm run test`
+
+### Remaining Risk
+
+- There is still no background import scheduler or retry queue; XMLTV sources refresh only when an admin triggers import.
+- There is still no full time-grid guide page yet; this branch intentionally focuses on durable source, mapping, manual-entry, and now/next foundations.
+- Imported programme rows are replaced per source import rather than historically versioned, so audit/rollback at the individual programme level is still future work.
+- The admin EPG screen is now functional and compact, but it remains one of the denser screens in the repo and may benefit from future component extraction if guide workflows expand again.
+
+### Exact Suggested Next Task
+
+Add scheduled EPG refresh plus a first full guide view that reuses the new resolved guide-window APIs, then evaluate recording/scheduling on top of that stable foundation.
+
 ## `2026-04-03T06:25:00+03:00`
 
 ### Objective

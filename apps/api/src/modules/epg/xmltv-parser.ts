@@ -3,15 +3,19 @@ import { XMLParser } from "fast-xml-parser";
 export interface XmltvChannel {
   id: string;
   displayNames: string[];
+  iconUrl: string | null;
 }
 
 export interface XmltvProgramme {
+  externalId: string | null;
   channelId: string;
   start: Date;
   stop: Date | null;
   title: string;
   subtitle: string | null;
   description: string | null;
+  category: string | null;
+  imageUrl: string | null;
 }
 
 function asArray<T>(value: T | T[] | undefined) {
@@ -29,6 +33,19 @@ function readNodeText(value: unknown) {
 
   if (value && typeof value === "object" && "#text" in value && typeof value["#text"] === "string") {
     return value["#text"].trim();
+  }
+
+  return "";
+}
+
+function readAttributeString(value: unknown, attributeName: string) {
+  if (value && typeof value === "object") {
+    const objectValue = value as Record<string, unknown>;
+    const attributeValue = objectValue[attributeName];
+
+    if (typeof attributeValue === "string") {
+      return attributeValue.trim();
+    }
   }
 
   return "";
@@ -65,14 +82,20 @@ export function parseXmltvDocument(xml: string) {
 
   const parsed = parser.parse(xml) as {
     tv?: {
-      channel?: Array<{ id?: string; "display-name"?: unknown } | { id?: string; "display-name"?: unknown }>;
+      channel?: Array<
+        | { id?: string; "display-name"?: unknown; icon?: { src?: string } | Array<{ src?: string }> }
+        | { id?: string; "display-name"?: unknown; icon?: { src?: string } | Array<{ src?: string }> }
+      >;
       programme?: Array<{
+        id?: string;
         channel?: string;
         start?: string;
         stop?: string;
         title?: unknown;
         subTitle?: unknown;
         desc?: unknown;
+        category?: unknown;
+        icon?: { src?: string } | Array<{ src?: string }>;
       }>;
       };
   };
@@ -92,6 +115,7 @@ export function parseXmltvDocument(xml: string) {
         {
           id: channel.id,
           displayNames,
+          iconUrl: readAttributeString(asArray(channel.icon)[0], "src") || null,
         } satisfies XmltvChannel,
       ];
     })
@@ -110,12 +134,15 @@ export function parseXmltvDocument(xml: string) {
 
       return [
         {
+          externalId: programme.id?.trim() || null,
           channelId: programme.channel,
           start,
           stop: programme.stop ? parseXmltvTimestamp(programme.stop) : null,
           title: readNodeText(programme.title) || "Untitled programme",
           subtitle: readNodeText(programme.subTitle) || null,
           description: readNodeText(programme.desc) || null,
+          category: asArray(programme.category).map(readNodeText).find(Boolean) ?? null,
+          imageUrl: readAttributeString(asArray(programme.icon)[0], "src") || null,
         } satisfies XmltvProgramme,
       ];
     })

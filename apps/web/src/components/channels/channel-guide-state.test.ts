@@ -1,30 +1,32 @@
 import { describe, expect, it } from "vitest";
 import { getChannelGuideState, getProgrammeProgressPercent } from "./channel-guide-state";
 
+function buildProgram(start: string, stop: string, title = "Morning News") {
+  return {
+    id: `${title}-${start}`,
+    sourceKind: "IMPORTED" as const,
+    title,
+    subtitle: null,
+    description: null,
+    category: null,
+    imageUrl: null,
+    start,
+    stop,
+  };
+}
+
 describe("getProgrammeProgressPercent", () => {
   it("clamps programme progress between zero and one hundred", () => {
     expect(
       getProgrammeProgressPercent(
-        {
-          title: "Morning News",
-          subtitle: null,
-          description: null,
-          start: "2026-04-02T09:00:00.000Z",
-          stop: "2026-04-02T10:00:00.000Z",
-        },
+        buildProgram("2026-04-02T09:00:00.000Z", "2026-04-02T10:00:00.000Z"),
         new Date("2026-04-02T09:30:00.000Z"),
       ),
     ).toBe(50);
 
     expect(
       getProgrammeProgressPercent(
-        {
-          title: "Morning News",
-          subtitle: null,
-          description: null,
-          start: "2026-04-02T09:00:00.000Z",
-          stop: "2026-04-02T10:00:00.000Z",
-        },
+        buildProgram("2026-04-02T09:00:00.000Z", "2026-04-02T10:00:00.000Z"),
         new Date("2026-04-02T11:00:00.000Z"),
       ),
     ).toBe(100);
@@ -39,20 +41,8 @@ describe("getChannelGuideState", () => {
         guide: {
           channelId: "channel-1",
           status: "READY",
-          now: {
-            title: "Morning News",
-            subtitle: "Top stories",
-            description: null,
-            start: "2026-04-02T09:00:00.000Z",
-            stop: "2026-04-02T10:00:00.000Z",
-          },
-          next: {
-            title: "Weather",
-            subtitle: null,
-            description: null,
-            start: "2026-04-02T10:00:00.000Z",
-            stop: "2026-04-02T10:30:00.000Z",
-          },
+          now: { ...buildProgram("2026-04-02T09:00:00.000Z", "2026-04-02T10:00:00.000Z"), subtitle: "Top stories" },
+          next: buildProgram("2026-04-02T10:00:00.000Z", "2026-04-02T10:30:00.000Z", "Weather"),
         },
         now: new Date("2026-04-02T09:30:00.000Z"),
       }),
@@ -78,6 +68,18 @@ describe("getChannelGuideState", () => {
         guide: null,
       }).kind,
     ).toBe("unconfigured");
+
+    expect(
+      getChannelGuideState({
+        hasEpgSource: true,
+        guide: {
+          channelId: "channel-1",
+          status: "SOURCE_INACTIVE",
+          now: null,
+          next: null,
+        },
+      }).kind,
+    ).toBe("source-inactive");
 
     expect(
       getChannelGuideState({

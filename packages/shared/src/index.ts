@@ -27,7 +27,9 @@ export const layoutTypeSchema = z.enum([
 
 export const streamPlaybackModeSchema = z.enum(["DIRECT", "PROXY"]);
 export const channelSourceModeSchema = z.enum(["MASTER_PLAYLIST", "MANUAL_VARIANTS"]);
-export const epgSourceTypeSchema = z.enum(["XMLTV"]);
+export const epgSourceTypeSchema = z.enum(["XMLTV_URL", "XMLTV_FILE"]);
+export const epgImportStatusSchema = z.enum(["NEVER_IMPORTED", "SUCCEEDED", "FAILED"]);
+export const programEntrySourceSchema = z.enum(["IMPORTED", "MANUAL"]);
 export const qualityModeSchema = z.enum(["AUTO", "LOWEST", "HIGHEST", "MANUAL"]);
 export const playbackSessionTypeSchema = z.enum(["SINGLE_VIEW", "MULTIVIEW"]);
 export const playbackSessionStateSchema = z.enum(["idle", "loading", "playing", "buffering", "retrying", "error"]);
@@ -253,17 +255,6 @@ function addDuplicateIssue(
 export const channelInputSchema = z
   .discriminatedUnion("sourceMode", [masterPlaylistChannelInputSchema, manualVariantsChannelInputSchema])
   .superRefine((value, context) => {
-    const hasEpgSource = Boolean(value.epgSourceId);
-    const hasEpgChannelId = Boolean(value.epgChannelId);
-
-    if (hasEpgSource !== hasEpgChannelId) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "EPG source and EPG channel id must be provided together",
-        path: hasEpgSource ? ["epgChannelId"] : ["epgSourceId"],
-      });
-    }
-
     if (value.sourceMode !== "MANUAL_VARIANTS") {
       return;
     }
@@ -316,17 +307,110 @@ export const channelInputSchema = z
     }
   });
 
-export const epgSourceInputSchema = z.object({
-  name: z.string().min(2).max(120),
-  slug: z.string().min(2).max(120),
-  sourceType: epgSourceTypeSchema.default("XMLTV"),
-  url: configuredUrlSchema,
-  isActive: z.boolean().default(true),
-  refreshIntervalMinutes: z.number().int().min(5).max(1440).default(360),
-  requestUserAgent: optionalNullableTrimmedStringSchema,
-  requestReferrer: optionalNullableUrlSchema,
-  requestHeaders: upstreamHeadersInputSchema,
+const optionalNullableLongTextSchema = z
+  .string()
+  .trim()
+  .max(4000)
+  .nullable()
+  .optional()
+  .transform((value) => value || null);
+
+const optionalNullableMediumTextSchema = z
+  .string()
+  .trim()
+  .max(255)
+  .nullable()
+  .optional()
+  .transform((value) => value || null);
+
+const optionalNullableShortTextSchema = z
+  .string()
+  .trim()
+  .max(120)
+  .nullable()
+  .optional()
+  .transform((value) => value || null);
+
+const optionalNullablePositiveDurationSchema = z
+  .number()
+  .int()
+  .min(5)
+  .max(1440)
+  .nullable()
+  .optional()
+  .transform((value) => value ?? null);
+
+const isoDateTimeSchema = z.string().datetime({ offset: true });
+
+export const epgSourceInputSchema = z
+  .object({
+    name: z.string().min(2).max(120),
+    slug: z.string().min(2).max(120),
+    sourceType: epgSourceTypeSchema.default("XMLTV_URL"),
+    url: optionalNullableUrlSchema,
+    isActive: z.boolean().default(true),
+    refreshIntervalMinutes: optionalNullablePositiveDurationSchema,
+    requestUserAgent: optionalNullableTrimmedStringSchema,
+    requestReferrer: optionalNullableUrlSchema,
+    requestHeaders: upstreamHeadersInputSchema,
+  })
+  .superRefine((value, context) => {
+    if (value.sourceType === "XMLTV_URL") {
+      if (!value.url) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["url"],
+          message: "URL is required for XMLTV URL sources",
+        });
+      }
+
+      if (!value.refreshIntervalMinutes) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["refreshIntervalMinutes"],
+          message: "Refresh interval is required for XMLTV URL sources",
+        });
+      }
+    }
+  });
+
+export const epgSourceFileImportInputSchema = z.object({
+  fileName: z.string().trim().min(1).max(255),
+  xmlContent: z.string().min(1).max(10_000_000),
 });
+
+export const epgChannelMappingInputSchema = z.object({
+  channelId: z.string().uuid(),
+  sourceChannelId: z.string().uuid().nullable(),
+});
+
+export const programEntryInputSchema = z
+  .object({
+    channelId: z.string().uuid(),
+    title: z.string().trim().min(1).max(180),
+    subtitle: optionalNullableMediumTextSchema,
+    startAt: isoDateTimeSchema,
+    endAt: isoDateTimeSchema,
+    description: optionalNullableLongTextSchema,
+    category: optionalNullableShortTextSchema,
+    imageUrl: optionalNullableUrlSchema,
+  })
+  .superRefine((value, context) => {
+    const startAt = Date.parse(value.startAt);
+    const endAt = Date.parse(value.endAt);
+
+    if (!Number.isFinite(startAt) || !Number.isFinite(endAt)) {
+      return;
+    }
+
+    if (endAt <= startAt) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endAt"],
+        message: "End time must be after start time",
+      });
+    }
+  });
 
 export const favoriteInputSchema = z.object({
   channelId: z.string().uuid(),
@@ -409,6 +493,8 @@ export type LayoutType = z.infer<typeof layoutTypeSchema>;
 export type StreamPlaybackMode = z.infer<typeof streamPlaybackModeSchema>;
 export type ChannelSourceMode = z.infer<typeof channelSourceModeSchema>;
 export type EpgSourceType = z.infer<typeof epgSourceTypeSchema>;
+export type EpgImportStatus = z.infer<typeof epgImportStatusSchema>;
+export type ProgramEntrySource = z.infer<typeof programEntrySourceSchema>;
 export type QualityMode = z.infer<typeof qualityModeSchema>;
 export type PlaybackSessionType = z.infer<typeof playbackSessionTypeSchema>;
 export type PlaybackSessionState = z.infer<typeof playbackSessionStateSchema>;
@@ -420,7 +506,10 @@ export type ChannelQualityVariantInput = z.infer<typeof channelQualityVariantInp
 export type ChannelInput = z.infer<typeof channelInputSchema>;
 export type ChannelSortOrderInput = z.infer<typeof channelSortOrderInputSchema>;
 export type EpgSourceInput = z.infer<typeof epgSourceInputSchema>;
+export type EpgSourceFileImportInput = z.infer<typeof epgSourceFileImportInputSchema>;
+export type EpgChannelMappingInput = z.infer<typeof epgChannelMappingInputSchema>;
 export type FavoriteInput = z.infer<typeof favoriteInputSchema>;
+export type ProgramEntryInput = z.infer<typeof programEntryInputSchema>;
 export type SavedLayoutConfig = z.infer<typeof savedLayoutConfigSchema>;
 export type SavedLayoutInput = z.infer<typeof savedLayoutInputSchema>;
 export type SavedLayoutItemInput = z.infer<typeof savedLayoutItemInputSchema>;
