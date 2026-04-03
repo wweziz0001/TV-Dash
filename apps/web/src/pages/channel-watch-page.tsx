@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Heart, LayoutTemplate, Search, Tv } from "lucide-react";
+import { Heart, LayoutTemplate, Maximize2, Minimize2, Search, Tv } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { ChannelGuideCard } from "@/components/channels/channel-guide-card";
@@ -23,6 +23,7 @@ export function ChannelWatchPage() {
   const navigate = useNavigate();
   const { token } = useAuth();
   const queryClient = useQueryClient();
+  const playerFrameRef = useRef<HTMLDivElement | null>(null);
   const [qualities, setQualities] = useState<QualityOption[]>([...defaultQualityOptions]);
   const [selectedQuality, setSelectedQuality] = useState("AUTO");
   const [playerDiagnostics, setPlayerDiagnostics] = useState<PlayerDiagnostics>(() =>
@@ -32,6 +33,7 @@ export function ChannelWatchPage() {
     }),
   );
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [isPlayerFullscreen, setIsPlayerFullscreen] = useState(false);
 
   const channelQuery = useQuery({
     queryKey: ["channel", slug, token],
@@ -135,6 +137,33 @@ export function ChannelWatchPage() {
     };
   }, []);
 
+  useEffect(() => {
+    function handleFullscreenChange() {
+      setIsPlayerFullscreen(document.fullscreenElement === playerFrameRef.current);
+    }
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
+
+  async function togglePlayerFullscreen() {
+    const playerFrame = playerFrameRef.current;
+
+    if (!playerFrame) {
+      return;
+    }
+
+    if (document.fullscreenElement === playerFrame) {
+      await document.exitFullscreen?.();
+      return;
+    }
+
+    await playerFrame.requestFullscreen?.();
+  }
+
   if (!channelQuery.data) {
     return (
       <Panel>
@@ -156,11 +185,12 @@ export function ChannelWatchPage() {
         description="Real HLS playback with manual quality switching, optional proxy delivery, and live now/next guide context."
         actions={
           <>
-            <Button onClick={() => setPickerOpen(true)} size="sm" variant="secondary">
+            <Button className="w-full sm:w-auto" onClick={() => setPickerOpen(true)} size="sm" variant="secondary">
               <Search className="h-4 w-4" />
               Quick switch
             </Button>
             <Button
+              className="w-full sm:w-auto"
               onClick={() => favoriteMutation.mutate(isFavorite)}
               size="sm"
               variant={isFavorite ? "primary" : "secondary"}
@@ -168,8 +198,8 @@ export function ChannelWatchPage() {
               <Heart className={isFavorite ? "h-4 w-4 fill-current" : "h-4 w-4"} />
               {isFavorite ? "Favorited" : "Add favorite"}
             </Button>
-            <Link to={`/multiview?channels=${channel.id}`}>
-              <Button size="sm" variant="secondary">
+            <Link className="w-full sm:w-auto" to={`/multiview?channels=${channel.id}`}>
+              <Button className="w-full" size="sm" variant="secondary">
                 <LayoutTemplate className="h-4 w-4" />
                 Open in Multi-View
               </Button>
@@ -178,9 +208,12 @@ export function ChannelWatchPage() {
         }
       />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
-        <Panel className="p-2" density="compact">
-          <div className="h-[calc(100vh-10.5rem)] min-h-[420px]">
+      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+        <Panel className="p-2 sm:p-2.5" density="compact">
+          <div
+            className="aspect-video min-h-[220px] max-h-[72vh] sm:min-h-[280px] lg:min-h-[360px] lg:max-h-none lg:aspect-auto lg:h-[calc(100vh-12rem)] xl:h-[calc(100vh-10.5rem)]"
+            ref={playerFrameRef}
+          >
             <HlsPlayer
               autoPlay
               muted={false}
@@ -194,11 +227,12 @@ export function ChannelWatchPage() {
           </div>
         </Panel>
 
-        <div className="space-y-3 xl:sticky xl:top-3 xl:self-start">
-          <Panel density="compact">
+        <div className="grid gap-3 md:grid-cols-2 2xl:sticky 2xl:top-3 2xl:grid-cols-1 2xl:self-start">
+          <Panel className="md:col-span-2 2xl:col-span-1" density="compact">
             <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Playback Controls</p>
             <div className="mt-3 space-y-3">
-              <div>
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+                <div>
                 <label className="mb-1.5 block text-[13px] text-slate-400" htmlFor="quality">
                   Quality
                 </label>
@@ -207,8 +241,15 @@ export function ChannelWatchPage() {
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
-                  ))}
-                </Select>
+                    ))}
+                  </Select>
+                </div>
+                <div className="flex items-end">
+                  <Button className="w-full lg:w-auto" onClick={() => void togglePlayerFullscreen()} size="sm" variant="secondary">
+                    {isPlayerFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                    {isPlayerFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                  </Button>
+                </div>
               </div>
               <div className="rounded-xl border border-slate-800/80 bg-slate-950/80 p-3">
                 <p className="text-[13px] font-semibold text-white">Current state</p>
@@ -228,6 +269,11 @@ export function ChannelWatchPage() {
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">
                   Audio: {playerDiagnostics.isMuted ? "Muted by player" : "Live audio enabled"}
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {isPlayerFullscreen
+                    ? "Fullscreen keeps the operator overlays visible and returns to the same state when you exit."
+                    : "Use fullscreen for cleaner mobile viewing or large-screen monitoring without losing playback state."}
                 </p>
               </div>
             </div>

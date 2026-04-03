@@ -80,4 +80,19 @@ describe("ChannelPickerDialog", () => {
 
     expect(onSelect).toHaveBeenCalledWith("channel-2");
   });
+
+  it("locks body scrolling while the picker is open", () => {
+    render(
+      <ChannelPickerDialog
+        channels={[]}
+        description="Find and switch channels fast."
+        onClose={() => undefined}
+        onSelect={() => undefined}
+        open
+        title="Quick channel switch"
+      />,
+    );
+
+    expect(document.body.style.overflow).toBe("hidden");
+  });
 });
