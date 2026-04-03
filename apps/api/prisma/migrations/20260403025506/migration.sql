@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "AuditEvent" ALTER COLUMN "id" DROP DEFAULT;
