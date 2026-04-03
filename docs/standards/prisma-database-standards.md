@@ -11,10 +11,13 @@ This document defines schema design, migration discipline, repository usage, and
 - Join or child entities should be explicit when they carry real state:
   - `Favorite`
   - `SavedLayoutItem`
-  - `ChannelQualityVariant`
-  - `EpgSourceChannel`
-  - `EpgChannelMapping`
-  - `ProgramEntry`
+- `ChannelQualityVariant`
+- `EpgSourceChannel`
+- `EpgChannelMapping`
+- `ProgramEntry`
+- `RecordingJob`
+- `RecordingRun`
+- `RecordingAsset`
 
 ## Field Naming Rules
 
@@ -50,6 +53,13 @@ Guide-specific relation rule:
   - discovered XMLTV channel identities in `EpgSourceChannel`
   - channel linkage in `EpgChannelMapping`
   - concrete schedule rows in `ProgramEntry`
+
+Recording-specific relation rule:
+
+- recording concepts should also stay normalized:
+  - scheduling intent in `RecordingJob`
+  - one execution attempt per `RecordingRun`
+  - finalized playable output in `RecordingAsset`
 
 ## Audit Field Rules
 
@@ -112,6 +122,12 @@ Guide-specific migration review must also check:
 - whether imported programme replacement is source-scoped and atomic
 - whether legacy direct guide-link fields are backfilled into normalized mapping tables before removal
 - whether large `ProgramEntry` write paths need indexes before release
+
+Recording-specific migration review must also check:
+
+- whether recording history survives channel deletion through snapshot fields where needed
+- whether job-status and library list filters have the indexes they need before release
+- whether storage-path uniqueness and run-to-asset uniqueness are explicit instead of implied by application code
 
 ## Seed Strategy
 

@@ -14,6 +14,7 @@ The current operator milestone also adds:
 - clearer saved-layout save/update/load ergonomics
 - a denser operator layout pass that reduces oversized chrome and gives viewer surfaces more screen space
 - a compact manual quality-variant admin workflow with presets, normalization helpers, inline row validation, and faster repetitive entry controls
+- a first real recording system with immediate capture, timed/scheduled recording jobs, recordings library management, and recorded-media playback
 - a first real observability layer with runtime stream/channel diagnostics, EPG diagnostics, structured backend event logs, and clearer playback-state reporting
 - a dedicated admin observability area with live viewer sessions, per-channel current viewer counts, recent failures, and a filterable logs viewer
 - a hardened auth/access baseline with session-version invalidation, explicit permission guards, admin-only stream inspection, and a durable admin audit trail
@@ -26,6 +27,7 @@ The current operator milestone also adds:
 - Backend auth now resolves the current user for protected requests so stale or revoked sessions fail server-side instead of trusting old token claims indefinitely
 - Backend observability now includes a dedicated `diagnostics` module for admin inspection endpoints plus shared structured-log helpers
 - Backend governance now also includes an `audit` module for durable admin action records with sanitized detail fields
+- Backend now also includes a `recordings` module for real ffmpeg-backed capture, scheduling, storage-backed media assets, and playback access tokens
 - Playback session tracking now persists real active player heartbeats in PostgreSQL so admin monitoring pages can show who is watching what now
 - Guide source imports, source-channel discovery, channel mappings, and persisted programme rows now also live in PostgreSQL
 - Frontend keeps app bootstrap in `app`, route screens in `pages`, shared UI in `components`, auth in `features`, request logic in `services`, and player-specific code in `player`
@@ -95,6 +97,7 @@ tests/
 - `groups`: category/group CRUD
 - `favorites`: per-user pinned channels
 - `layouts`: saved multi-view walls
+- `recordings`: recording jobs, execution runs, storage-backed assets, playback access, and recordings-library responses
 - `diagnostics`: runtime observability snapshots, playback session tracking, structured log retention, and admin monitoring endpoints
 - `streams`: HLS metadata, stream test endpoints, and proxy gateway foundation
 - `health`: readiness endpoint
@@ -114,6 +117,9 @@ Main models:
 - `EpgSourceChannel`
 - `EpgChannelMapping`
 - `ProgramEntry`
+- `RecordingJob`
+- `RecordingRun`
+- `RecordingAsset`
 - `Favorite`
 - `SavedLayout`
 - `SavedLayoutItem`
@@ -128,6 +134,9 @@ Key relationship rules:
 - imported XMLTV channel identities live in `EpgSourceChannel`
 - imported and manual guide rows live in `ProgramEntry`
 - manual guide rows belong to channels directly and take precedence over overlapping imported rows when guide windows are resolved
+- recording jobs store scheduling intent plus channel/title snapshots so history survives later channel edits or channel deletion
+- recording runs store one concrete ffmpeg execution attempt with process/result metadata
+- recording assets store finalized playable media metadata and relative storage keys under the configured recordings root
 - channels may play either in `DIRECT` or `PROXY` mode
 - favorites are per-user per-channel
 - saved layouts are per-user and contain ordered tile items
@@ -204,6 +213,29 @@ Key relationship rules:
 - Player state should flow upward through diagnostics callbacks for operator-facing surfaces instead of pages inferring status from raw HLS events.
 - Stream inspection endpoints (`/api/streams/test` and `/api/streams/metadata`) are now explicitly admin-only because they accept arbitrary upstream URLs plus request-header overrides.
 - Important admin mutations now create durable `AuditEvent` rows with sanitized details such as mode changes, booleans, ids, and counts instead of raw sensitive config values.
+- Recording capture now uses the existing `/api/streams/channels/:id/master` path internally so request headers, proxy mode, and manual-variant synthetic masters stay owned by the stream/channel foundation instead of being reimplemented in the recorder.
+- Recorded media is stored under `RECORDINGS_STORAGE_DIR` as relative dated paths and served back through signed playback URLs plus byte-range support for browser playback.
+
+## Recording Modes And Library
+
+- Current recording modes:
+  - `IMMEDIATE`: starts now and runs until an operator stops it
+  - `TIMED`: records for an explicit start/end window
+  - `SCHEDULED`: future-only scheduled window that stays visible in the upcoming-jobs list
+  - `EPG`: reserved in the schema/contracts for future “record this program” flows
+- Current operator entry points:
+  - watch page quick `Record now` / `Stop recording`
+  - multiview tile `REC` / `Stop`
+  - `/recordings` workspace for create, edit, cancel, stop, browse, search, and delete flows
+- Recordings library capabilities:
+  - filter/search recorded jobs
+  - distinguish `COMPLETED`, `FAILED`, `CANCELED`, `PENDING`, `SCHEDULED`, and `RECORDING`
+  - open completed media on `/recordings/:id`
+  - delete library items and underlying stored files
+- Current first-version storage/runtime limitations:
+  - one API process owns the scheduler/runtime today
+  - active recordings interrupted by process restart are marked failed instead of resumed
+  - playback currently assumes browser-playable MP4 output from the captured stream path
 
 ## Testing Status
 

@@ -87,6 +87,7 @@ Current stable module ownership:
 - `groups`: channel group CRUD and counts
 - `favorites`: per-user favorite channel membership
 - `layouts`: per-user saved multiview walls
+- `recordings`: immediate/timed/scheduled recording jobs, execution runs, library listing, playback access, and storage-backed media lifecycle
 - `diagnostics`: runtime observability snapshots, playback session tracking, and admin inspection endpoints
 - `streams`: stream inspection, metadata, and upstream test behavior
 - `health`: readiness endpoint
@@ -139,6 +140,12 @@ Guide-specific expectations:
 - manual guide overlap conflicts should map to `409`
 - missing source, channel, mapping, or manual program resources should map to `404`
 
+Recording-specific expectations:
+
+- missing owned recording job or asset should map to `404`
+- editing/canceling/stopping a job in the wrong lifecycle state should map to `409`
+- invalid or expired recording playback tokens should fail as missing media instead of leaking internal path details
+
 ## Access Control Rules
 
 - Prefer explicit permission guards for protected routes over inline `request.user.role` checks.
@@ -164,6 +171,11 @@ Guide-management additions:
 - EPG source create, update, delete, and import operations should create sanitized audit events.
 - Channel-to-guide mapping changes and manual program mutations should also create durable audit events when they materially change operator-visible guide behavior.
 
+Recording additions:
+
+- admin-triggered recording create, update, cancel, stop, and delete actions should create sanitized audit events.
+- recording logs may include safe ids, channel slugs, durations, and ffmpeg exit outcomes, but they must not log raw filesystem roots outside the already configured relative storage key.
+
 ## Guide Management Rules
 
 - Guide source import must remain inside the `epg` module even when routes upload files or trigger URL refresh actions.
@@ -173,6 +185,19 @@ Guide-management additions:
   - future channel guide endpoints
   - admin preview or diagnostics flows
 - Admin EPG APIs should return useful operational status, including import timestamps, result state, counts, and failure messages, without exposing raw upstream secrets.
+
+## Recording Rules
+
+- The capture path should reuse the owned stream/channel foundation instead of bypassing it with ad-hoc upstream fetch logic.
+- Scheduled recording status transitions must stay explicit:
+  - `PENDING`
+  - `SCHEDULED`
+  - `RECORDING`
+  - `COMPLETED`
+  - `FAILED`
+  - `CANCELED`
+- Recording media playback should use short-lived playback access URLs or equivalent signed access, not long-lived bearer tokens in query strings.
+- Recording file delivery must keep storage-root resolution server-side and must support practical browser playback behavior such as byte-range requests.
 
 ## Observability Rules
 

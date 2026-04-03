@@ -1,5 +1,125 @@
 # Codex Session Log
 
+## `2026-04-03T21:35:00+03:00`
+
+### Objective
+
+Add a real recording system to TV-Dash with immediate recording, timed/scheduled recording jobs, a recordings library, and playback of recorded media.
+
+### Work Completed
+
+- created the requested branch `016-scheduled-recording-and-recordings-library`
+- added a dedicated backend `recordings` module with real recording lifecycle ownership:
+  - `RecordingJob` for schedule intent and operator-facing status
+  - `RecordingRun` for one concrete ffmpeg execution attempt
+  - `RecordingAsset` for finalized playable recorded media
+- added the Prisma migration `20260403180307_recording_workflows_foundation`
+- added explicit recording env/config inputs:
+  - `RECORDINGS_STORAGE_DIR`
+  - `RECORDINGS_FFMPEG_PATH`
+  - `RECORDINGS_POLL_INTERVAL_MS`
+  - `RECORDING_PLAYBACK_TOKEN_TTL_SECONDS`
+- implemented a real ffmpeg-based recording runtime that:
+  - polls for due jobs
+  - starts immediate and due-now jobs
+  - stops recordings at the scheduled end time
+  - supports manual stop from the API/UI
+  - creates real `RecordingAsset` rows only when media output exists
+  - marks interrupted runtime-owned recordings failed on process restart instead of pretending completion
+- reused the existing `/api/streams/channels/:id/master` path as the recording input so recording still respects:
+  - proxy playback mode
+  - upstream request headers/referrer/user-agent
+  - manual-variant synthetic master generation
+- added backend recording APIs for:
+  - create/list/get recording jobs
+  - edit scheduled jobs
+  - cancel scheduled jobs
+  - stop active jobs
+  - delete recordings
+  - issue playback access URLs
+  - stream recorded media with byte-range support
+- added a new `/recordings` workspace in the web app that now supports:
+  - immediate recording
+  - timed recording creation
+  - scheduled recording creation
+  - editing/canceling upcoming jobs
+  - monitoring active recordings
+  - library search/filter
+  - delete flows
+- added `/recordings/:id` playback for completed recorded items
+- added quick recording controls to:
+  - single-view watch page
+  - multiview tiles
+- added targeted tests for:
+  - recording status helpers
+  - storage path safety
+  - recording route contracts including playback access and ranged media delivery
+  - recording form validation and payload building
+
+### Files Added Or Changed
+
+- shared/API contracts:
+  - `packages/shared/src/index.ts`
+  - `apps/web/src/types/api.ts`
+  - `apps/web/src/services/api.ts`
+- Prisma/config/runtime:
+  - `apps/api/prisma/schema.prisma`
+  - `apps/api/prisma/migrations/20260403180307_recording_workflows_foundation/migration.sql`
+  - `.env.example`
+  - `apps/api/src/config/env.ts`
+  - `apps/api/src/server.ts`
+- backend recordings module:
+  - `apps/api/src/modules/recordings/recording.routes.ts`
+  - `apps/api/src/modules/recordings/recording.service.ts`
+  - `apps/api/src/modules/recordings/recording.repository.ts`
+  - `apps/api/src/modules/recordings/recording-runtime.ts`
+  - `apps/api/src/modules/recordings/recording-storage.ts`
+  - `apps/api/src/modules/recordings/recording-playback-token.ts`
+  - `apps/api/src/modules/recordings/recording-status.ts`
+- web recordings UI:
+  - `apps/web/src/pages/recordings-page.tsx`
+  - `apps/web/src/pages/recording-playback-page.tsx`
+  - `apps/web/src/components/recordings/recording-form-state.ts`
+  - `apps/web/src/components/recordings/recording-status-badge.tsx`
+  - `apps/web/src/pages/channel-watch-page.tsx`
+  - `apps/web/src/pages/multiview-page.tsx`
+  - `apps/web/src/player/multiview-tile-card.tsx`
+  - `apps/web/src/app/router.tsx`
+  - `apps/web/src/components/layout/app-shell.tsx`
+- tests:
+  - `apps/api/src/modules/recordings/recording-status.test.ts`
+  - `apps/api/src/modules/recordings/recording-storage.test.ts`
+  - `apps/api/src/modules/recordings/recording.routes.test.ts`
+  - `apps/web/src/components/recordings/recording-form-state.test.ts`
+  - `apps/web/src/services/api.test.ts`
+
+### Key Decisions
+
+- Reused the existing stream/channel playback foundation for recording input instead of building a second upstream-ingest stack, because the proxy/manual-variant/channel-request policy already lives there and should stay singular.
+- Stored channel title/slug snapshots on recording jobs/assets so library history remains readable even if channel metadata changes later.
+- Kept the first runtime deliberately single-process and explicit instead of introducing a broader job-queue subsystem in the same branch.
+- Used signed playback URLs plus byte-range delivery for recorded media so native browser playback works without pushing long-lived auth tokens into video URLs.
+- Treated `SCHEDULED` as a future-only operator workflow in the web form while still keeping `TIMED` available for explicit time-window capture.
+
+### Verification Run
+
+- `npm run db:generate -w apps/api`
+- `npm run lint -w apps/api`
+- `npm run lint -w apps/web`
+- `npm run test -w apps/api -- recording-status.test.ts recording-storage.test.ts recording.routes.test.ts`
+- `npm run test -w apps/web -- recording-form-state.test.ts api.test.ts multiview-tile-card.test.tsx`
+
+### Remaining Risk
+
+- The recording runtime is still single-process; horizontal API replicas would need a shared scheduler/lease model before concurrent production deployment.
+- Interrupted in-progress recordings are marked failed on process restart instead of resuming.
+- The current output path targets MP4 playback pragmatically; unusual upstream codec/container combinations may need future fallback/remux policy.
+- There is not yet a full EPG “record this program” button even though the schema/contracts now have an `EPG` mode and `programEntryId` seam ready for it.
+
+### Exact Suggested Next Task
+
+Add EPG-driven “record this programme” entry points plus retention/cleanup policy, then evaluate whether the recording runtime should move to a dedicated worker when deployment moves beyond one API process.
+
 ## `2026-04-03T20:35:00+03:00`
 
 ### Objective
