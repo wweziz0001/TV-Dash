@@ -88,7 +88,7 @@ Repositories must not:
 - `layouts`
   - per-user saved multiview walls
 - `diagnostics`
-  - runtime observability snapshots, failure classification, channel/EPG health summaries, and admin inspection endpoints
+  - runtime observability snapshots, structured log retention, playback session tracking, channel/EPG health summaries, and admin inspection endpoints
 - `streams`
   - stream inspection, proxy master/asset delivery, and upstream request behavior
 - `health`
@@ -133,7 +133,14 @@ Keep those mappings stable unless the contract explicitly changes.
 
 ## Diagnostics Foundation Rules
 
-- Runtime diagnostics are currently process-local and in-memory; they summarize real playback, proxy, and EPG observations but do not persist across restarts yet.
+- Runtime diagnostics remain cross-cutting and live inside the `diagnostics` module.
+- Playback session tracking is now a real persisted foundation:
+  - player surfaces send authenticated heartbeat updates
+  - session cleanup expires stale sessions
+  - admin monitoring reads live sessions and per-channel viewer counts from real session rows
+- Structured admin log viewing is currently process-local and in-memory:
+  - logs are retained from real structured events emitted by the running API process
+  - process restart still clears the retained log history
 - Channel diagnostics may aggregate:
   - proxy master and asset results
   - synthetic master generation outcomes
@@ -144,6 +151,11 @@ Keep those mappings stable unless the contract explicitly changes.
   - XMLTV parse outcomes
   - cache freshness plus loaded channel/programme counts
 - Admin diagnostics routes belong in the `diagnostics` module, but they compose current channel/source configuration from the owning domain modules rather than duplicating repositories.
+- Admin monitoring endpoints may include:
+  - monitoring snapshot summaries
+  - current playback sessions
+  - per-channel viewer counts
+  - filterable structured logs
 - Failure classification should distinguish at least:
   - `network`
   - `playlist-fetch`

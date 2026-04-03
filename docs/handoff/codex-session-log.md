@@ -1,5 +1,107 @@
 # Codex Session Log
 
+## `2026-04-03T04:35:00+03:00`
+
+### Objective
+
+Make observability visible inside the product itself by adding a real admin monitoring area with live viewer sessions, who-is-watching-what visibility, per-channel current viewer counts, recent failures, and a practical logs viewer.
+
+### Work Completed
+
+- created the requested working branch `011-observability-admin-logs-and-live-viewer-monitoring`
+- added a persisted playback session foundation with:
+  - Prisma `PlaybackSession` storage
+  - authenticated heartbeat ingestion from real player pages
+  - explicit session end handling plus stale-session cleanup
+  - session state fields for user, channel, session type, playback state, quality, mute state, tile index, failure kind, started time, and last seen time
+- extended the diagnostics module with admin monitoring capabilities:
+  - `GET /api/diagnostics/monitoring`
+  - `GET /api/diagnostics/logs`
+  - `POST /api/diagnostics/playback-sessions/heartbeat`
+  - `POST /api/diagnostics/playback-sessions/end`
+- upgraded structured logging so the API now retains a recent in-memory admin-viewable log buffer with:
+  - severity
+  - category segmentation
+  - free-text filtering support
+  - recent-first ordering
+- wired real player heartbeats from:
+  - `ChannelWatchPage`
+  - `MultiViewPage`
+- added a new admin observability route and navigation entry:
+  - `/admin/observability`
+  - live sessions list showing who is watching what now
+  - per-channel viewer count list with watcher details
+  - recent failures and warnings panel
+  - filterable structured logs viewer
+- added targeted tests for:
+  - structured-log filtering
+  - playback session lifecycle logging and cleanup behavior
+  - monitoring aggregation
+  - admin monitoring route responses and protection
+  - frontend heartbeat hook behavior
+
+### Files Added Or Changed
+
+- shared contracts and persistence:
+  - `packages/shared/src/index.ts`
+  - `apps/api/prisma/schema.prisma`
+  - `apps/api/prisma/migrations/202604030002_playback_sessions_for_observability/migration.sql`
+- backend monitoring foundation:
+  - `apps/api/src/app/request-schemas.ts`
+  - `apps/api/src/app/structured-log.ts`
+  - `apps/api/src/modules/diagnostics/diagnostic.routes.ts`
+  - `apps/api/src/modules/diagnostics/monitoring.service.ts`
+  - `apps/api/src/modules/diagnostics/playback-session.repository.ts`
+  - `apps/api/src/modules/diagnostics/playback-session.service.ts`
+- frontend monitoring and heartbeat wiring:
+  - `apps/web/src/features/observability/use-playback-session-heartbeat.ts`
+  - `apps/web/src/pages/admin-observability-page.tsx`
+  - `apps/web/src/pages/channel-watch-page.tsx`
+  - `apps/web/src/pages/multiview-page.tsx`
+  - `apps/web/src/app/router.tsx`
+  - `apps/web/src/components/layout/app-shell.tsx`
+  - `apps/web/src/services/api.ts`
+  - `apps/web/src/types/api.ts`
+- tests:
+  - `apps/api/src/app/structured-log.test.ts`
+  - `apps/api/src/modules/diagnostics/playback-session.service.test.ts`
+  - `apps/api/src/modules/diagnostics/monitoring.service.test.ts`
+  - `apps/api/src/modules/diagnostics/diagnostic.routes.test.ts`
+  - `apps/web/src/features/observability/use-playback-session-heartbeat.test.tsx`
+- docs:
+  - `docs/architecture/api-boundaries.md`
+  - `docs/architecture/testing-strategy.md`
+  - `docs/standards/backend-api-standards.md`
+  - `docs/standards/testing-standards.md`
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- Kept admin log viewing process-local and in-memory for this milestone so the product gains a real logs viewer quickly without forcing a broader logging platform decision.
+- Made playback sessions durable in PostgreSQL because live viewer counts and who-is-watching queries need real per-user session state rather than decorative counters.
+- Reused the existing `diagnostics` module instead of creating a second observability module, because monitoring, log viewing, and inspection endpoints are all part of the same cross-cutting admin surface.
+- Logged playback session lifecycle changes only on meaningful state transitions such as start, fail, recover, and end to avoid noisy heartbeat spam.
+
+### Verification Run
+
+- `npm run db:generate`
+- `npm run lint -w packages/shared`
+- `npm run lint -w apps/api`
+- `npm run test -w apps/api -- structured-log.test.ts playback-session.service.test.ts monitoring.service.test.ts diagnostic.routes.test.ts`
+- `npm run lint -w apps/web`
+- `npm run test -w apps/web -- use-playback-session-heartbeat.test.tsx`
+
+### Remaining Risk
+
+- The logs viewer currently shows retained logs from the running API process only; logs do not survive restart or span multiple API instances yet.
+- Playback sessions are durable, but the current admin page still refreshes on polling rather than server push or websockets.
+- Monitoring currently tracks the real single-view and multiview watch surfaces; admin preview players in edit screens are intentionally not counted as live viewer sessions.
+
+### Exact Suggested Next Task
+
+Add durable log/event persistence plus push-based live monitoring updates so `/admin/observability` can retain history across restarts and update without polling.
+
 ## `2026-04-03T03:55:00+03:00`
 
 ### Objective
