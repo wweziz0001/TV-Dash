@@ -14,7 +14,7 @@ The current operator milestone also adds:
 - clearer saved-layout save/update/load ergonomics
 - a denser operator layout pass that reduces oversized chrome and gives viewer surfaces more screen space
 - a compact manual quality-variant admin workflow with presets, normalization helpers, inline row validation, and faster repetitive entry controls
-- a first real recording system with immediate capture, timed/scheduled recording jobs, recordings library management, and recorded-media playback
+- a first real recording system with immediate capture, timed/scheduled recording jobs, guide-program recording, recurring recording rules, recordings library management, and recorded-media playback
 - a first real observability layer with runtime stream/channel diagnostics, EPG diagnostics, structured backend event logs, and clearer playback-state reporting
 - a dedicated admin observability area with live viewer sessions, per-channel current viewer counts, recent failures, and a filterable logs viewer
 - a hardened auth/access baseline with session-version invalidation, explicit permission guards, admin-only stream inspection, and a durable admin audit trail
@@ -27,7 +27,7 @@ The current operator milestone also adds:
 - Backend auth now resolves the current user for protected requests so stale or revoked sessions fail server-side instead of trusting old token claims indefinitely
 - Backend observability now includes a dedicated `diagnostics` module for admin inspection endpoints plus shared structured-log helpers
 - Backend governance now also includes an `audit` module for durable admin action records with sanitized detail fields
-- Backend now also includes a `recordings` module for real ffmpeg-backed capture, scheduling, storage-backed media assets, and playback access tokens
+- Backend now also includes a `recordings` module for real ffmpeg-backed capture, guide/recurrence-aware scheduling, storage-backed media assets, and playback access tokens
 - Playback session tracking now persists real active player heartbeats in PostgreSQL so admin monitoring pages can show who is watching what now
 - Guide source imports, source-channel discovery, channel mappings, and persisted programme rows now also live in PostgreSQL
 - Frontend keeps app bootstrap in `app`, route screens in `pages`, shared UI in `components`, auth in `features`, request logic in `services`, and player-specific code in `player`
@@ -97,7 +97,7 @@ tests/
 - `groups`: category/group CRUD
 - `favorites`: per-user pinned channels
 - `layouts`: saved multi-view walls
-- `recordings`: recording jobs, execution runs, storage-backed assets, playback access, and recordings-library responses
+- `recordings`: recording jobs, guide-program recording, recurring rules, execution runs, storage-backed assets, playback access, and recordings-library responses
 - `diagnostics`: runtime observability snapshots, playback session tracking, structured log retention, and admin monitoring endpoints
 - `streams`: HLS metadata, stream test endpoints, and proxy gateway foundation
 - `health`: readiness endpoint
@@ -118,6 +118,7 @@ Main models:
 - `EpgChannelMapping`
 - `ProgramEntry`
 - `RecordingJob`
+- `RecordingRule`
 - `RecordingRun`
 - `RecordingAsset`
 - `Favorite`
@@ -134,7 +135,8 @@ Key relationship rules:
 - imported XMLTV channel identities live in `EpgSourceChannel`
 - imported and manual guide rows live in `ProgramEntry`
 - manual guide rows belong to channels directly and take precedence over overlapping imported rows when guide windows are resolved
-- recording jobs store scheduling intent plus channel/title snapshots so history survives later channel edits or channel deletion
+- recording jobs store scheduling intent plus channel/title snapshots, guide-program snapshots, optional recurrence-rule linkage, and padding metadata so history survives later channel edits or guide refresh churn
+- recording rules store recurring schedule intent, timezone-aware recurrence metadata, optional guide-program origin snapshots, and optional future-program title matching
 - recording runs store one concrete ffmpeg execution attempt with process/result metadata
 - recording assets store finalized playable media metadata and relative storage keys under the configured recordings root
 - channels may play either in `DIRECT` or `PROXY` mode
@@ -215,6 +217,15 @@ Key relationship rules:
 - Important admin mutations now create durable `AuditEvent` rows with sanitized details such as mode changes, booleans, ids, and counts instead of raw sensitive config values.
 - Recording capture now uses the existing `/api/streams/channels/:id/master` path internally so request headers, proxy mode, and manual-variant synthetic masters stay owned by the stream/channel foundation instead of being reimplemented in the recorder.
 - Recorded media is stored under `RECORDINGS_STORAGE_DIR` as relative dated paths and served back through signed playback URLs plus byte-range support for browser playback.
+- Guide-driven recording now works from real `ProgramEntry` rows:
+  - watch-page now/next and upcoming-guide surfaces can create one-off programme recordings directly
+  - the backend derives the real job start/end from the selected programme plus optional early/late padding
+  - recording jobs keep both the live `ProgramEntry` relation when available and durable programme snapshot fields for history
+- Recurring recording rules now work like this:
+  - `/recording-rules` stores daily, weekly, and selected-weekday schedule intent
+  - the existing single-process recording runtime materializes concrete upcoming jobs inside a bounded lookahead window
+  - generated jobs use mode `RECURRING_RULE`, preserve the originating rule snapshot, and may also attach to a future guide programme when the rule carries a title match
+  - pausing or editing a rule removes future generated occurrences before regenerating the new schedule
 
 ## Recording Modes And Library
 
@@ -222,11 +233,14 @@ Key relationship rules:
   - `IMMEDIATE`: starts now and runs until an operator stops it
   - `TIMED`: records for an explicit start/end window
   - `SCHEDULED`: future-only scheduled window that stays visible in the upcoming-jobs list
-  - `EPG`: reserved in the schema/contracts for future “record this program” flows
+  - `EPG_PROGRAM`: created from a real guide programme and uses the programme window plus optional padding
+  - `RECURRING_RULE`: generated from a recurring rule and linked back to that rule in the UI/API
 - Current operator entry points:
   - watch page quick `Record now` / `Stop recording`
+  - watch page now/next and upcoming guide programme actions for `Record this program`
+  - watch page guide-to-recurring-rule handoff into `/recordings`
   - multiview tile `REC` / `Stop`
-  - `/recordings` workspace for create, edit, cancel, stop, browse, search, and delete flows
+  - `/recordings` workspace for one-off create/edit/cancel/stop flows, recurring-rule create/edit/enable/disable/delete flows, browse, search, and delete flows
 - Recordings library capabilities:
   - filter/search recorded jobs
   - distinguish `COMPLETED`, `FAILED`, `CANCELED`, `PENDING`, `SCHEDULED`, and `RECORDING`
@@ -235,6 +249,8 @@ Key relationship rules:
 - Current first-version storage/runtime limitations:
   - one API process owns the scheduler/runtime today
   - active recordings interrupted by process restart are marked failed instead of resumed
+  - recurring jobs are projected inside a bounded lookahead window instead of a long-horizon scheduler queue
+  - editing generated recurring occurrences is intentionally blocked today; edit the rule or cancel the occurrence instead
   - playback currently assumes browser-playable MP4 output from the captured stream path
 
 ## Testing Status
@@ -300,7 +316,7 @@ Optional but recommended for risky changes:
 
 ## Recommended Next Task
 
-Add a scheduled EPG refresh worker plus a first full channel guide page so persisted programme data can stay fresh automatically and the new guide foundation can be used beyond now/next.
+Add a shared-worker or lease-based recording scheduler plus richer series matching so recurring rules can safely scale beyond one API process and match future programmes more intelligently than exact title reuse.
 
 ## Observability Milestone Summary
 

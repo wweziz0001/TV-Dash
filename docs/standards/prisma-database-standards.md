@@ -16,6 +16,7 @@ This document defines schema design, migration discipline, repository usage, and
 - `EpgChannelMapping`
 - `ProgramEntry`
 - `RecordingJob`
+- `RecordingRule`
 - `RecordingRun`
 - `RecordingAsset`
 

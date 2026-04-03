@@ -87,7 +87,7 @@ Current stable module ownership:
 - `groups`: channel group CRUD and counts
 - `favorites`: per-user favorite channel membership
 - `layouts`: per-user saved multiview walls
-- `recordings`: immediate/timed/scheduled recording jobs, execution runs, library listing, playback access, and storage-backed media lifecycle
+- `recordings`: immediate/timed/scheduled jobs, guide-program recording, recurring rules, execution runs, library listing, playback access, and storage-backed media lifecycle
 - `diagnostics`: runtime observability snapshots, playback session tracking, and admin inspection endpoints
 - `streams`: stream inspection, metadata, and upstream test behavior
 - `health`: readiness endpoint
