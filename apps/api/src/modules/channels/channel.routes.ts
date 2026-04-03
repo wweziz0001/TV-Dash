@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { requireAdmin } from "../../app/auth-guards.js";
 import { getPrismaErrorCode } from "../../app/prisma-errors.js";
 import { channelListQuerySchema, idParamSchema, slugParamSchema } from "../../app/request-schemas.js";
+import { writeStructuredLog } from "../../app/structured-log.js";
 import { parseWithSchema } from "../../app/validation.js";
 import {
   createChannelRecord,
@@ -79,6 +80,18 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       const channel = await createChannelRecord(payload);
+      writeStructuredLog("info", {
+        event: "channel.admin.create.succeeded",
+        actorUserId: request.user?.sub,
+        channelId: channel.id,
+        channelSlug: channel.slug,
+        detail: {
+          sourceMode: channel.sourceMode,
+          playbackMode: channel.playbackMode,
+          manualVariantCount: channel.qualityVariants.length,
+          hasEpgSource: Boolean(channel.epgSourceId),
+        },
+      });
       return reply.status(201).send({ channel });
     } catch (error) {
       const prismaCode = getPrismaErrorCode(error);
@@ -108,6 +121,18 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       const channel = await updateChannelRecord(params.id, payload);
+      writeStructuredLog("info", {
+        event: "channel.admin.update.succeeded",
+        actorUserId: request.user?.sub,
+        channelId: channel.id,
+        channelSlug: channel.slug,
+        detail: {
+          sourceMode: channel.sourceMode,
+          playbackMode: channel.playbackMode,
+          manualVariantCount: channel.qualityVariants.length,
+          hasEpgSource: Boolean(channel.epgSourceId),
+        },
+      });
       return { channel };
     } catch (error) {
       const prismaCode = getPrismaErrorCode(error);
@@ -141,6 +166,15 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       const channel = await updateChannelSortOrderRecord(params.id, payload.sortOrder);
+      writeStructuredLog("info", {
+        event: "channel.admin.sort-order.updated",
+        actorUserId: request.user?.sub,
+        channelId: channel.id,
+        channelSlug: channel.slug,
+        detail: {
+          sortOrder: channel.sortOrder,
+        },
+      });
       return { channel };
     } catch (error) {
       if (getPrismaErrorCode(error) === "P2025") {
@@ -159,6 +193,11 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       await deleteChannelRecord(params.id);
+      writeStructuredLog("info", {
+        event: "channel.admin.delete.succeeded",
+        actorUserId: request.user?.sub,
+        channelId: params.id,
+      });
       return reply.status(204).send();
     } catch (error) {
       if (getPrismaErrorCode(error) === "P2025") {

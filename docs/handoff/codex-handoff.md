@@ -13,11 +13,13 @@ The current operator milestone also adds:
 - clearer saved-layout save/update/load ergonomics
 - a denser operator layout pass that reduces oversized chrome and gives viewer surfaces more screen space
 - a compact manual quality-variant admin workflow with presets, normalization helpers, inline row validation, and faster repetitive entry controls
+- a first real observability layer with runtime stream/channel diagnostics, EPG diagnostics, structured backend event logs, and clearer playback-state reporting
 
 ## Current Architecture Summary
 
 - Monorepo with `apps/api`, `apps/web`, and `packages/shared`
 - Backend now follows explicit `routes -> services -> repositories -> prisma` boundaries inside `apps/api/src/modules`
+- Backend observability now includes a dedicated `diagnostics` module for admin inspection endpoints plus shared structured-log helpers
 - Frontend keeps app bootstrap in `app`, route screens in `pages`, shared UI in `components`, auth in `features`, request logic in `services`, and player-specific code in `player`
 - Shared API validation contracts live in `packages/shared`
 
@@ -84,6 +86,7 @@ tests/
 - `groups`: category/group CRUD
 - `favorites`: per-user pinned channels
 - `layouts`: saved multi-view walls
+- `diagnostics`: runtime observability snapshots for channels and EPG sources plus admin inspection endpoints
 - `streams`: HLS metadata, stream test endpoints, and proxy gateway foundation
 - `health`: readiness endpoint
 
@@ -117,6 +120,7 @@ Key relationship rules:
 
 - `player/hls-player.tsx` owns one video element and one HLS.js instance
 - `player/playback-recovery.ts` owns bounded fatal error recovery decisions
+- `player/playback-diagnostics.ts` maps raw lifecycle state into operator-facing labels, summaries, recovery state, and failure-class hints
 - quality options and preference resolution live in `player/quality-options.ts`
 - manual-variant channels reach the player through a backend-generated synthetic master playlist, not duplicated channel rows
 - supported multi-view layouts live in `player/layouts.ts`
@@ -142,6 +146,11 @@ Key relationship rules:
 - Proxy playback URL selection happens in frontend service helpers, not inside the player lifecycle code.
 - Manual-variant channels must resolve through the backend stream master path so HLS.js receives one logical manifest.
 - Public channel responses may intentionally hide raw upstream stream URLs when proxy mode is enabled.
+- Runtime diagnostics are currently real but in-memory only:
+  - stream proxy, synthetic master, and XMLTV flows record live observations
+  - admin diagnostics panels read those snapshots through `/api/diagnostics/...`
+  - process restart still clears the retained history
+- Player state should flow upward through diagnostics callbacks for operator-facing surfaces instead of pages inferring status from raw HLS events.
 
 ## Testing Status
 
@@ -153,6 +162,8 @@ Current automated coverage includes:
 - HLS playlist rewrite and proxy token tests
 - XMLTV parser and now/next lookup tests
 - HlsPlayer component coverage for bounded retry timers and source replacement cleanup
+- diagnostics service, diagnostics route, and stream/XMLTV failure classification coverage
+- playback diagnostics helper coverage for recovered vs failed state mapping
 - HlsPlayer regression coverage confirming multiview mute/unmute handoff does not recreate playback or request the source again
 - player quality option resolution tests
 - multi-view tile default/audio ownership tests
@@ -182,12 +193,46 @@ Optional but recommended for risky changes:
 - Manual variant rows now support presets, duplication, and auto-sort, but they still use button-driven ordering rather than drag-and-drop.
 - The proxy foundation currently buffers upstream asset bodies in memory instead of true streaming passthrough.
 - XMLTV data is loaded on demand into process memory only; there is no background ingestion job or durable programme storage yet.
+- Channel and EPG diagnostics are also process-memory only right now; restarts clear last-success/last-failure history and there is no long-term metrics sink yet.
 - Proxy playback is intentionally exposed through unauthenticated asset paths because the current HLS client stack does not inject bearer headers into playlist/segment requests.
 - Manual-variant channels in `DIRECT` playback mode still rely on browser access to each upstream variant playlist and segment URL, so providers that require custom headers should use `PROXY` mode.
 - The admin form shows the intended synthetic master order and row-level validation state, but it still does not render a full unsaved master-playlist preview.
 - route-level React coverage for the full multiview page is still missing; current frontend regression coverage focuses on the new workflow helpers and picker component seams.
 - drag-swap still reloads the affected positions because tile positions remain the player-instance boundary and the swap is a real source move across slots; this branch intentionally only fixes mute/unmute audio handoff reloads.
 - `admin-channels-page.tsx`, `admin-epg-sources-page.tsx`, `multiview-page.tsx`, and `player/hls-player.tsx` are still valid but near the current complexity ceiling defined in the standards docs.
+
+## Observability Milestone Summary
+
+- Backend observability now records structured, real runtime observations for:
+  - auth login success/failure
+  - channel admin operations that affect playback behavior
+  - proxy master and proxy asset failures
+  - synthetic master generation
+  - XMLTV fetch and parse behavior
+  - guide lookup state
+- Channel diagnostics now expose:
+  - `healthy`, `degraded`, `failing`, or `unknown` health state
+  - reachability
+  - last success/failure times
+  - last failure reason and class
+  - current source/proxy mode
+  - synthetic master expectation
+  - last known guide integration state
+- EPG diagnostics now expose:
+  - fetch and parse summaries
+  - last XMLTV failure class
+  - cache freshness plus loaded channel/programme counts
+- Frontend playback surfaces now distinguish:
+  - loading
+  - buffering
+  - retrying
+  - failed
+  - recovered
+  - muted/audio-owner state
+  - current quality mode
+- Admin inspection flows now exist in:
+  - channel admin diagnostics panel
+  - EPG source diagnostics panel
 
 ## Operator UX Milestone Summary
 

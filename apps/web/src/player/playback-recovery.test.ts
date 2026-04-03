@@ -14,6 +14,7 @@ describe("getFatalRecoveryAction", () => {
       delayMs: 1500,
       networkAttempts: 1,
       message: "Connection lost. Retrying stream startup (1/3).",
+      failureKind: "network",
     });
 
     expect(
@@ -23,7 +24,8 @@ describe("getFatalRecoveryAction", () => {
       }),
     ).toEqual({
       kind: "fail",
-      message: "A media segment could not be downloaded.",
+      message: "A live stream request could not be completed.",
+      failureKind: "network",
     });
   });
 
@@ -37,6 +39,7 @@ describe("getFatalRecoveryAction", () => {
       kind: "recover-media",
       mediaAttempts: 1,
       message: "Playback stalled. Attempting browser media recovery (1/1).",
+      failureKind: "media-playback",
     });
 
     expect(
@@ -47,6 +50,7 @@ describe("getFatalRecoveryAction", () => {
     ).toEqual({
       kind: "fail",
       message: "The browser could not append new media data.",
+      failureKind: "media-playback",
     });
   });
 });

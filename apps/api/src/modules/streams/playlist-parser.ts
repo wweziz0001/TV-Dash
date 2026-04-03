@@ -18,6 +18,12 @@ function parseAttributes(line: string) {
 
 export function parseMasterPlaylist(text: string) {
   const lines = text.split(/\r?\n/).map((line) => line.trim());
+  const isHlsPlaylist = lines.includes("#EXTM3U");
+
+  if (!isHlsPlaylist) {
+    throw new Error("Invalid HLS playlist response");
+  }
+
   const variants = [];
 
   for (let index = 0; index < lines.length; index += 1) {

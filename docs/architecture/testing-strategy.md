@@ -10,7 +10,9 @@ As of `2026-04-02`, TV-Dash has:
   - API health server boot path
   - channel, group, favorite, layout, and stream route validation/contract behavior via Fastify `inject`
   - HLS master playlist parsing plus synthetic master generation for manual variants
+  - runtime diagnostics snapshots and stream/EPG failure classification helpers
   - player retry timer cleanup and source replacement behavior
+  - player diagnostics mapping for loading, retrying, buffering, failed, and recovered states
   - quality option resolution
   - multi-view tile defaults, audio ownership, layout hydration, and tile-state pruning
   - multiview tile swapping and keyboard shortcut helpers
@@ -95,6 +97,7 @@ If a change touches one of those flows and no automated regression exists yet, e
 ### Phase 2: Backend API Confidence
 
 - route-edge contract and validation coverage complete for channels, groups, favorites, layouts, and streams
+- diagnostics route coverage now exists for channel and EPG runtime inspection endpoints
 - next step is database-backed Fastify integration coverage for auth, channels, groups, layouts, favorites, and streams
 - introduce isolated database strategy for tests
 

@@ -10,7 +10,9 @@ Current automated coverage already exists for:
 
 - Fastify boot and health wiring
 - HLS master playlist parsing and synthetic master generation
+- runtime diagnostics snapshots and stream/EPG failure classification helpers
 - quality option resolution
+- player diagnostics mapping for loading, retrying, buffering, failed, and recovered states
 - multi-view tile defaulting and single-audio behavior
 
 Mandatory workspace verification remains:
@@ -37,6 +39,7 @@ Use `npm run smoke:test` for release candidates or risky API/player changes when
 Required for:
 
 - pure player helpers
+- diagnostics mapping and failure classification helpers
 - parsing logic
 - mappers and transformers
 - schema helpers with branching logic
@@ -131,6 +134,13 @@ These areas are release-critical and should gain or maintain automated coverage 
 - `LOWEST` resolves correctly for background tiles
 - single active audio enforcement
 - retryable vs terminal error handling
+- operator-facing diagnostics state mapping for failed, retrying, buffering, and recovered playback
+
+### Diagnostics
+
+- health-state aggregation from real runtime observations
+- channel and EPG diagnostics response behavior for changed admin inspection endpoints
+- failure classification helpers for stream and XMLTV errors
 
 ## Deferral Rule
 

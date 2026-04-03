@@ -1,5 +1,134 @@
 # Codex Session Log
 
+## `2026-04-03T03:55:00+03:00`
+
+### Objective
+
+Add real observability, monitoring, and stream diagnostics foundations so TV-Dash becomes meaningfully easier to troubleshoot during live playback, proxying, and XMLTV guide usage.
+
+### Work Completed
+
+- created the requested working branch `010-observability-monitoring-and-stream-diagnostics`
+- added a backend diagnostics foundation with:
+  - shared diagnostic health/failure enums in `packages/shared`
+  - structured backend event logging with stable event names and sanitized detail fields
+  - a new `diagnostics` module that retains runtime observations in memory and exposes admin inspection endpoints
+- improved backend failure classification for:
+  - network failures
+  - playlist fetch failures
+  - invalid playlist responses
+  - proxy forwarding failures
+  - XMLTV fetch failures
+  - XMLTV parse failures
+  - misconfiguration and validation failures
+  - unsupported stream responses
+  - synthetic master generation failures
+- instrumented real backend observation points instead of decorative UI:
+  - proxy master and asset serving
+  - synthetic master generation
+  - stream inspection failures
+  - XMLTV fetch/parse flows
+  - guide lookup state
+  - auth login outcomes
+  - playback-affecting admin channel/EPG operations
+- added admin diagnostics endpoints and frontend service/types for:
+  - `GET /api/diagnostics/channels/:channelId`
+  - `GET /api/diagnostics/epg-sources/:id`
+- upgraded player state reporting so the frontend now carries richer diagnostics snapshots with:
+  - loading
+  - buffering
+  - retrying
+  - failed
+  - recovered
+  - failure-class hint
+  - muted/audio status
+- updated operator-facing playback surfaces:
+  - single-view watch page now shows clearer playback summaries and likely issue class
+  - multiview tiles and focused-tile panel now show clearer live/retrying/failed/recovered state plus mute/focus context
+  - admin channels page now includes a real runtime diagnostics panel for the selected channel
+  - admin EPG sources page now includes a real XMLTV diagnostics panel for the selected source
+- added targeted backend and frontend tests for:
+  - diagnostics service aggregation
+  - diagnostics route responses
+  - stream and EPG failure classification
+  - playback diagnostics mapping
+
+### Files Added Or Changed
+
+- backend observability and diagnostics:
+  - `packages/shared/src/index.ts`
+  - `apps/api/src/app/structured-log.ts`
+  - `apps/api/src/modules/diagnostics/*`
+  - `apps/api/src/modules/streams/stream-diagnostics.ts`
+  - `apps/api/src/modules/epg/epg-diagnostics.ts`
+- backend integrations:
+  - `apps/api/src/app/build-server.ts`
+  - `apps/api/src/modules/auth/auth.routes.ts`
+  - `apps/api/src/modules/channels/channel.routes.ts`
+  - `apps/api/src/modules/epg/epg.routes.ts`
+  - `apps/api/src/modules/epg/epg.service.ts`
+  - `apps/api/src/modules/epg/xmltv-parser.ts`
+  - `apps/api/src/modules/streams/playlist-parser.ts`
+  - `apps/api/src/modules/streams/stream.routes.ts`
+  - `apps/api/src/modules/streams/stream.service.ts`
+  - `apps/api/src/modules/streams/synthetic-master.ts`
+- frontend diagnostics surfaces:
+  - `apps/web/src/player/playback-diagnostics.ts`
+  - `apps/web/src/player/hls-player.tsx`
+  - `apps/web/src/player/multiview-tile-card.tsx`
+  - `apps/web/src/pages/channel-watch-page.tsx`
+  - `apps/web/src/pages/multiview-page.tsx`
+  - `apps/web/src/pages/admin-channels-page.tsx`
+  - `apps/web/src/pages/admin-epg-sources-page.tsx`
+  - `apps/web/src/components/channels/channel-diagnostics-panel.tsx`
+  - `apps/web/src/components/epg/epg-source-diagnostics-panel.tsx`
+  - `apps/web/src/services/api.ts`
+  - `apps/web/src/types/api.ts`
+- tests:
+  - `apps/api/src/modules/diagnostics/diagnostic.service.test.ts`
+  - `apps/api/src/modules/diagnostics/diagnostic.routes.test.ts`
+  - `apps/api/src/modules/streams/stream-diagnostics.test.ts`
+  - `apps/api/src/modules/epg/epg-diagnostics.test.ts`
+  - `apps/web/src/player/playback-diagnostics.test.ts`
+  - updated player/tile recovery tests
+- docs:
+  - `docs/architecture/api-boundaries.md`
+  - `docs/architecture/player-architecture.md`
+  - `docs/architecture/testing-strategy.md`
+  - `docs/standards/backend-api-standards.md`
+  - `docs/standards/player-hls-standards.md`
+  - `docs/standards/testing-standards.md`
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- Kept diagnostics runtime-only and in-memory for this phase so the platform gains real operational visibility without forcing a schema migration or speculative monitoring stack.
+- Added a dedicated `diagnostics` backend module instead of burying admin inspection routes inside `channels` or `epg`, because the capability is cross-cutting and architecture-wide.
+- Used structured event logging with sanitized fields and stable event names instead of noisy raw request/body logging.
+- Kept deeper technical details primarily in admin diagnostics panels while making viewer/operator playback surfaces cleaner and faster to scan.
+
+### Verification Run
+
+- `npm run lint -w apps/api`
+- `npm run test -w apps/api`
+- `npm run lint -w apps/web`
+- `npm run test -w apps/web`
+- `npm run lint`
+- `npm run test`
+- `npm run build`
+
+### Remaining Risk
+
+- Diagnostics history is not durable yet; it resets on process restart and is not queryable across multiple app instances.
+- There is still no background channel probe scheduler or durable alerting pipeline; observations are captured from real usage paths and admin inspection flows only.
+- Proxy asset delivery still buffers responses in memory rather than streaming passthrough.
+- The player chunk warning remains after build; observability work did not change that existing bundling issue.
+
+### Exact Suggested Next Task
+
+Add a small durable diagnostics persistence layer and scheduled channel health probes so TV-Dash can retain last-known failures across restarts and detect broken channels before an operator opens them.
+
 ## `2026-04-03T03:10:00+03:00`
 
 ### Objective

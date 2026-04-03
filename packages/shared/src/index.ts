@@ -16,6 +16,21 @@ export const streamPlaybackModeSchema = z.enum(["DIRECT", "PROXY"]);
 export const channelSourceModeSchema = z.enum(["MASTER_PLAYLIST", "MANUAL_VARIANTS"]);
 export const epgSourceTypeSchema = z.enum(["XMLTV"]);
 export const qualityModeSchema = z.enum(["AUTO", "LOWEST", "HIGHEST", "MANUAL"]);
+export const diagnosticHealthStateSchema = z.enum(["healthy", "degraded", "failing", "unknown"]);
+export const diagnosticFailureKindSchema = z.enum([
+  "network",
+  "playlist-fetch",
+  "invalid-playlist",
+  "media-playback",
+  "proxy-forwarding",
+  "epg-fetch",
+  "epg-parse",
+  "misconfiguration",
+  "unsupported-stream",
+  "synthetic-master",
+  "validation",
+  "unknown",
+]);
 
 const optionalNullableTrimmedStringSchema = z
   .string()
@@ -241,6 +256,8 @@ export type StreamPlaybackMode = z.infer<typeof streamPlaybackModeSchema>;
 export type ChannelSourceMode = z.infer<typeof channelSourceModeSchema>;
 export type EpgSourceType = z.infer<typeof epgSourceTypeSchema>;
 export type QualityMode = z.infer<typeof qualityModeSchema>;
+export type DiagnosticHealthState = z.infer<typeof diagnosticHealthStateSchema>;
+export type DiagnosticFailureKind = z.infer<typeof diagnosticFailureKindSchema>;
 export type LoginInput = z.infer<typeof loginInputSchema>;
 export type ChannelGroupInput = z.infer<typeof channelGroupInputSchema>;
 export type ChannelQualityVariantInput = z.infer<typeof channelQualityVariantInputSchema>;

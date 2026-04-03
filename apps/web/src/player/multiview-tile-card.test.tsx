@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MultiviewTileCard } from "./multiview-tile-card";
 import type { LayoutDefinition } from "./layouts";
+import { buildPlayerDiagnostics } from "./playback-diagnostics";
 
 const hlsPlayerLifecycle = {
   mounts: 0,
@@ -32,6 +33,11 @@ const layoutDefinition: LayoutDefinition = {
   containerClassName: "grid-cols-1 md:grid-cols-2",
   tileClassNames: ["min-h-[280px]", "min-h-[280px]", "min-h-[280px]", "min-h-[280px]"],
 };
+
+const defaultPlayerDiagnostics = buildPlayerDiagnostics({
+  status: "playing",
+  muted: false,
+});
 
 describe("MultiviewTileCard", () => {
   beforeEach(() => {
@@ -82,7 +88,9 @@ describe("MultiviewTileCard", () => {
         onQualityOptionsChange={vi.fn()}
         onSelectedQualityChange={vi.fn()}
         onStatusChange={vi.fn()}
+        onDiagnosticsChange={vi.fn()}
         onToggleAudio={vi.fn()}
+        playerDiagnostics={defaultPlayerDiagnostics}
         playerStatus="playing"
         qualityOptions={[{ value: "AUTO", label: "Auto", height: null }]}
         src="https://example.com/live.m3u8"
@@ -143,7 +151,9 @@ describe("MultiviewTileCard", () => {
         onQualityOptionsChange={vi.fn()}
         onSelectedQualityChange={vi.fn()}
         onStatusChange={vi.fn()}
+        onDiagnosticsChange={vi.fn()}
         onToggleAudio={vi.fn()}
+        playerDiagnostics={defaultPlayerDiagnostics}
         playerStatus="playing"
         qualityOptions={[{ value: "AUTO", label: "Auto", height: null }]}
         src="https://example.com/live.m3u8"
@@ -192,7 +202,9 @@ describe("MultiviewTileCard", () => {
         onQualityOptionsChange={vi.fn()}
         onSelectedQualityChange={vi.fn()}
         onStatusChange={vi.fn()}
+        onDiagnosticsChange={vi.fn()}
         onToggleAudio={vi.fn()}
+        playerDiagnostics={defaultPlayerDiagnostics}
         playerStatus="playing"
         qualityOptions={[{ value: "AUTO", label: "Auto", height: null }]}
         src="https://example.com/live.m3u8"

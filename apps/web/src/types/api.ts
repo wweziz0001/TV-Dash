@@ -1,5 +1,7 @@
 import type {
   ChannelSourceMode,
+  DiagnosticFailureKind,
+  DiagnosticHealthState,
   EpgSourceType,
   LayoutType,
   SavedLayoutConfig,
@@ -107,6 +109,61 @@ export interface StreamTestResult {
   variantCount: number;
   variants: StreamVariant[];
   isMasterPlaylist: boolean;
+}
+
+export interface DiagnosticObservationSummary {
+  lastCheckAt: string | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastFailureReason: string | null;
+  lastFailureKind: DiagnosticFailureKind | null;
+  retryable: boolean | null;
+  consecutiveFailures: number;
+  lastObservationSource: string | null;
+  detail: Record<string, string | number | boolean | null> | null;
+}
+
+export interface ChannelDiagnostics {
+  channelId: string;
+  channelSlug: string;
+  healthState: DiagnosticHealthState;
+  reachable: boolean | null;
+  current: {
+    playbackMode: StreamPlaybackMode;
+    sourceMode: ChannelSourceMode;
+    hasMasterUrl: boolean;
+    hasManualVariants: boolean;
+    syntheticMasterExpected: boolean;
+    proxyEnabled: boolean;
+    epgLinked: boolean;
+  };
+  overall: DiagnosticObservationSummary;
+  streamInspection: DiagnosticObservationSummary;
+  proxyMaster: DiagnosticObservationSummary;
+  proxyAsset: DiagnosticObservationSummary;
+  syntheticMaster: DiagnosticObservationSummary;
+  guide: {
+    status: "ready" | "no-data" | "source-error" | "unconfigured" | "source-inactive" | "unknown";
+    lastObservedAt: string | null;
+    lastReadyAt: string | null;
+    sourceId: string | null;
+    epgChannelId: string | null;
+  };
+}
+
+export interface EpgSourceDiagnostics {
+  sourceId: string;
+  sourceSlug: string;
+  healthState: DiagnosticHealthState;
+  overall: DiagnosticObservationSummary;
+  fetch: DiagnosticObservationSummary;
+  parse: DiagnosticObservationSummary;
+  cache: {
+    lastLoadedAt: string | null;
+    expiresAt: string | null;
+    channelCount: number | null;
+    programmeCount: number | null;
+  };
 }
 
 export interface EpgSourceSummary {

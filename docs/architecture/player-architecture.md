@@ -27,6 +27,8 @@ That does not belong in:
   - converts manifest levels into UI options and resolves manual/auto selection
 - `player/playback-recovery.ts`
   - classifies fatal HLS failures into bounded retry, media recovery, or terminal error states
+- `player/playback-diagnostics.ts`
+  - maps raw player lifecycle state into operator-facing labels, summaries, and failure-class hints
 - `player/layouts.ts`
   - static supported layout definitions
 - `player/multiview-layout.ts`
@@ -59,10 +61,11 @@ That does not belong in:
 
 - Route pages own page orchestration and persistence payload assembly.
 - Frontend service helpers may choose the playback URL contract (`DIRECT` upstream URL vs `PROXY` gateway path), but they do not own HLS lifecycle behavior.
-- `HlsPlayer` owns playback lifecycle and emits status/quality callbacks upward.
+- `HlsPlayer` owns playback lifecycle and emits status, diagnostics, and quality callbacks upward.
 - Multi-view pages own which tile is focused, reassigned, saved, or displayed.
 - Player-facing multiview UI components may live under `player/` when they wrap `HlsPlayer`, but pages still resolve playback URLs and persistence decisions.
 - Shared quality and tile decision logic lives in pure player helpers.
+- Route pages may store player diagnostics snapshots for operator-facing status panels, but they must not recreate HLS recovery logic themselves.
 
 ## Playback URL Selection Rules
 
@@ -87,6 +90,12 @@ That does not belong in:
 - fatal media errors trigger one explicit `recoverMediaError()` attempt before surfacing failure
 - unrecoverable failures surface a retry UI
 - successful recovery clears retry counters and publishes a visible recovered state
+- fatal failure classification should stay bounded to practical buckets such as:
+  - `network`
+  - `playlist-fetch`
+  - `invalid-playlist`
+  - `media-playback`
+  - `unsupported-stream`
 
 Do not add silent infinite retry loops. Any retry policy change must consider multi-view bandwidth pressure.
 

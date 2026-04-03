@@ -14,8 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { ChannelGuideCard } from "@/components/channels/channel-guide-card";
 import { cn } from "@/lib/utils";
-import { HlsPlayer, type PlayerStatus } from "@/player/hls-player";
+import { HlsPlayer, type PlayerDiagnostics, type PlayerStatus } from "@/player/hls-player";
 import type { Channel, ChannelNowNext, QualityOption } from "@/types/api";
+import { getPlaybackTone } from "./playback-diagnostics";
 import type { LayoutDefinition } from "./layouts";
 import type { TileState } from "./multiview-layout";
 
@@ -28,6 +29,7 @@ interface MultiviewTileCardProps {
   guideLoading: boolean;
   qualityOptions: QualityOption[];
   playerStatus: PlayerStatus;
+  playerDiagnostics: PlayerDiagnostics;
   layoutDefinition: LayoutDefinition;
   isFocused: boolean;
   isPickerTarget: boolean;
@@ -41,6 +43,7 @@ interface MultiviewTileCardProps {
   onQualityOptionsChange: (options: QualityOption[]) => void;
   onSelectedQualityChange: (value: string) => void;
   onStatusChange: (status: PlayerStatus) => void;
+  onDiagnosticsChange: (diagnostics: PlayerDiagnostics) => void;
   onFullscreen: () => void;
   onDragStart: (event: DragEvent<HTMLDivElement>) => void;
   onDragOver: (event: DragEvent<HTMLDivElement>) => void;
@@ -57,6 +60,7 @@ export function MultiviewTileCard({
   guideLoading,
   qualityOptions,
   playerStatus,
+  playerDiagnostics,
   layoutDefinition,
   isFocused,
   isPickerTarget,
@@ -70,13 +74,14 @@ export function MultiviewTileCard({
   onQualityOptionsChange,
   onSelectedQualityChange,
   onStatusChange,
+  onDiagnosticsChange,
   onFullscreen,
   onDragStart,
   onDragOver,
   onDrop,
   onDragEnd,
 }: MultiviewTileCardProps) {
-  const statusBadgeClassName = getStatusBadgeClassName(playerStatus);
+  const statusBadgeClassName = getStatusBadgeClassName(playerDiagnostics);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   return (
@@ -100,12 +105,19 @@ export function MultiviewTileCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
             <p className="truncate text-[13px] font-semibold text-white">{channel?.name ?? `Tile ${tileIndex + 1}`}</p>
-            <Badge className={statusBadgeClassName} size="sm">{playerStatus}</Badge>
+            <Badge className={statusBadgeClassName} size="sm">{playerDiagnostics.label}</Badge>
+            {playerDiagnostics.recoveryState === "recovered" ? <Badge className="text-emerald-200" size="sm">Recovered</Badge> : null}
+            {isFocused ? <Badge size="sm">Focused</Badge> : null}
             {tile.isMuted ? <Badge size="sm">Muted</Badge> : <Badge className="text-emerald-200" size="sm">Audio</Badge>}
           </div>
           <p className="mt-0.5 truncate text-[11px] text-slate-400">
             {channel?.group?.name ?? "No channel selected"} · {channel ? (channel.playbackMode === "PROXY" ? "Proxy" : "Direct") : "Ready for assignment"}
           </p>
+          {channel ? (
+            <p className="mt-1 truncate text-[11px] text-slate-500">
+              {playerDiagnostics.summary}
+            </p>
+          ) : null}
         </div>
 
         <div
@@ -186,6 +198,7 @@ export function MultiviewTileCard({
             onQualityOptionsChange={onQualityOptionsChange}
             onSelectedQualityChange={onSelectedQualityChange}
             onStatusChange={onStatusChange}
+            onDiagnosticsChange={onDiagnosticsChange}
             preferredQuality={tile.preferredQuality}
             src={src}
             title={channel.name}
@@ -205,22 +218,20 @@ export function MultiviewTileCard({
   );
 }
 
-function getStatusBadgeClassName(status: PlayerStatus) {
-  if (status === "playing") {
+function getStatusBadgeClassName(diagnostics: PlayerDiagnostics) {
+  const tone = getPlaybackTone(diagnostics);
+
+  if (tone === "success") {
     return "border-emerald-400/30 bg-emerald-500/10 text-emerald-200";
   }
 
-  if (status === "retrying") {
+  if (tone === "warning") {
     return "border-amber-400/30 bg-amber-500/10 text-amber-100";
   }
 
-  if (status === "loading" || status === "buffering") {
-    return "border-sky-400/30 bg-sky-500/10 text-sky-100";
-  }
-
-  if (status === "error") {
+  if (tone === "danger") {
     return "border-rose-400/30 bg-rose-500/10 text-rose-100";
   }
 
-  return "";
+  return "border-slate-700/80 bg-slate-900/80 text-slate-200";
 }

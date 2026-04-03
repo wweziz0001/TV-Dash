@@ -128,6 +128,11 @@ export function buildSyntheticMasterPlaylist(
   options: { rewriteUri?: (absoluteUrl: string) => string } = {},
 ) {
   const orderedVariants = [...variants].sort((left, right) => left.sortOrder - right.sortOrder || left.label.localeCompare(right.label));
+
+  if (!orderedVariants.length) {
+    throw new Error("Synthetic master playlist could not be generated because no active variants are available");
+  }
+
   const lines = ["#EXTM3U", "#EXT-X-VERSION:3"];
 
   orderedVariants.forEach((variant, index) => {

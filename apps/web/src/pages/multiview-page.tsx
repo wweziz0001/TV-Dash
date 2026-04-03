@@ -14,9 +14,10 @@ import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { isEditableKeyboardTarget } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
-import type { PlayerStatus } from "@/player/hls-player";
+import type { PlayerDiagnostics, PlayerStatus } from "@/player/hls-player";
 import { getLayoutDefinition, layoutDefinitions } from "@/player/layouts";
 import { enforceSingleActiveAudio, resizeTiles, type TileState } from "@/player/multiview-layout";
+import { buildPlayerDiagnostics } from "@/player/playback-diagnostics";
 import { getLayoutTypeForShortcut, getWrappedTileIndex } from "@/player/multiview-shortcuts";
 import {
   hydrateMultiviewLayout,
@@ -50,6 +51,7 @@ export function MultiViewPage() {
   const [tiles, setTiles] = useState<TileState[]>(resizeTiles("LAYOUT_2X2", [], { ensureAudioOwner: true }));
   const [qualityOptionsByTile, setQualityOptionsByTile] = useState<Record<number, QualityOption[]>>({});
   const [playerStatusByTile, setPlayerStatusByTile] = useState<Record<number, PlayerStatus>>({});
+  const [playerDiagnosticsByTile, setPlayerDiagnosticsByTile] = useState<Record<number, PlayerDiagnostics>>({});
 
   const channelsQuery = useQuery({
     queryKey: ["channels", token],
@@ -84,6 +86,7 @@ export function MultiViewPage() {
     setTiles((current) => resizeTiles(layoutType, current, { ensureAudioOwner: true }));
     setQualityOptionsByTile((current) => pruneTileScopedState(current, getLayoutDefinition(layoutType).tileCount));
     setPlayerStatusByTile((current) => pruneTileScopedState(current, getLayoutDefinition(layoutType).tileCount));
+    setPlayerDiagnosticsByTile((current) => pruneTileScopedState(current, getLayoutDefinition(layoutType).tileCount));
     setFocusedTileIndex((current) => Math.min(current, getLayoutDefinition(layoutType).tileCount - 1));
     setPickerTileIndex((current) =>
       typeof current === "number" ? Math.min(current, getLayoutDefinition(layoutType).tileCount - 1) : null,
@@ -165,6 +168,12 @@ export function MultiViewPage() {
   const focusedTile = tiles[focusedTileIndex] ?? tiles[0];
   const focusedChannel = focusedTile?.channelId ? channelMap.get(focusedTile.channelId) ?? null : null;
   const focusedGuide = focusedChannel ? nowNextByChannelId.get(focusedChannel.id) : null;
+  const focusedPlayerDiagnostics =
+    playerDiagnosticsByTile[focusedTileIndex] ??
+    buildPlayerDiagnostics({
+      status: focusedChannel ? "loading" : "idle",
+      muted: focusedTile?.isMuted ?? true,
+    });
 
   function updateLayoutType(nextLayoutType: LayoutType) {
     setLayoutType(nextLayoutType);
@@ -185,6 +194,7 @@ export function MultiViewPage() {
     setPickerTileIndex(null);
     setQualityOptionsByTile({});
     setPlayerStatusByTile({});
+    setPlayerDiagnosticsByTile({});
   }
 
   function handleChannelChange(tileIndex: number, channelId: string | null) {
@@ -193,6 +203,13 @@ export function MultiViewPage() {
     setPlayerStatusByTile((current) => ({
       ...current,
       [tileIndex]: channelId ? "loading" : "idle",
+    }));
+    setPlayerDiagnosticsByTile((current) => ({
+      ...current,
+      [tileIndex]: buildPlayerDiagnostics({
+        status: channelId ? "loading" : "idle",
+        muted: tiles[tileIndex]?.isMuted ?? true,
+      }),
     }));
   }
 
@@ -209,6 +226,7 @@ export function MultiViewPage() {
     setTiles((current) => swapTiles(current, sourceIndex, targetIndex));
     setQualityOptionsByTile((current) => swapTileScopedState(current, sourceIndex, targetIndex));
     setPlayerStatusByTile((current) => swapTileScopedState(current, sourceIndex, targetIndex));
+    setPlayerDiagnosticsByTile((current) => swapTileScopedState(current, sourceIndex, targetIndex));
     setFocusedTileIndex((current) =>
       current === sourceIndex ? targetIndex : current === targetIndex ? sourceIndex : current,
     );
@@ -376,6 +394,12 @@ export function MultiViewPage() {
               const channel = tile.channelId ? channelMap.get(tile.channelId) ?? null : null;
               const qualityOptions = qualityOptionsByTile[index] ?? [...defaultQualityOptions];
               const playerStatus = playerStatusByTile[index] ?? (channel ? "loading" : "idle");
+              const playerDiagnostics =
+                playerDiagnosticsByTile[index] ??
+                buildPlayerDiagnostics({
+                  status: channel ? "loading" : "idle",
+                  muted: tile.isMuted,
+                });
 
               return (
                 <div
@@ -442,6 +466,13 @@ export function MultiViewPage() {
                         [index]: nextStatus,
                       }))
                     }
+                    onDiagnosticsChange={(diagnostics) =>
+                      setPlayerDiagnosticsByTile((current) => ({
+                        ...current,
+                        [index]: diagnostics,
+                      }))
+                    }
+                    playerDiagnostics={playerDiagnostics}
                     onToggleAudio={() => handleAudioToggle(index)}
                     playerStatus={playerStatus}
                     qualityOptions={qualityOptions}
@@ -492,9 +523,10 @@ export function MultiViewPage() {
 
               <div className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-3">
                 <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Focused Tile Status</p>
+                <p className="mt-2 text-[12px] text-slate-300">{focusedPlayerDiagnostics.summary}</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <span className="rounded-full border border-slate-700/80 bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200">
-                    {playerStatusByTile[focusedTileIndex] ?? (focusedChannel ? "loading" : "idle")}
+                    {focusedPlayerDiagnostics.label}
                   </span>
                   <span className="rounded-full border border-slate-700/80 bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200">
                     {focusedTile?.preferredQuality ?? "AUTO"}
@@ -502,6 +534,11 @@ export function MultiViewPage() {
                   <span className="rounded-full border border-slate-700/80 bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200">
                     {focusedTile?.isMuted ? "Muted tile" : "Audio owner"}
                   </span>
+                  {focusedPlayerDiagnostics.failureKind ? (
+                    <span className="rounded-full border border-rose-400/20 bg-rose-500/10 px-2 py-0.5 text-[10px] text-rose-200">
+                      {focusedPlayerDiagnostics.failureKind}
+                    </span>
+                  ) : null}
                 </div>
                 <p className="mt-2 text-[12px] text-slate-400">
                   Drag tiles to swap positions, replace the focused source quickly, and keep most of the screen on the live wall.

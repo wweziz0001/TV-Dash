@@ -85,6 +85,7 @@ Current stable module ownership:
 - `groups`: channel group CRUD and counts
 - `favorites`: per-user favorite channel membership
 - `layouts`: per-user saved multiview walls
+- `diagnostics`: runtime observability snapshots and admin inspection endpoints
 - `streams`: stream inspection, metadata, and upstream test behavior
 - `health`: readiness endpoint
 
@@ -129,6 +130,14 @@ Rules:
 - do not leak raw Prisma or upstream stack traces to clients
 - log unexpected server errors with enough context for debugging
 - keep client-facing messages concise and actionable
+
+## Observability Rules
+
+- Prefer structured logs with stable `event` names and typed detail fields over ad-hoc string logs.
+- Do not log raw bearer tokens, upstream header values, or full query-string URLs.
+- For upstream failures, classify the failure before logging or returning it when practical.
+- Runtime diagnostics are allowed to stay in-memory for now, but they must summarize real observations instead of decorative placeholder states.
+- High-volume success paths such as proxied asset delivery should record lightweight diagnostics without emitting noisy success logs on every request.
 
 ## Env And Config Rules
 

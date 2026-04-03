@@ -46,6 +46,7 @@ Rules:
 - Register HLS event listeners only inside the player boundary.
 - Listener registration must happen in the same lifecycle block that owns cleanup.
 - Quality option updates, selected level updates, and error recovery signals should flow outward through explicit callbacks.
+- Operator-facing playback diagnostics should also flow outward through explicit callbacks instead of forcing pages to infer state from raw HLS events.
 - Do not let pages call `hls.currentLevel` or `hls.recoverMediaError()` directly.
 
 ## Quality Rules
@@ -88,6 +89,7 @@ Rules:
 - media failures may attempt `recoverMediaError`
 - current bounded policy is `1` media recovery attempt before surfacing failure
 - terminal failures must surface a visible retry UI
+- retrying, buffering, failed, and recovered states must stay visible enough for operators to distinguish player trouble from source trouble
 - silent infinite retry loops are not allowed
 
 Any change to retry timing or retry count must consider multi-view bandwidth pressure and browser resource limits.
