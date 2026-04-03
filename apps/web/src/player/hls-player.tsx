@@ -53,6 +53,11 @@ export function HlsPlayer({
     onSelectedQualityChange,
     onStatusChange,
   });
+  const playbackSettingsRef = useRef({
+    autoPlay,
+    initialBias,
+    preferredQuality,
+  });
 
   const [status, setStatus] = useState<PlayerStatus>(src ? "loading" : "idle");
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +69,11 @@ export function HlsPlayer({
     onQualityOptionsChange,
     onSelectedQualityChange,
     onStatusChange,
+  };
+  playbackSettingsRef.current = {
+    autoPlay,
+    initialBias,
+    preferredQuality,
   };
 
   function updateStatus(nextStatus: PlayerStatus) {
@@ -128,6 +138,15 @@ export function HlsPlayer({
     hls.currentLevel = resolvedSelection.level;
   }
 
+  function getStartupPreferredQuality() {
+    const { initialBias: currentInitialBias, preferredQuality: currentPreferredQuality } =
+      playbackSettingsRef.current;
+
+    return currentInitialBias === "LOWEST" && currentPreferredQuality === "AUTO"
+      ? "LOWEST"
+      : currentPreferredQuality;
+  }
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) {
@@ -169,8 +188,8 @@ export function HlsPlayer({
     updateStatus("loading");
     setStatusDetail("Requesting stream manifest...");
 
+    // Control-state changes like mute handoff and quality preference updates must not rebuild playback.
     const isCurrentSession = () => sessionId === sessionIdRef.current;
-    const effectivePreferredQuality = initialBias === "LOWEST" && preferredQuality === "AUTO" ? "LOWEST" : preferredQuality;
 
     const handlePlaying = () => {
       if (!isCurrentSession()) {
@@ -237,7 +256,7 @@ export function HlsPlayer({
 
       const syncManifestLevels = (levels: QualityOption[] | Hls["levels"]) => {
         publishQualityOptions(buildQualityOptions(levels as Hls["levels"]));
-        applyPreferredQuality(effectivePreferredQuality);
+        applyPreferredQuality(getStartupPreferredQuality());
       };
 
       hls.on(Hls.Events.MEDIA_ATTACHED, () => {
@@ -256,7 +275,7 @@ export function HlsPlayer({
         syncManifestLevels(data.levels);
         setStatusDetail("Starting playback...");
 
-        if (autoPlay) {
+        if (playbackSettingsRef.current.autoPlay) {
           void video.play().catch(() => {
             setStatusDetail("Autoplay was blocked by the browser.");
           });
@@ -327,7 +346,7 @@ export function HlsPlayer({
       video.src = src;
       video.load();
 
-      if (autoPlay) {
+      if (playbackSettingsRef.current.autoPlay) {
         void video.play().catch(() => {
           setStatusDetail("Autoplay was blocked by the browser.");
         });
@@ -353,7 +372,7 @@ export function HlsPlayer({
         }
       }
     };
-  }, [autoPlay, initialBias, reloadKey, src]);
+  }, [reloadKey, src]);
 
   useEffect(() => {
     if (!hlsRef.current) {

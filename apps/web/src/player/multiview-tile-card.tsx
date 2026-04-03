@@ -180,7 +180,6 @@ export function MultiviewTileCard({
       <div className="min-h-0 flex-1">
         {channel ? (
           <HlsPlayer
-            key={`${tileIndex}:${tile.channelId ?? "empty"}`}
             autoPlay
             initialBias={tile.isMuted ? "LOWEST" : "AUTO"}
             muted={tile.isMuted}
