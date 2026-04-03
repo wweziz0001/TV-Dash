@@ -16,6 +16,8 @@ export const streamPlaybackModeSchema = z.enum(["DIRECT", "PROXY"]);
 export const channelSourceModeSchema = z.enum(["MASTER_PLAYLIST", "MANUAL_VARIANTS"]);
 export const epgSourceTypeSchema = z.enum(["XMLTV"]);
 export const qualityModeSchema = z.enum(["AUTO", "LOWEST", "HIGHEST", "MANUAL"]);
+export const playbackSessionTypeSchema = z.enum(["SINGLE_VIEW", "MULTIVIEW"]);
+export const playbackSessionStateSchema = z.enum(["idle", "loading", "playing", "buffering", "retrying", "error"]);
 export const diagnosticHealthStateSchema = z.enum(["healthy", "degraded", "failing", "unknown"]);
 export const diagnosticFailureKindSchema = z.enum([
   "network",
@@ -250,12 +252,46 @@ export const streamVariantSchema = z.object({
   bandwidth: z.number().nullable(),
 });
 
+export const playbackSessionHeartbeatItemInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  channelId: z.string().uuid(),
+  sessionType: playbackSessionTypeSchema,
+  playbackState: playbackSessionStateSchema,
+  selectedQuality: z
+    .string()
+    .trim()
+    .max(40)
+    .nullable()
+    .optional()
+    .transform((value) => value || null),
+  isMuted: z.boolean(),
+  tileIndex: z
+    .number()
+    .int()
+    .min(0)
+    .max(32)
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  failureKind: diagnosticFailureKindSchema.nullable().optional().transform((value) => value ?? null),
+});
+
+export const playbackSessionHeartbeatInputSchema = z.object({
+  sessions: z.array(playbackSessionHeartbeatItemInputSchema).min(1).max(9),
+});
+
+export const playbackSessionEndInputSchema = z.object({
+  sessionIds: z.array(z.string().uuid()).min(1).max(9),
+});
+
 export type UserRole = z.infer<typeof userRoleSchema>;
 export type LayoutType = z.infer<typeof layoutTypeSchema>;
 export type StreamPlaybackMode = z.infer<typeof streamPlaybackModeSchema>;
 export type ChannelSourceMode = z.infer<typeof channelSourceModeSchema>;
 export type EpgSourceType = z.infer<typeof epgSourceTypeSchema>;
 export type QualityMode = z.infer<typeof qualityModeSchema>;
+export type PlaybackSessionType = z.infer<typeof playbackSessionTypeSchema>;
+export type PlaybackSessionState = z.infer<typeof playbackSessionStateSchema>;
 export type DiagnosticHealthState = z.infer<typeof diagnosticHealthStateSchema>;
 export type DiagnosticFailureKind = z.infer<typeof diagnosticFailureKindSchema>;
 export type LoginInput = z.infer<typeof loginInputSchema>;
@@ -270,3 +306,6 @@ export type SavedLayoutInput = z.infer<typeof savedLayoutInputSchema>;
 export type SavedLayoutItemInput = z.infer<typeof savedLayoutItemInputSchema>;
 export type StreamTestInput = z.infer<typeof streamTestInputSchema>;
 export type StreamVariant = z.infer<typeof streamVariantSchema>;
+export type PlaybackSessionHeartbeatItemInput = z.infer<typeof playbackSessionHeartbeatItemInputSchema>;
+export type PlaybackSessionHeartbeatInput = z.infer<typeof playbackSessionHeartbeatInputSchema>;
+export type PlaybackSessionEndInput = z.infer<typeof playbackSessionEndInputSchema>;
