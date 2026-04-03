@@ -1,7 +1,7 @@
 <a href="https://wweziz0001.github.io/TV-Dash" target="_blank" rel="noopener">
   <picture>
-    <source media="(prefers-color-scheme: dark)" alt="TvDash" srcset="/docs/tvdash-banner.png" />
-    <img alt="TvDash" src="/docs/tvdash-banner.png" />
+    <source media="(prefers-color-scheme: dark)" alt="TvDash" srcset="./docs/tvdash-banner.png" />
+    <img alt="TvDash" src="./docs/tvdash-banner.png" />
   </picture>
 </a>
 
@@ -38,7 +38,7 @@
 <div align="center">
   <figure>
     <a href="https://wweziz0001.github.io/TV-Dash" target="_blank" rel="noopener">
-      <img src="/docs/tvdash.png" alt="Product showcase" />
+      <img src="./docs/tvdash.png" alt="Product showcase" />
     </a>
     <figcaption>
       <p align="center">
