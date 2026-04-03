@@ -187,7 +187,7 @@ export function MultiviewTileCard({
         <div className="mb-2">
           <ChannelGuideCard
             guide={guide}
-            hasEpgSource={Boolean(channel?.epgSource)}
+            hasEpgSource={Boolean(channel?.epgSource || channel?.hasManualPrograms)}
             isLoading={guideLoading}
             variant="compact"
           />

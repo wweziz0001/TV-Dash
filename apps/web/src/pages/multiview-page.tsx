@@ -606,7 +606,7 @@ export function MultiViewPage() {
             <div className="mt-3 space-y-3">
               <ChannelGuideCard
                 guide={focusedGuide}
-                hasEpgSource={Boolean(focusedChannel?.epgSource)}
+                hasEpgSource={Boolean(focusedChannel?.epgSource || focusedChannel?.hasManualPrograms)}
                 isLoading={nowNextQuery.isLoading}
                 variant="detailed"
               />

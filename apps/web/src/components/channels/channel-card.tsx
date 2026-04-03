@@ -57,7 +57,7 @@ export function ChannelCard({
         {channel.epgSource ? <Badge size="sm">{channel.epgSource.name}</Badge> : null}
       </div>
 
-      <ChannelGuideCard guide={guide} hasEpgSource={Boolean(channel.epgSource)} />
+      <ChannelGuideCard guide={guide} hasEpgSource={Boolean(channel.epgSource || channel.hasManualPrograms)} />
 
       <div className="mt-auto flex flex-wrap gap-2">
         <Link className="min-w-[9rem] flex-1" to={`/watch/${channel.slug}`}>

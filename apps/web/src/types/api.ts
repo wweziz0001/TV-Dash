@@ -2,10 +2,12 @@ import type {
   ChannelSourceMode,
   DiagnosticFailureKind,
   DiagnosticHealthState,
+  EpgImportStatus,
   EpgSourceType,
   LayoutType,
   PlaybackSessionState,
   PlaybackSessionType,
+  ProgramEntrySource,
   PlaybackSessionEndInput,
   PlaybackSessionHeartbeatInput,
   SavedLayoutConfig,
@@ -43,9 +45,11 @@ export interface Channel {
   masterHlsUrl: string | null;
   playbackMode: StreamPlaybackMode;
   manualVariantCount: number;
+  hasManualPrograms?: boolean;
   groupId: string | null;
   group: ChannelGroup | null;
   epgSourceId: string | null;
+  epgSourceChannelId?: string | null;
   epgChannelId: string | null;
   epgSource: EpgSourceSummary | null;
   isActive: boolean;
@@ -179,36 +183,89 @@ export interface EpgSourceSummary {
 }
 
 export interface EpgSource extends EpgSourceSummary {
-  url: string;
-  refreshIntervalMinutes: number;
+  url: string | null;
+  uploadedFileName: string | null;
+  refreshIntervalMinutes: number | null;
   requestUserAgent: string | null;
   requestReferrer: string | null;
   requestHeaders: Record<string, string>;
+  lastImportStartedAt: string | null;
+  lastImportedAt: string | null;
+  lastImportStatus: EpgImportStatus;
+  lastImportMessage: string | null;
+  lastImportChannelCount: number | null;
+  lastImportProgramCount: number | null;
+  sourceChannelCount: number;
+  availableChannelCount: number;
+  mappedChannelCount: number;
+  importedProgramCount: number;
   createdAt: string;
   updatedAt: string;
-  _count?: {
-    channels: number;
-  };
 }
 
-export interface EpgPreviewChannel {
+export interface EpgSourceChannel {
   id: string;
+  externalId: string;
+  displayName: string;
   displayNames: string[];
+  iconUrl: string | null;
+  isAvailable: boolean;
+  lastSeenAt: string | null;
+  source: EpgSourceSummary;
+  mapping: {
+    id: string;
+    channel: {
+      id: string;
+      name: string;
+      slug: string;
+      isActive: boolean;
+    };
+  } | null;
 }
 
 export interface NowNextProgram {
+  id: string;
+  sourceKind: ProgramEntrySource;
   title: string;
   subtitle: string | null;
   description: string | null;
+  category: string | null;
+  imageUrl: string | null;
   start: string;
   stop: string | null;
 }
 
 export interface ChannelNowNext {
   channelId: string;
-  status: "READY" | "UNCONFIGURED" | "NO_DATA" | "SOURCE_ERROR";
+  status: "READY" | "UNCONFIGURED" | "NO_DATA" | "SOURCE_ERROR" | "SOURCE_INACTIVE";
   now: NowNextProgram | null;
   next: NowNextProgram | null;
+}
+
+export interface ProgramEntry {
+  id: string;
+  sourceKind: ProgramEntrySource;
+  channelId: string | null;
+  title: string;
+  subtitle: string | null;
+  description: string | null;
+  category: string | null;
+  imageUrl: string | null;
+  startAt: string;
+  endAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  channel: {
+    id: string;
+    name: string;
+    slug: string;
+    isActive: boolean;
+  } | null;
+}
+
+export interface ChannelGuideWindow {
+  channelId: string;
+  programmes: NowNextProgram[];
 }
 
 export interface AuthResponse {

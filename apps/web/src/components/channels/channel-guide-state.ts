@@ -1,7 +1,7 @@
 import type { ChannelNowNext, NowNextProgram } from "@/types/api";
 
 export interface ChannelGuideState {
-  kind: "loading" | "ready" | "unconfigured" | "source-error" | "no-data";
+  kind: "loading" | "ready" | "unconfigured" | "source-error" | "source-inactive" | "no-data";
   message: string;
   now: NowNextProgram | null;
   next: NowNextProgram | null;
@@ -88,6 +88,16 @@ export function getChannelGuideState({
     return {
       kind: "source-error",
       message: "Guide source unavailable",
+      now: null,
+      next: null,
+      progressPercent: null,
+    };
+  }
+
+  if (guide.status === "SOURCE_INACTIVE") {
+    return {
+      kind: "source-inactive",
+      message: "Guide source inactive",
       now: null,
       next: null,
       progressPercent: null,

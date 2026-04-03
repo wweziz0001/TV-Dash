@@ -54,12 +54,6 @@ export function AdminChannelsPage() {
     enabled: Boolean(token),
   });
 
-  const epgSourcesQuery = useQuery({
-    queryKey: ["epg-sources", token],
-    queryFn: async () => (await api.listEpgSources(token!)).sources,
-    enabled: Boolean(token),
-  });
-
   const channelConfigQuery = useQuery({
     queryKey: ["channel-config", editingChannelId, token],
     queryFn: async () => {
@@ -265,7 +259,6 @@ export function AdminChannelsPage() {
           ) : null}
 
           <ChannelAdminFormFields
-            epgSources={epgSourcesQuery.data ?? []}
             form={form}
             groups={groupsQuery.data ?? []}
             onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
@@ -275,6 +268,10 @@ export function AdminChannelsPage() {
             <p className="font-semibold text-white">Operational notes</p>
             <p className="mt-2">
               Use proxy mode when the provider expects TV-Dash to own upstream access, custom headers, or referrer handling. Direct mode keeps the browser on the upstream path, while manual variants still get a synthesized master playlist from the backend.
+            </p>
+            <p className="mt-2">
+              Guide mapping and manual programme entry now live in the dedicated Admin EPG workflow so source imports,
+              channel linking, and manual overrides stay together.
             </p>
           </div>
 
