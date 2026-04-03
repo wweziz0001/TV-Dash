@@ -1,5 +1,6 @@
 import type { RecordingJobInput, RecordingJobUpdateInput, UserRole } from "@tv-dash/shared";
 import { createRecordingPlaybackToken, readRecordingPlaybackToken } from "./recording-playback-token.js";
+import { resolveRecordingRunProgress } from "./recording-progress.js";
 import {
   cancelRecordingJob,
   createRecordingJob,
@@ -41,8 +42,8 @@ function mapFileSize(value: bigint | null | undefined) {
   return Number(value);
 }
 
-function mapRecordingJob(record: RecordingJobRecord) {
-  const latestRun = record.runs[0] ?? null;
+async function mapRecordingJob(record: RecordingJobRecord) {
+  const latestRun = await resolveRecordingRunProgress(record);
 
   return {
     id: record.id,
@@ -75,25 +76,7 @@ function mapRecordingJob(record: RecordingJobRecord) {
           role: record.createdByUser.role,
         }
       : null,
-    latestRun: latestRun
-      ? {
-          id: latestRun.id,
-          status: latestRun.status,
-          outputFileName: latestRun.outputFileName,
-          containerFormat: latestRun.containerFormat,
-          ffmpegPid: latestRun.ffmpegPid,
-          startedAt: latestRun.startedAt?.toISOString() ?? null,
-          endedAt: latestRun.endedAt?.toISOString() ?? null,
-          exitCode: latestRun.exitCode,
-          exitSignal: latestRun.exitSignal,
-          failureReason: latestRun.failureReason,
-          stderrTail: latestRun.stderrTail,
-          fileSizeBytes: mapFileSize(latestRun.fileSizeBytes),
-          durationSeconds: latestRun.durationSeconds,
-          createdAt: latestRun.createdAt.toISOString(),
-          updatedAt: latestRun.updatedAt.toISOString(),
-        }
-      : null,
+    latestRun,
     asset: record.asset
       ? {
           id: record.asset.id,
@@ -170,7 +153,7 @@ export async function listRecordingJobsForViewer(
     channelId: filters.channelId,
   });
 
-  return jobs.map(mapRecordingJob);
+  return Promise.all(jobs.map(mapRecordingJob));
 }
 
 export async function getRecordingJobForViewer(viewer: RecordingViewer, recordingJobId: string) {

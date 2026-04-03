@@ -10,6 +10,18 @@ function buildInternalRecordingSourceUrl(channelId: string, apiPort: number) {
   return `http://127.0.0.1:${apiPort}/api/streams/channels/${channelId}/master`;
 }
 
+function buildInternalProxyInputConfig(channelId: string, apiPort: number): RecordingInputConfig {
+  return {
+    sourceUrl: buildInternalRecordingSourceUrl(channelId, apiPort),
+    ffmpegInputArgs: [
+      "-allowed_extensions",
+      "ALL",
+      "-protocol_whitelist",
+      "file,http,https,tcp,tls,crypto,data",
+    ],
+  };
+}
+
 function buildFfmpegHeaderArgument(headers: Record<string, string>) {
   const lines = Object.entries(headers).map(([key, value]) => `${key}: ${value}`);
 
@@ -41,15 +53,8 @@ function buildDirectUpstreamInputConfig(channel: StreamChannelRecord): Recording
 }
 
 export function buildRecordingInputConfig(channel: StreamChannelRecord, apiPort: number): RecordingInputConfig {
-  if (
-    channel.sourceMode === "MANUAL_VARIANTS" ||
-    channel.playbackMode === "PROXY" ||
-    !channel.masterHlsUrl
-  ) {
-    return {
-      sourceUrl: buildInternalRecordingSourceUrl(channel.id, apiPort),
-      ffmpegInputArgs: [],
-    };
+  if (channel.sourceMode === "MANUAL_VARIANTS" || !channel.masterHlsUrl) {
+    return buildInternalProxyInputConfig(channel.id, apiPort);
   }
 
   return buildDirectUpstreamInputConfig(channel);

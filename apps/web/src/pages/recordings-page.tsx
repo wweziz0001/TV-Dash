@@ -447,6 +447,20 @@ function RecordingCard({
   const endedAt = job.actualEndAt ?? job.endAt;
   const displayDurationSeconds = job.asset?.durationSeconds ?? job.latestRun?.durationSeconds ?? null;
   const displayFileSizeBytes = job.asset?.fileSizeBytes ?? job.latestRun?.fileSizeBytes ?? null;
+  const isRecording = job.status === "RECORDING";
+  const timingLabel = isRecording ? "Started" : "Starts";
+  const durationLabel =
+    displayDurationSeconds !== null
+      ? `${isRecording ? "Elapsed" : "Recorded"} ${formatDuration(displayDurationSeconds)}`
+      : isRecording
+        ? "Elapsed 0s"
+        : "Duration pending";
+  const fileSizeLabel =
+    displayFileSizeBytes !== null
+      ? `${isRecording ? "Captured" : "File size"} ${formatFileSize(displayFileSizeBytes)}`
+      : isRecording
+        ? "Captured 0 KB"
+        : "File size pending";
 
   return (
     <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
@@ -457,13 +471,10 @@ function RecordingCard({
             <RecordingStatusBadge status={job.status} />
           </div>
           <p className="mt-1.5 text-[13px] text-slate-400">
-            {job.channelNameSnapshot} · {formatRecordingMode(job.mode)} · Starts {formatDateTime(startedAt)}
+            {job.channelNameSnapshot} · {formatRecordingMode(job.mode)} · {timingLabel} {formatDateTime(startedAt)}
             {job.endAt ? ` · Ends ${formatDateTime(job.endAt)}` : ""}
           </p>
-          <p className="mt-1.5 text-[13px] text-slate-500">
-            {displayDurationSeconds ? `${formatDuration(displayDurationSeconds)} recorded` : "Duration pending"} ·{" "}
-            {displayFileSizeBytes ? formatFileSize(displayFileSizeBytes) : "File size pending"}
-          </p>
+          <p className="mt-1.5 text-[13px] text-slate-500">{durationLabel} · {fileSizeLabel}</p>
           {job.failureReason ? <p className="mt-2 text-[13px] text-amber-200">Failure: {job.failureReason}</p> : null}
           {job.cancellationReason ? <p className="mt-2 text-[13px] text-slate-400">Canceled: {job.cancellationReason}</p> : null}
           {endedAt && job.status === "COMPLETED" ? (
