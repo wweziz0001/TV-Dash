@@ -84,6 +84,7 @@ These areas are release-critical and should gain or maintain automated coverage 
 - favorites add/remove
 - saved layouts create/update/delete/apply
 - EPG source import, mapping, manual entry, and now/next resolution
+- recording job creation, runtime status, scheduling, library, and playback access
 - quality switching logic
 - multi-view layout resizing and audio ownership
 - device-aware multi-view layout fallback and viewport policy
@@ -157,6 +158,14 @@ These areas are release-critical and should gain or maintain automated coverage 
 - channel mapping behavior when guide linkage rules or source-channel lookups change
 - manual program create, update, delete, and overlap rejection behavior
 - resolved guide-window and now/next precedence when manual and imported entries overlap
+
+### Recordings
+
+- recording job validation for immediate, timed, and scheduled modes
+- status transition helpers and lifecycle guard behavior
+- recording route contracts for create/list/update/cancel/stop/playback access
+- storage-path safety and playback media access behavior
+- library filtering/search behavior when recording list contracts change
 
 ### Auth And Governance
 

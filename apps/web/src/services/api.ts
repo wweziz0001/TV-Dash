@@ -7,6 +7,8 @@ import type {
   LoginInput,
   PlaybackSessionEndInput,
   PlaybackSessionHeartbeatInput,
+  RecordingJobInput,
+  RecordingJobUpdateInput,
   ProgramEntryInput,
   SavedLayoutInput,
   StreamTestInput,
@@ -27,6 +29,8 @@ import type {
   EpgSourceDiagnostics,
   Favorite,
   ProgramEntry,
+  RecordingJob,
+  RecordingQualityOption,
   SavedLayout,
   StreamTestResult,
   User,
@@ -57,6 +61,7 @@ function notifyAuthExpired(message: string) {
 
 async function request<T>(path: string, init: RequestInit = {}, token?: string | null): Promise<T> {
   const headers = new Headers(init.headers);
+  const method = (init.method ?? "GET").toUpperCase();
 
   if (token) {
     headers.set("authorization", `Bearer ${token}`);
@@ -66,9 +71,20 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string |
     headers.set("content-type", "application/json");
   }
 
+  if (method === "GET" || method === "HEAD") {
+    if (!headers.has("cache-control")) {
+      headers.set("cache-control", "no-cache, no-store, max-age=0");
+    }
+
+    if (!headers.has("pragma")) {
+      headers.set("pragma", "no-cache");
+    }
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers,
+    cache: init.cache ?? (method === "GET" || method === "HEAD" ? "no-store" : undefined),
   });
 
   if (response.status === 204) {
@@ -154,6 +170,22 @@ export const api = {
   updateLayout: (id: string, payload: SavedLayoutInput, token: string) =>
     request<{ layout: SavedLayout }>(`/layouts/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
   deleteLayout: (id: string, token: string) => request<void>(`/layouts/${id}`, { method: "DELETE" }, token),
+  listRecordingJobs: (token: string, params?: URLSearchParams) =>
+    request<{ jobs: RecordingJob[] }>(`/recordings${params ? `?${params.toString()}` : ""}`, {}, token),
+  listRecordingQualities: (channelId: string, token: string) =>
+    request<{ qualities: RecordingQualityOption[] }>(`/recordings/channels/${channelId}/qualities`, {}, token),
+  getRecordingJob: (id: string, token: string) => request<{ job: RecordingJob }>(`/recordings/${id}`, {}, token),
+  createRecordingJob: (payload: RecordingJobInput, token: string) =>
+    request<{ job: RecordingJob }>("/recordings", { method: "POST", body: JSON.stringify(payload) }, token),
+  updateRecordingJob: (id: string, payload: RecordingJobUpdateInput, token: string) =>
+    request<{ job: RecordingJob }>(`/recordings/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+  cancelRecordingJob: (id: string, token: string) =>
+    request<{ job: RecordingJob }>(`/recordings/${id}/cancel`, { method: "POST" }, token),
+  stopRecordingJob: (id: string, token: string) =>
+    request<{ job: RecordingJob }>(`/recordings/${id}/stop`, { method: "POST" }, token),
+  deleteRecordingJob: (id: string, token: string) => request<void>(`/recordings/${id}`, { method: "DELETE" }, token),
+  getRecordingPlaybackAccess: (id: string, token: string) =>
+    request<{ playbackUrl: string }>(`/recordings/${id}/playback-access`, {}, token),
   listEpgSources: (token: string) => request<{ sources: EpgSource[] }>("/epg/sources", {}, token),
   getEpgSourceDiagnostics: (id: string, token: string) =>
     request<{ diagnostics: EpgSourceDiagnostics }>(`/diagnostics/epg-sources/${id}`, {}, token),
@@ -217,4 +249,13 @@ export function getChannelPlaybackUrl(
   }
 
   return channel.masterHlsUrl;
+}
+
+export function resolveApiUrl(path: string) {
+  if (/^https?:\/\//.test(path)) {
+    return path;
+  }
+
+  const apiOrigin = API_BASE_URL.replace(/\/api$/, "");
+  return `${apiOrigin}${path}`;
 }

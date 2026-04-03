@@ -12,6 +12,11 @@ const envSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(4000),
   CLIENT_URL: z.string().url().default("http://localhost:5173"),
   CLIENT_URLS: z.string().optional(),
+  RECORDINGS_STORAGE_DIR: z.string().min(1).default(path.resolve(currentDir, "../../../../recordings")),
+  RECORDINGS_FFMPEG_PATH: z.string().min(1).default("ffmpeg"),
+  RECORDINGS_FFPROBE_PATH: z.string().min(1).default("ffprobe"),
+  RECORDINGS_POLL_INTERVAL_MS: z.coerce.number().int().min(1000).max(60000).default(5000),
+  RECORDING_PLAYBACK_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(86400).default(3600),
 });
 
 export const env = envSchema.parse(process.env);

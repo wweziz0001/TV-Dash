@@ -89,6 +89,8 @@ Repositories must not:
   - per-user pinned channels
 - `layouts`
   - per-user saved multiview walls
+- `recordings`
+  - recording job CRUD, real ffmpeg-backed capture orchestration, recording-run status, library listing, playback access tokens, and storage-backed recorded media lifecycle
 - `diagnostics`
   - runtime observability snapshots, structured log retention, playback session tracking, channel/EPG health summaries, and admin inspection endpoints
 - `streams`
@@ -121,6 +123,22 @@ Repositories must not:
 - Manual guide rows may override imported rows, but that precedence rule must be resolved inside the `epg` module rather than inside pages or channel repositories.
 - Guide import, mapping, and now/next assembly live behind the `epg` module boundary.
 - This milestone uses explicit admin-triggered imports plus durable storage. Background refresh scheduling remains future work and should be added inside the `epg` module, not bolted onto route handlers.
+
+## Recording Foundation Rules
+
+- Recording scheduling, execution, storage, and playback access belong inside the `recordings` module.
+- Real capture orchestration should use the existing channel/stream foundation instead of duplicating upstream request logic in route handlers.
+- Recording routes may expose:
+  - job CRUD and status listing
+  - stop/cancel actions
+  - playback-access token issuance
+  - storage-backed media delivery
+- Recording execution state belongs in dedicated recording entities such as:
+  - `RecordingJob`
+  - `RecordingRun`
+  - `RecordingAsset`
+- Routes must not spawn ffmpeg directly; process lifecycle belongs in recording runtime helpers behind the service/repository boundary.
+- Storage paths must stay relative to the configured recordings root and be resolved safely inside the backend before file IO happens.
 
 ## Error Handling Rules
 

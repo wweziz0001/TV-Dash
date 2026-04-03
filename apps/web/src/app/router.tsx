@@ -11,6 +11,8 @@ import { ForbiddenPage } from "@/pages/forbidden-page";
 import { LoginPage } from "@/pages/login-page";
 import { MultiViewPage } from "@/pages/multiview-page";
 import { NotFoundPage } from "@/pages/not-found-page";
+import { RecordingPlaybackPage } from "@/pages/recording-playback-page";
+import { RecordingsPage } from "@/pages/recordings-page";
 
 export function AppRouter() {
   return (
@@ -28,6 +30,8 @@ export function AppRouter() {
           <Route index element={<DashboardPage />} />
           <Route path="watch/:slug" element={<ChannelWatchPage />} />
           <Route path="multiview" element={<MultiViewPage />} />
+          <Route path="recordings" element={<RecordingsPage />} />
+          <Route path="recordings/:id" element={<RecordingPlaybackPage />} />
           <Route path="forbidden" element={<ForbiddenPage />} />
           <Route
             path="admin/observability"

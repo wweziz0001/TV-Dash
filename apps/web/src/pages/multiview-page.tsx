@@ -40,7 +40,7 @@ import {
 } from "@/player/multiview-viewport";
 import { defaultQualityOptions } from "@/player/quality-options";
 import { api, getChannelPlaybackUrl } from "@/services/api";
-import type { QualityOption } from "@/types/api";
+import type { QualityOption, RecordingJob } from "@/types/api";
 
 export function MultiViewPage() {
   const { token } = useAuth();
@@ -95,6 +95,23 @@ export function MultiViewPage() {
       return (await api.getNowNext(tileChannelIds, token)).items;
     },
     enabled: Boolean(token && tileChannelIds.length),
+  });
+
+  const recordingJobsQuery = useQuery({
+    queryKey: ["recordings-multiview", token],
+    queryFn: async () => {
+      if (!token) {
+        return [];
+      }
+
+      const params = new URLSearchParams({
+        status: "PENDING,SCHEDULED,RECORDING",
+      });
+
+      return (await api.listRecordingJobs(token, params)).jobs;
+    },
+    enabled: Boolean(token),
+    refetchInterval: 5000,
   });
 
   useEffect(() => {
@@ -179,12 +196,63 @@ export function MultiViewPage() {
     },
   });
 
+  const recordingMutation = useMutation({
+    mutationFn: async (params: { channelId: string; job: RecordingJob | null; requestedQualitySelector: string; requestedQualityLabel: string | null }) => {
+      if (!token) {
+        throw new Error("Missing session");
+      }
+
+      if (params.job?.status === "RECORDING") {
+        return (await api.stopRecordingJob(params.job.id, token)).job;
+      }
+
+      return (
+        await api.createRecordingJob(
+          {
+            channelId: params.channelId,
+            title: null,
+            mode: "IMMEDIATE",
+            startAt: null,
+            endAt: null,
+            programEntryId: null,
+            requestedQualitySelector: params.requestedQualitySelector,
+            requestedQualityLabel: params.requestedQualityLabel,
+          },
+          token,
+        )
+      ).job;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["recordings-multiview", token] }),
+        queryClient.invalidateQueries({ queryKey: ["recordings-active", token] }),
+        queryClient.invalidateQueries({ queryKey: ["recordings-library", token] }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to update recording");
+    },
+  });
+
   const layoutDefinition = getLayoutDefinition(layoutType);
   const savedLayouts = layoutsQuery.data ?? [];
   const channels = channelsQuery.data ?? [];
   const selectedLayout = savedLayouts.find((layout) => layout.id === selectedLayoutId) ?? null;
 
   const channelMap = useMemo(() => new Map(channels.map((channel) => [channel.id, channel])), [channels]);
+  const activeRecordingByChannelId = useMemo(() => {
+    const nextMap = new Map<string, RecordingJob>();
+
+    for (const job of recordingJobsQuery.data ?? []) {
+      if (!job.channelId || nextMap.has(job.channelId)) {
+        continue;
+      }
+
+      nextMap.set(job.channelId, job);
+    }
+
+    return nextMap;
+  }, [recordingJobsQuery.data]);
   const nowNextByChannelId = useMemo(
     () => new Map((nowNextQuery.data ?? []).map((item) => [item.channelId, item])),
     [nowNextQuery.data],
@@ -468,6 +536,7 @@ export function MultiViewPage() {
           <div className={cn("grid gap-3", layoutDefinition.containerClassName)}>
             {tiles.map((tile, index) => {
               const channel = tile.channelId ? channelMap.get(tile.channelId) ?? null : null;
+              const recordingJob = channel ? activeRecordingByChannelId.get(channel.id) ?? null : null;
               const qualityOptions = qualityOptionsByTile[index] ?? [...defaultQualityOptions];
               const playerStatus = playerStatusByTile[index] ?? (channel ? "loading" : "idle");
               const playerDiagnostics =
@@ -544,6 +613,23 @@ export function MultiViewPage() {
                     onPreferredQualityChange={(value) =>
                       setTiles((current) => setTilePreferredQuality(current, index, value))
                     }
+                    onToggleRecording={() => {
+                      if (!channel) {
+                        return;
+                      }
+
+                      const resolvedRecordingQuality = resolveRecordingQualityPreference(
+                        tile.preferredQuality ?? "AUTO",
+                        qualityOptions,
+                      );
+
+                      recordingMutation.mutate({
+                        channelId: channel.id,
+                        job: recordingJob,
+                        requestedQualitySelector: resolvedRecordingQuality.value,
+                        requestedQualityLabel: resolvedRecordingQuality.label,
+                      });
+                    }}
                     onQualityOptionsChange={(options) =>
                       setQualityOptionsByTile((current) => setTileQualityOptions(current, index, options))
                     }
@@ -566,6 +652,7 @@ export function MultiViewPage() {
                     onToggleAudio={() => handleAudioToggle(index)}
                     playerStatus={playerStatus}
                     qualityOptions={qualityOptions}
+                    recordingJob={recordingJob}
                     src={channel ? getChannelPlaybackUrl(channel, { preferProxy: true }) : null}
                     tile={tile}
                     tileIndex={index}
@@ -745,6 +832,30 @@ export function MultiViewPage() {
       />
     </div>
   );
+}
+
+function resolveRecordingQualityPreference(preferredQuality: string, qualityOptions: QualityOption[]) {
+  if (preferredQuality === "LOWEST") {
+    const lowest = [...qualityOptions].filter((option) => option.value !== "AUTO").at(-1);
+    return {
+      value: lowest?.value ?? "AUTO",
+      label: lowest?.label ?? "Source default",
+    };
+  }
+
+  if (preferredQuality === "HIGHEST") {
+    const highest = qualityOptions.find((option) => option.value !== "AUTO");
+    return {
+      value: highest?.value ?? "AUTO",
+      label: highest?.label ?? "Source default",
+    };
+  }
+
+  const exact = qualityOptions.find((option) => option.value === preferredQuality);
+  return {
+    value: exact?.value ?? preferredQuality ?? "AUTO",
+    label: exact?.label ?? "Source default",
+  };
 }
 
 function formatTimestamp(value: string) {

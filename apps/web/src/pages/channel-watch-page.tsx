@@ -16,7 +16,7 @@ import { HlsPlayer, type PlayerDiagnostics } from "@/player/hls-player";
 import { buildPlayerDiagnostics } from "@/player/playback-diagnostics";
 import { defaultQualityOptions } from "@/player/quality-options";
 import { api, getChannelPlaybackUrl } from "@/services/api";
-import type { QualityOption } from "@/types/api";
+import type { QualityOption, RecordingJob } from "@/types/api";
 
 export function ChannelWatchPage() {
   const { slug = "" } = useParams();
@@ -26,6 +26,7 @@ export function ChannelWatchPage() {
   const playerFrameRef = useRef<HTMLDivElement | null>(null);
   const [qualities, setQualities] = useState<QualityOption[]>([...defaultQualityOptions]);
   const [selectedQuality, setSelectedQuality] = useState("AUTO");
+  const [recordingQuality, setRecordingQuality] = useState("AUTO");
   const [playerDiagnostics, setPlayerDiagnostics] = useState<PlayerDiagnostics>(() =>
     buildPlayerDiagnostics({
       status: "idle",
@@ -65,6 +66,24 @@ export function ChannelWatchPage() {
     enabled: Boolean(token && channelQuery.data?.id),
   });
 
+  const recordingJobsQuery = useQuery({
+    queryKey: ["recordings-watch", channelQuery.data?.id, token],
+    queryFn: async () => {
+      if (!token || !channelQuery.data) {
+        return [];
+      }
+
+      const params = new URLSearchParams({
+        channelId: channelQuery.data.id,
+        status: "PENDING,SCHEDULED,RECORDING",
+      });
+
+      return (await api.listRecordingJobs(token, params)).jobs;
+    },
+    enabled: Boolean(token && channelQuery.data?.id),
+    refetchInterval: 5000,
+  });
+
   const favoriteMutation = useMutation({
     mutationFn: async (isFavorite: boolean) => {
       if (!token || !channelQuery.data) {
@@ -85,9 +104,53 @@ export function ChannelWatchPage() {
     },
   });
 
+  const recordingMutation = useMutation({
+    mutationFn: async (job: RecordingJob | null) => {
+      if (!token || !channelQuery.data) {
+        throw new Error("Missing channel context");
+      }
+
+      if (job?.status === "RECORDING") {
+        return (await api.stopRecordingJob(job.id, token)).job;
+      }
+
+      const effectiveRecordingQuality = recordingQuality === "AUTO" ? selectedQuality : recordingQuality;
+
+      return (
+        await api.createRecordingJob(
+          {
+            channelId: channelQuery.data.id,
+            title: null,
+            mode: "IMMEDIATE",
+            startAt: null,
+            endAt: null,
+            programEntryId: null,
+            requestedQualitySelector: effectiveRecordingQuality,
+            requestedQualityLabel:
+              qualities.find((option) => option.value === effectiveRecordingQuality)?.label ?? "Source default",
+          },
+          token,
+        )
+      ).job;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["recordings-watch", channelQuery.data?.id, token] }),
+        queryClient.invalidateQueries({ queryKey: ["recordings-active", token] }),
+        queryClient.invalidateQueries({ queryKey: ["recordings-library", token] }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to update recording");
+    },
+  });
+
   const isFavorite = useMemo(() => {
     return (favoritesQuery.data ?? []).some((favorite) => favorite.channelId === channelQuery.data?.id);
   }, [channelQuery.data?.id, favoritesQuery.data]);
+  const activeRecording = useMemo(() => {
+    return (recordingJobsQuery.data ?? []).find((job) => job.status === "RECORDING") ?? recordingJobsQuery.data?.[0] ?? null;
+  }, [recordingJobsQuery.data]);
   const playbackSessionDescriptors = useMemo(() => {
     if (!channelQuery.data) {
       return [];
@@ -111,6 +174,7 @@ export function ChannelWatchPage() {
   useEffect(() => {
     setQualities([...defaultQualityOptions]);
     setSelectedQuality("AUTO");
+    setRecordingQuality("AUTO");
     setPlayerDiagnostics(
       buildPlayerDiagnostics({
         status: "idle",
@@ -118,6 +182,14 @@ export function ChannelWatchPage() {
       }),
     );
   }, [slug]);
+
+  useEffect(() => {
+    if (qualities.some((option) => option.value === recordingQuality)) {
+      return;
+    }
+
+    setRecordingQuality("AUTO");
+  }, [qualities, recordingQuality]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -204,6 +276,23 @@ export function ChannelWatchPage() {
                 Open in Multi-View
               </Button>
             </Link>
+            <Button
+              className="w-full sm:w-auto"
+              onClick={() => recordingMutation.mutate(activeRecording)}
+              size="sm"
+              variant={activeRecording?.status === "RECORDING" ? "primary" : "secondary"}
+            >
+              <span
+                aria-hidden="true"
+                className={`h-2.5 w-2.5 rounded-full ${activeRecording?.status === "RECORDING" ? "bg-rose-300" : "bg-slate-300"}`}
+              />
+              {activeRecording?.status === "RECORDING" ? "Stop recording" : "Record now"}
+            </Button>
+            <Link className="w-full sm:w-auto" to={`/recordings?channelId=${channel.id}&mode=SCHEDULED`}>
+              <Button className="w-full" size="sm" variant="secondary">
+                Schedule
+              </Button>
+            </Link>
           </>
         }
       />
@@ -233,14 +322,31 @@ export function ChannelWatchPage() {
             <div className="mt-3 space-y-3">
               <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
                 <div>
-                <label className="mb-1.5 block text-[13px] text-slate-400" htmlFor="quality">
-                  Quality
-                </label>
-                <Select id="quality" onChange={(event) => setSelectedQuality(event.target.value)} uiSize="sm" value={selectedQuality}>
-                  {qualities.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
+                  <label className="mb-1.5 block text-[13px] text-slate-400" htmlFor="quality">
+                    Playback quality
+                  </label>
+                  <Select id="quality" onChange={(event) => setSelectedQuality(event.target.value)} uiSize="sm" value={selectedQuality}>
+                    {qualities.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-[13px] text-slate-400" htmlFor="recording-quality">
+                    Recording quality
+                  </label>
+                  <Select
+                    id="recording-quality"
+                    onChange={(event) => setRecordingQuality(event.target.value)}
+                    uiSize="sm"
+                    value={recordingQuality}
+                  >
+                    {qualities.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
                     ))}
                   </Select>
                 </div>
@@ -257,6 +363,19 @@ export function ChannelWatchPage() {
                   {playerDiagnostics.label} · {selectedQuality === "AUTO" ? "Auto quality" : `Manual quality ${selectedQuality}`}
                 </p>
                 <p className="mt-1.5 text-[12px] text-slate-300">{playerDiagnostics.summary}</p>
+                <p className="mt-2 text-[12px] text-slate-400">
+                  Recording:{" "}
+                  {activeRecording
+                    ? activeRecording.status === "RECORDING"
+                      ? "running now"
+                      : activeRecording.status.toLowerCase()
+                    : "not active"}
+                </p>
+                <p className="mt-1 text-[12px] text-slate-400">
+                  Record now quality:{" "}
+                  {qualities.find((option) => option.value === (recordingQuality === "AUTO" ? selectedQuality : recordingQuality))
+                    ?.label ?? "Source default"}
+                </p>
                 {playerDiagnostics.failureKind ? (
                   <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-slate-500">
                     Likely issue: {playerDiagnostics.failureKind}
