@@ -7,7 +7,9 @@ import type {
   LayoutType,
   RecordingJobStatus,
   RecordingMode,
+  RecordingRecurrenceType,
   RecordingRunStatus,
+  RecordingWeekday,
   PlaybackSessionState,
   PlaybackSessionType,
   ProgramEntrySource,
@@ -316,6 +318,8 @@ export interface RecordingJob {
   requestedQualityLabel: string | null;
   mode: RecordingMode;
   status: RecordingJobStatus;
+  paddingBeforeMinutes: number;
+  paddingAfterMinutes: number;
   startAt: string;
   endAt: string | null;
   actualStartAt: string | null;
@@ -324,6 +328,21 @@ export interface RecordingJob {
   cancellationReason: string | null;
   createdAt: string;
   updatedAt: string;
+  program: {
+    id: string | null;
+    sourceKind: ProgramEntrySource | null;
+    title: string | null;
+    startAt: string | null;
+    endAt: string | null;
+  } | null;
+  recordingRule: {
+    id: string | null;
+    titleTemplate: string | null;
+    recurrenceType: RecordingRecurrenceType | null;
+    weekdays: RecordingWeekday[];
+    timeZone: string | null;
+    isActive: boolean | null;
+  } | null;
   channel: {
     id: string;
     name: string;
@@ -343,6 +362,53 @@ export interface RecordingQualityOption {
   value: string;
   label: string;
   height: number | null;
+}
+
+export interface RecordingRule {
+  id: string;
+  channelId: string;
+  titleTemplate: string;
+  recurrenceType: RecordingRecurrenceType;
+  weekdays: RecordingWeekday[];
+  startsAt: string;
+  durationMinutes: number;
+  timeZone: string;
+  paddingBeforeMinutes: number;
+  paddingAfterMinutes: number;
+  requestedQualitySelector: string | null;
+  requestedQualityLabel: string | null;
+  matchProgramTitle: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  originProgram: {
+    id: string | null;
+    sourceKind: ProgramEntrySource | null;
+    title: string | null;
+    startAt: string | null;
+    endAt: string | null;
+  } | null;
+  channel: {
+    id: string;
+    name: string;
+    slug: string;
+    isActive: boolean;
+  };
+  createdByUser: {
+    id: string;
+    username: string;
+    role: UserRole;
+  };
+  nextUpcomingJob: {
+    id: string;
+    title: string;
+    mode: RecordingMode;
+    status: RecordingJobStatus;
+    startAt: string;
+    endAt: string | null;
+    programTitleSnapshot: string | null;
+  } | null;
+  generatedJobCount: number;
 }
 
 export interface AuthResponse {
@@ -396,7 +462,7 @@ export interface AuditEvent {
   createdAt: string;
 }
 
-export type { RecordingJobStatus, RecordingMode, RecordingRunStatus };
+export type { RecordingJobStatus, RecordingMode, RecordingRecurrenceType, RecordingRunStatus, RecordingWeekday };
 
 export interface AdminMonitoringSession {
   sessionId: string;

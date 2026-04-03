@@ -9,6 +9,7 @@ import type {
   PlaybackSessionHeartbeatInput,
   RecordingJobInput,
   RecordingJobUpdateInput,
+  RecordingRuleInput,
   ProgramEntryInput,
   SavedLayoutInput,
   StreamTestInput,
@@ -31,6 +32,7 @@ import type {
   ProgramEntry,
   RecordingJob,
   RecordingQualityOption,
+  RecordingRule,
   SavedLayout,
   StreamTestResult,
   User,
@@ -172,18 +174,26 @@ export const api = {
   deleteLayout: (id: string, token: string) => request<void>(`/layouts/${id}`, { method: "DELETE" }, token),
   listRecordingJobs: (token: string, params?: URLSearchParams) =>
     request<{ jobs: RecordingJob[] }>(`/recordings${params ? `?${params.toString()}` : ""}`, {}, token),
+  listRecordingRules: (token: string, params?: URLSearchParams) =>
+    request<{ rules: RecordingRule[] }>(`/recording-rules${params ? `?${params.toString()}` : ""}`, {}, token),
   listRecordingQualities: (channelId: string, token: string) =>
     request<{ qualities: RecordingQualityOption[] }>(`/recordings/channels/${channelId}/qualities`, {}, token),
   getRecordingJob: (id: string, token: string) => request<{ job: RecordingJob }>(`/recordings/${id}`, {}, token),
+  getRecordingRule: (id: string, token: string) => request<{ rule: RecordingRule }>(`/recording-rules/${id}`, {}, token),
   createRecordingJob: (payload: RecordingJobInput, token: string) =>
     request<{ job: RecordingJob }>("/recordings", { method: "POST", body: JSON.stringify(payload) }, token),
+  createRecordingRule: (payload: RecordingRuleInput, token: string) =>
+    request<{ rule: RecordingRule }>("/recording-rules", { method: "POST", body: JSON.stringify(payload) }, token),
   updateRecordingJob: (id: string, payload: RecordingJobUpdateInput, token: string) =>
     request<{ job: RecordingJob }>(`/recordings/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+  updateRecordingRule: (id: string, payload: RecordingRuleInput, token: string) =>
+    request<{ rule: RecordingRule }>(`/recording-rules/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
   cancelRecordingJob: (id: string, token: string) =>
     request<{ job: RecordingJob }>(`/recordings/${id}/cancel`, { method: "POST" }, token),
   stopRecordingJob: (id: string, token: string) =>
     request<{ job: RecordingJob }>(`/recordings/${id}/stop`, { method: "POST" }, token),
   deleteRecordingJob: (id: string, token: string) => request<void>(`/recordings/${id}`, { method: "DELETE" }, token),
+  deleteRecordingRule: (id: string, token: string) => request<void>(`/recording-rules/${id}`, { method: "DELETE" }, token),
   getRecordingPlaybackAccess: (id: string, token: string) =>
     request<{ playbackUrl: string }>(`/recordings/${id}/playback-access`, {}, token),
   listEpgSources: (token: string) => request<{ sources: EpgSource[] }>("/epg/sources", {}, token),

@@ -215,6 +215,8 @@ export function MultiViewPage() {
             startAt: null,
             endAt: null,
             programEntryId: null,
+            paddingBeforeMinutes: 0,
+            paddingAfterMinutes: 0,
             requestedQualitySelector: params.requestedQualitySelector,
             requestedQualityLabel: params.requestedQualityLabel,
           },

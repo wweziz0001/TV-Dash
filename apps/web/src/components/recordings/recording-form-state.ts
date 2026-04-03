@@ -6,6 +6,8 @@ export interface RecordingFormValue {
   title: string;
   mode: "IMMEDIATE" | "TIMED" | "SCHEDULED";
   requestedQualitySelector: string;
+  paddingBeforeMinutes: number;
+  paddingAfterMinutes: number;
   startAtLocal: string;
   endAtLocal: string;
 }
@@ -29,6 +31,8 @@ export const emptyRecordingForm: RecordingFormValue = {
   title: "",
   mode: "IMMEDIATE",
   requestedQualitySelector: "AUTO",
+  paddingBeforeMinutes: 0,
+  paddingAfterMinutes: 0,
   startAtLocal: "",
   endAtLocal: "",
 };
@@ -39,6 +43,8 @@ export function buildRecordingForm(job: RecordingJob): RecordingFormValue {
     title: job.title,
     mode: job.mode === "IMMEDIATE" || job.mode === "TIMED" || job.mode === "SCHEDULED" ? job.mode : "SCHEDULED",
     requestedQualitySelector: job.requestedQualitySelector ?? "AUTO",
+    paddingBeforeMinutes: job.paddingBeforeMinutes,
+    paddingAfterMinutes: job.paddingAfterMinutes,
     startAtLocal: toDateTimeLocal(job.startAt),
     endAtLocal: toDateTimeLocal(job.endAt),
   };
@@ -142,6 +148,8 @@ function buildCreatePayload(
       startAt: null,
       endAt: null,
       programEntryId: null,
+      paddingBeforeMinutes: form.paddingBeforeMinutes,
+      paddingAfterMinutes: form.paddingAfterMinutes,
       requestedQualitySelector: normalizeQualitySelector(form.requestedQualitySelector),
       requestedQualityLabel: resolveQualityLabel(form.requestedQualitySelector, qualityOptions),
     } satisfies RecordingJobInput;
@@ -201,6 +209,8 @@ function buildCreatePayload(
     startAt: startAt.toISOString(),
     endAt: endAt.toISOString(),
     programEntryId: null,
+    paddingBeforeMinutes: form.paddingBeforeMinutes,
+    paddingAfterMinutes: form.paddingAfterMinutes,
     requestedQualitySelector: normalizeQualitySelector(form.requestedQualitySelector),
     requestedQualityLabel: resolveQualityLabel(form.requestedQualitySelector, qualityOptions),
   } satisfies RecordingJobInput;
@@ -264,6 +274,8 @@ function buildUpdatePayload(
     title: normalizeOptionalText(form.title),
     startAt: startAt.toISOString(),
     endAt: endAt.toISOString(),
+    paddingBeforeMinutes: form.paddingBeforeMinutes,
+    paddingAfterMinutes: form.paddingAfterMinutes,
     requestedQualitySelector: normalizeQualitySelector(form.requestedQualitySelector),
     requestedQualityLabel: resolveQualityLabel(form.requestedQualitySelector, qualityOptions),
   } satisfies RecordingJobUpdateInput;
