@@ -77,6 +77,27 @@ export const recordingJobsQuerySchema = z.object({
       z.array(z.enum(["PENDING", "SCHEDULED", "RECORDING", "COMPLETED", "FAILED", "CANCELED"])).max(6),
     ),
   channelId: z.string().uuid().optional(),
+  mode: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => value?.split(",").map((part) => part.trim()).filter(Boolean) ?? [])
+    .pipe(z.array(z.enum(["IMMEDIATE", "TIMED", "SCHEDULED", "EPG_PROGRAM", "RECURRING_RULE"])).max(5)),
+  isProtected: z.enum(["true", "false"]).optional(),
+  recordedAfter: z.string().datetime({ offset: true }).optional().transform((value) => (value ? new Date(value) : undefined)),
+  recordedBefore: z.string().datetime({ offset: true }).optional().transform((value) => (value ? new Date(value) : undefined)),
+  sort: z
+    .enum([
+      "RECORDED_DESC",
+      "RECORDED_ASC",
+      "TITLE_ASC",
+      "TITLE_DESC",
+      "CHANNEL_ASC",
+      "CHANNEL_DESC",
+      "STATUS_ASC",
+      "STATUS_DESC",
+    ])
+    .optional(),
 });
 
 export const recordingRulesQuerySchema = z.object({

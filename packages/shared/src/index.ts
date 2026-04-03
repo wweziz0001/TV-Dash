@@ -699,6 +699,10 @@ export const recordingRuleInputSchema = z
     }
   });
 
+export const recordingRetentionInputSchema = z.object({
+  isProtected: z.boolean(),
+});
+
 export const recordingRulesQuerySchema = z.object({
   channelId: z.string().uuid().optional(),
   isActive: z.enum(["true", "false"]).optional(),
@@ -743,6 +747,7 @@ export type PlaybackSessionEndInput = z.infer<typeof playbackSessionEndInputSche
 export type RecordingJobInput = z.infer<typeof recordingJobInputSchema>;
 export type RecordingJobUpdateInput = z.infer<typeof recordingJobUpdateInputSchema>;
 export type RecordingRuleInput = z.infer<typeof recordingRuleInputSchema>;
+export type RecordingRetentionInput = z.infer<typeof recordingRetentionInputSchema>;
 
 export const ROLE_PERMISSION_MAP: Record<UserRole, AccessPermission[]> = {
   ADMIN: [

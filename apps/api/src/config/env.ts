@@ -17,6 +17,10 @@ const envSchema = z.object({
   RECORDINGS_FFPROBE_PATH: z.string().min(1).default("ffprobe"),
   RECORDINGS_POLL_INTERVAL_MS: z.coerce.number().int().min(1000).max(60000).default(5000),
   RECORDING_PLAYBACK_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(86400).default(3600),
+  RECORDINGS_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
+  RECORDINGS_RETENTION_MAX_PER_CHANNEL: z.coerce.number().int().min(1).max(1000).default(25),
+  RECORDINGS_FAILED_CLEANUP_HOURS: z.coerce.number().int().min(1).max(720).default(24),
+  RECORDINGS_RETENTION_SWEEP_INTERVAL_MS: z.coerce.number().int().min(60000).max(86400000).default(3600000),
 });
 
 export const env = envSchema.parse(process.env);

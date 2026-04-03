@@ -6,21 +6,28 @@ import { writeStructuredLog } from "../../app/structured-log.js";
 import { getChannelStreamDetails } from "../channels/channel.service.js";
 import {
   claimRecordingJobStart,
+  deleteRecordingJob,
   failRecordingJobBeforeStart,
   finalizeRecordingRun,
+  findRecordingThumbnailAssetByJobId,
   findRecordingRuntimeJobById,
   listDueRecordingJobs,
+  listRecordingRetentionCandidates,
   markInterruptedRecordingRunsFailed,
   markRecordingRunStarted,
+  updateRecordingAssetThumbnail,
   type RecordingRuntimeJobRecord,
 } from "./recording.repository.js";
+import { evaluateRecordingRetention } from "./recording-retention.js";
 import {
   buildRecordingStoragePath,
+  deleteRecordingFile,
   ensureRecordingStoragePath,
   getRecordingContainerFormat,
   inspectRecordingOutput,
   resolveRecordingAbsolutePath,
 } from "./recording-storage.js";
+import { generateRecordingThumbnail } from "./recording-thumbnail.js";
 import { buildRecordingInputConfig } from "./recording-input.js";
 import { buildRecordingFfmpegArgs } from "./recording-ffmpeg.js";
 import { syncRecurringRecordingJobs } from "./recording-rule-sync.js";
@@ -55,6 +62,7 @@ const STOP_KILL_TIMEOUT_MS = 5_000;
 let runtimeStarted = false;
 let runtimeInterval: NodeJS.Timeout | null = null;
 let runtimeTickPromise: Promise<void> | null = null;
+let lastRetentionSweepAt = 0;
 
 function appendStderrLine(activeRecording: ActiveRecordingProcess, chunk: Buffer) {
   const lines = chunk
@@ -161,6 +169,10 @@ async function finalizeRecordingProcessExit(
     createAsset,
   });
 
+  if (createAsset) {
+    await maybeGenerateRecordingThumbnail(job.id);
+  }
+
   if (!createAsset && fileStats.fileSizeBytes && fileStats.fileSizeBytes > BigInt(0)) {
     await fs.rm(fileStats.absolutePath, { force: true });
   }
@@ -197,6 +209,25 @@ async function finalizeRecordingProcessExit(
   }
 
   activeRecording.resolveStopPromise();
+}
+
+async function maybeGenerateRecordingThumbnail(recordingJobId: string) {
+  const asset = await findRecordingThumbnailAssetByJobId(recordingJobId);
+
+  if (!asset || asset.thumbnailPath) {
+    return;
+  }
+
+  const generatedThumbnail = await generateRecordingThumbnail({
+    storagePath: asset.storagePath,
+    durationSeconds: asset.durationSeconds,
+  });
+
+  if (!generatedThumbnail) {
+    return;
+  }
+
+  await updateRecordingAssetThumbnail(asset.id, generatedThumbnail);
 }
 
 async function startRecordingJobExecution(recordingJobId: string) {
@@ -344,6 +375,40 @@ async function startDueRecordings() {
   }
 }
 
+async function runRetentionSweepIfDue() {
+  const now = Date.now();
+
+  if (lastRetentionSweepAt && now - lastRetentionSweepAt < env.RECORDINGS_RETENTION_SWEEP_INTERVAL_MS) {
+    return;
+  }
+
+  lastRetentionSweepAt = now;
+  const candidates = await listRecordingRetentionCandidates();
+  const decisions = evaluateRecordingRetention(candidates, new Date(now));
+
+  for (const decision of decisions) {
+    const deletedJob = await deleteRecordingJob(decision.jobId);
+    const storagePaths = [
+      ...new Set(
+        [deletedJob.asset?.storagePath, deletedJob.asset?.thumbnailPath, ...deletedJob.runs.map((run) => run.storagePath)].filter(
+          (storagePath): storagePath is string => Boolean(storagePath),
+        ),
+      ),
+    ];
+
+    await Promise.all(storagePaths.map((storagePath) => deleteRecordingFile(storagePath)));
+    writeStructuredLog("info", {
+      event: "recording.retention.deleted",
+      channelId: deletedJob.channelId ?? undefined,
+      channelSlug: deletedJob.channelSlugSnapshot,
+      detail: {
+        reason: decision.deleteReason,
+        status: deletedJob.status,
+      },
+    });
+  }
+}
+
 async function runRecordingRuntimeTick() {
   if (runtimeTickPromise) {
     return runtimeTickPromise;
@@ -353,6 +418,7 @@ async function runRecordingRuntimeTick() {
     await stopDueRecordings();
     await syncRecurringRecordingJobs();
     await startDueRecordings();
+    await runRetentionSweepIfDue();
   })().finally(() => {
     runtimeTickPromise = null;
   });

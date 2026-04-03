@@ -135,6 +135,8 @@ function buildRecordingJobRecord(overrides: Record<string, unknown> = {}) {
     channelSlugSnapshot: "tv-dash-live",
     programEntryId: null,
     programTitleSnapshot: null,
+    programDescriptionSnapshot: null,
+    programCategorySnapshot: null,
     programStartAt: null,
     programEndAt: null,
     recordingRuleId: null,
@@ -145,6 +147,8 @@ function buildRecordingJobRecord(overrides: Record<string, unknown> = {}) {
     status: "SCHEDULED",
     paddingBeforeMinutes: 0,
     paddingAfterMinutes: 0,
+    isProtected: false,
+    protectedAt: null,
     startAt: new Date("2026-04-04T12:00:00.000Z"),
     endAt: new Date("2026-04-04T13:00:00.000Z"),
     actualStartAt: null,
@@ -384,6 +388,76 @@ describe("recordingRoutes", () => {
           status: "RECORDING",
         },
       ],
+    });
+  });
+
+  it("passes richer library filters through to the recordings query", async () => {
+    mockPrisma.recordingJob.findMany.mockResolvedValue([
+      buildRecordingJobRecord({
+        status: "COMPLETED",
+        mode: "EPG_PROGRAM",
+        isProtected: true,
+      }),
+    ]);
+
+    const response = await server.inject({
+      method: "GET",
+      url:
+        "/api/recordings?status=COMPLETED&mode=EPG_PROGRAM&isProtected=true&recordedAfter=2026-04-01T00:00:00.000Z&recordedBefore=2026-04-03T23:59:59.999Z&sort=TITLE_ASC",
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.recordingJob.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: {
+            in: ["COMPLETED"],
+          },
+          mode: {
+            in: ["EPG_PROGRAM"],
+          },
+          isProtected: true,
+          startAt: {
+            gte: new Date("2026-04-01T00:00:00.000Z"),
+            lte: new Date("2026-04-03T23:59:59.999Z"),
+          },
+        }),
+        orderBy: [{ title: "asc" }, { startAt: "desc" }],
+      }),
+    );
+  });
+
+  it("updates a recording protection flag through the retention route", async () => {
+    mockPrisma.recordingJob.findUnique.mockResolvedValue(buildRecordingJobRecord());
+    mockPrisma.recordingJob.update.mockResolvedValue(
+      buildRecordingJobRecord({
+        isProtected: true,
+        protectedAt: new Date("2026-04-03T10:30:00.000Z"),
+      }),
+    );
+
+    const response = await server.inject({
+      method: "PUT",
+      url: "/api/recordings/33333333-3333-3333-3333-333333333333/retention",
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
+      payload: {
+        isProtected: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.recordingJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          isProtected: true,
+        }),
+      }),
+    );
+    expect(response.json()).toMatchObject({
+      job: {
+        isProtected: true,
+      },
     });
   });
 

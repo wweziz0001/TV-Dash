@@ -8,6 +8,16 @@ import type {
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 
+export type RecordingJobListSort =
+  | "RECORDED_DESC"
+  | "RECORDED_ASC"
+  | "TITLE_ASC"
+  | "TITLE_DESC"
+  | "CHANNEL_ASC"
+  | "CHANNEL_DESC"
+  | "STATUS_ASC"
+  | "STATUS_DESC";
+
 const recordingChannelSummarySelect = {
   id: true,
   name: true,
@@ -31,6 +41,9 @@ const recordingAssetSelect = {
   endedAt: true,
   durationSeconds: true,
   fileSizeBytes: true,
+  thumbnailPath: true,
+  thumbnailMimeType: true,
+  thumbnailGeneratedAt: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.RecordingAssetSelect;
@@ -39,6 +52,9 @@ const recordingProgramSummarySelect = {
   id: true,
   sourceKind: true,
   title: true,
+  description: true,
+  category: true,
+  imageUrl: true,
   startAt: true,
   endAt: true,
 } satisfies Prisma.ProgramEntrySelect;
@@ -196,6 +212,33 @@ interface RecordingJobListFilters {
   search?: string;
   statuses?: RecordingJobStatus[];
   channelId?: string;
+  modes?: RecordingMode[];
+  isProtected?: boolean;
+  recordedAfter?: Date;
+  recordedBefore?: Date;
+  sort?: RecordingJobListSort;
+}
+
+function resolveRecordingJobOrderBy(sort: RecordingJobListSort | undefined): Prisma.RecordingJobOrderByWithRelationInput[] {
+  switch (sort) {
+    case "RECORDED_ASC":
+      return [{ startAt: "asc" }, { createdAt: "asc" }];
+    case "TITLE_ASC":
+      return [{ title: "asc" }, { startAt: "desc" }];
+    case "TITLE_DESC":
+      return [{ title: "desc" }, { startAt: "desc" }];
+    case "CHANNEL_ASC":
+      return [{ channelNameSnapshot: "asc" }, { startAt: "desc" }];
+    case "CHANNEL_DESC":
+      return [{ channelNameSnapshot: "desc" }, { startAt: "desc" }];
+    case "STATUS_ASC":
+      return [{ status: "asc" }, { startAt: "desc" }];
+    case "STATUS_DESC":
+      return [{ status: "desc" }, { startAt: "desc" }];
+    case "RECORDED_DESC":
+    default:
+      return [{ startAt: "desc" }, { createdAt: "desc" }];
+  }
 }
 
 function buildRecordingJobWhere(filters: RecordingJobListFilters): Prisma.RecordingJobWhereInput {
@@ -210,6 +253,11 @@ function buildRecordingJobWhere(filters: RecordingJobListFilters): Prisma.Record
       { title: { contains: filters.search, mode: "insensitive" } },
       { channelNameSnapshot: { contains: filters.search, mode: "insensitive" } },
       { channelSlugSnapshot: { contains: filters.search, mode: "insensitive" } },
+      { programTitleSnapshot: { contains: filters.search, mode: "insensitive" } },
+      { programDescriptionSnapshot: { contains: filters.search, mode: "insensitive" } },
+      { programCategorySnapshot: { contains: filters.search, mode: "insensitive" } },
+      { recordingRuleNameSnapshot: { contains: filters.search, mode: "insensitive" } },
+      { asset: { is: { fileName: { contains: filters.search, mode: "insensitive" } } } },
     ];
   }
 
@@ -223,13 +271,30 @@ function buildRecordingJobWhere(filters: RecordingJobListFilters): Prisma.Record
     where.channelId = filters.channelId;
   }
 
+  if (filters.modes?.length) {
+    where.mode = {
+      in: filters.modes,
+    };
+  }
+
+  if (typeof filters.isProtected === "boolean") {
+    where.isProtected = filters.isProtected;
+  }
+
+  if (filters.recordedAfter || filters.recordedBefore) {
+    where.startAt = {
+      ...(filters.recordedAfter ? { gte: filters.recordedAfter } : {}),
+      ...(filters.recordedBefore ? { lte: filters.recordedBefore } : {}),
+    };
+  }
+
   return where;
 }
 
 export function listRecordingJobs(filters: RecordingJobListFilters) {
   return prisma.recordingJob.findMany({
     where: buildRecordingJobWhere(filters),
-    orderBy: [{ startAt: "desc" }, { createdAt: "desc" }],
+    orderBy: resolveRecordingJobOrderBy(filters.sort),
     include: recordingJobInclude,
   });
 }
@@ -261,6 +326,8 @@ export function createRecordingJob(data: {
   channelSlugSnapshot: string;
   programEntryId: string | null;
   programTitleSnapshot: string | null;
+  programDescriptionSnapshot: string | null;
+  programCategorySnapshot: string | null;
   programStartAt: Date | null;
   programEndAt: Date | null;
   recordingRuleId: string | null;
@@ -305,6 +372,20 @@ export function updateRecordingJobSchedule(
   });
 }
 
+export function updateRecordingJobRetention(
+  id: string,
+  data: {
+    isProtected: boolean;
+    protectedAt: Date | null;
+  },
+) {
+  return prisma.recordingJob.update({
+    where: { id },
+    data,
+    include: recordingJobInclude,
+  });
+}
+
 export function cancelRecordingJob(id: string, cancellationReason: string | null) {
   return prisma.recordingJob.update({
     where: { id },
@@ -324,6 +405,7 @@ export function deleteRecordingJob(id: string) {
       asset: {
         select: {
           storagePath: true,
+          thumbnailPath: true,
         },
       },
       runs: {
@@ -503,6 +585,8 @@ export function createManyRecordingJobs(
     channelSlugSnapshot: string;
     programEntryId: string | null;
     programTitleSnapshot: string | null;
+    programDescriptionSnapshot: string | null;
+    programCategorySnapshot: string | null;
     programStartAt: Date | null;
     programEndAt: Date | null;
     recordingRuleId: string | null;
@@ -742,5 +826,88 @@ export async function finalizeRecordingRun(params: {
       job,
       run,
     };
+  });
+}
+
+const recordingThumbnailAssetSelect = {
+  id: true,
+  recordingJobId: true,
+  storagePath: true,
+  durationSeconds: true,
+  thumbnailPath: true,
+  thumbnailMimeType: true,
+  thumbnailGeneratedAt: true,
+} satisfies Prisma.RecordingAssetSelect;
+
+export type RecordingThumbnailAssetRecord = Prisma.RecordingAssetGetPayload<{ select: typeof recordingThumbnailAssetSelect }>;
+
+export function findRecordingThumbnailAssetByJobId(recordingJobId: string) {
+  return prisma.recordingAsset.findUnique({
+    where: {
+      recordingJobId,
+    },
+    select: recordingThumbnailAssetSelect,
+  });
+}
+
+export function updateRecordingAssetThumbnail(
+  id: string,
+  data: {
+    thumbnailPath: string | null;
+    thumbnailMimeType: string | null;
+    thumbnailGeneratedAt: Date | null;
+  },
+) {
+  return prisma.recordingAsset.update({
+    where: { id },
+    data,
+    select: recordingThumbnailAssetSelect,
+  });
+}
+
+const recordingRetentionCandidateSelect = {
+  id: true,
+  title: true,
+  channelId: true,
+  channelNameSnapshot: true,
+  status: true,
+  isProtected: true,
+  startAt: true,
+  actualEndAt: true,
+  createdAt: true,
+  asset: {
+    select: {
+      id: true,
+      storagePath: true,
+      thumbnailPath: true,
+      endedAt: true,
+      createdAt: true,
+    },
+  },
+  runs: {
+    select: {
+      id: true,
+      storagePath: true,
+      createdAt: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  },
+} satisfies Prisma.RecordingJobSelect;
+
+export type RecordingRetentionCandidateRecord = Prisma.RecordingJobGetPayload<{
+  select: typeof recordingRetentionCandidateSelect;
+}>;
+
+export function listRecordingRetentionCandidates() {
+  return prisma.recordingJob.findMany({
+    where: {
+      status: {
+        in: ["COMPLETED", "FAILED", "CANCELED"],
+      },
+    },
+    select: recordingRetentionCandidateSelect,
+    orderBy: [{ channelId: "asc" }, { actualEndAt: "desc" }, { startAt: "desc" }, { createdAt: "desc" }],
   });
 }
