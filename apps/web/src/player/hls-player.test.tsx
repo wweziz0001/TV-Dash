@@ -152,6 +152,43 @@ describe("HlsPlayer", () => {
     expect(instance.currentLevel).toBe(1);
   });
 
+  it("does not recreate playback when multiview audio handoff only changes mute state and startup bias", () => {
+    const { container, rerender } = render(
+      <HlsPlayer
+        initialBias="AUTO"
+        muted={false}
+        src="https://example.com/a.m3u8"
+        title="Channel A"
+      />,
+    );
+
+    const instance = MockHls.instances[0];
+    const video = container.querySelector("video");
+
+    act(() => {
+      instance.emit(MockHls.Events.MEDIA_ATTACHED);
+    });
+
+    expect(instance.loadSource).toHaveBeenCalledTimes(1);
+    expect(video?.muted).toBe(false);
+
+    act(() => {
+      rerender(
+        <HlsPlayer
+          initialBias="LOWEST"
+          muted
+          src="https://example.com/a.m3u8"
+          title="Channel A"
+        />,
+      );
+    });
+
+    expect(MockHls.instances).toHaveLength(1);
+    expect(instance.destroy).not.toHaveBeenCalled();
+    expect(instance.loadSource).toHaveBeenCalledTimes(1);
+    expect(video?.muted).toBe(true);
+  });
+
   it("keeps manual quality selection when hls reports a level switch", () => {
     const handleSelectedQualityChange = vi.fn();
     const { rerender } = render(

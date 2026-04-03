@@ -1,5 +1,62 @@
 # Codex Session Log
 
+## `2026-04-03T03:10:00+03:00`
+
+### Objective
+
+Fix the multiview playback lifecycle bug where transferring audio focus between tiles briefly disconnected both streams and showed manifest-loading states.
+
+### Work Completed
+
+- created the requested working branch `009-fix-multiview-audio-handoff-without-stream-reload`
+- traced the reload to `apps/web/src/player/hls-player.tsx`, where the source-setup effect depended on `initialBias`
+- confirmed multiview audio handoff was flipping `initialBias` between `AUTO` and `LOWEST`, which caused the player to tear down HLS, detach the video, and request the manifest again even though `src` had not changed
+- decoupled control-state sync from playback-session setup:
+  - `HlsPlayer` now rebuilds playback only when `src` changes or the operator explicitly retries
+  - mute state, preferred quality, and startup bias now update without recreating the HLS instance
+  - manifest-level startup quality still respects the latest bias/preferred-quality state when a real source load happens
+- removed the `key={`${tileIndex}:${tile.channelId ?? "empty"}`}` remount trigger from `MultiviewTileCard` so same-source metadata/focus changes do not force a React remount of `HlsPlayer`
+- added regression coverage for:
+  - multiview mute/unmute handoff not recreating playback or reloading the source
+  - multiview tile focus/metadata changes not remounting the player when `src` is unchanged
+- verified the full `apps/web` lint, test, and build workflows after the fix
+
+### Files Added Or Changed
+
+- player lifecycle and multiview boundary:
+  - `apps/web/src/player/hls-player.tsx`
+  - `apps/web/src/player/multiview-tile-card.tsx`
+- regression tests:
+  - `apps/web/src/player/hls-player.test.tsx`
+  - `apps/web/src/player/multiview-tile-card.test.tsx`
+- docs:
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- The fix stayed at the real lifecycle seam instead of adding UI-only masking:
+  - audio ownership remains a mute/unmute handoff
+  - source teardown remains reserved for true source changes or explicit retry
+- `initialBias` is still honored for genuine startup behavior, but it no longer participates in the source-effect dependency list.
+- Removing the tile-card `HlsPlayer` key keeps playback identity aligned with `src`, not incidental channel/tile metadata.
+
+### Verification Run
+
+- `npm run test -w apps/web -- hls-player.test.tsx multiview-tile-card.test.tsx`
+- `npm run lint -w apps/web`
+- `npm run test -w apps/web`
+- `npm run build -w apps/web`
+
+### Remaining Risk
+
+- This fix intentionally does not change drag-swap behavior; swapping two tiles still moves real sources across tile positions, so those slots still reload as part of a true source change.
+- Route-level React coverage for the full multiview page is still missing; the new regression tests cover the player and tile seams directly.
+
+### Exact Suggested Next Task
+
+Add route-level multiview page coverage for audio-owner reassignment, tile replacement, and saved-layout application so the critical player seam and the page orchestration layer are both protected.
+
 ## `2026-04-03T02:42:00+03:00`
 
 ### Objective
