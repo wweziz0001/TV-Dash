@@ -197,7 +197,7 @@ export function MultiViewPage() {
   });
 
   const recordingMutation = useMutation({
-    mutationFn: async (params: { channelId: string; job: RecordingJob | null }) => {
+    mutationFn: async (params: { channelId: string; job: RecordingJob | null; requestedQualitySelector: string; requestedQualityLabel: string | null }) => {
       if (!token) {
         throw new Error("Missing session");
       }
@@ -215,6 +215,8 @@ export function MultiViewPage() {
             startAt: null,
             endAt: null,
             programEntryId: null,
+            requestedQualitySelector: params.requestedQualitySelector,
+            requestedQualityLabel: params.requestedQualityLabel,
           },
           token,
         )
@@ -616,9 +618,16 @@ export function MultiViewPage() {
                         return;
                       }
 
+                      const resolvedRecordingQuality = resolveRecordingQualityPreference(
+                        tile.preferredQuality ?? "AUTO",
+                        qualityOptions,
+                      );
+
                       recordingMutation.mutate({
                         channelId: channel.id,
                         job: recordingJob,
+                        requestedQualitySelector: resolvedRecordingQuality.value,
+                        requestedQualityLabel: resolvedRecordingQuality.label,
                       });
                     }}
                     onQualityOptionsChange={(options) =>
@@ -823,6 +832,30 @@ export function MultiViewPage() {
       />
     </div>
   );
+}
+
+function resolveRecordingQualityPreference(preferredQuality: string, qualityOptions: QualityOption[]) {
+  if (preferredQuality === "LOWEST") {
+    const lowest = [...qualityOptions].filter((option) => option.value !== "AUTO").at(-1);
+    return {
+      value: lowest?.value ?? "AUTO",
+      label: lowest?.label ?? "Source default",
+    };
+  }
+
+  if (preferredQuality === "HIGHEST") {
+    const highest = qualityOptions.find((option) => option.value !== "AUTO");
+    return {
+      value: highest?.value ?? "AUTO",
+      label: highest?.label ?? "Source default",
+    };
+  }
+
+  const exact = qualityOptions.find((option) => option.value === preferredQuality);
+  return {
+    value: exact?.value ?? preferredQuality ?? "AUTO",
+    label: exact?.label ?? "Source default",
+  };
 }
 
 function formatTimestamp(value: string) {

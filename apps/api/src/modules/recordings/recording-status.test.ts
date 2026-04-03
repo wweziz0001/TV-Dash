@@ -11,6 +11,8 @@ describe("recording-status", () => {
         startAt: null,
         endAt: null,
         programEntryId: null,
+        requestedQualitySelector: null,
+        requestedQualityLabel: null,
       }),
     ).toBe("PENDING");
   });
@@ -25,6 +27,8 @@ describe("recording-status", () => {
           startAt: "2026-04-04T10:00:00.000Z",
           endAt: "2026-04-04T11:00:00.000Z",
           programEntryId: null,
+          requestedQualitySelector: null,
+          requestedQualityLabel: null,
         },
         new Date("2026-04-03T10:00:00.000Z"),
       ),
@@ -41,6 +45,8 @@ describe("recording-status", () => {
           startAt: "2026-04-03T10:00:00.000Z",
           endAt: "2026-04-03T11:00:00.000Z",
           programEntryId: null,
+          requestedQualitySelector: null,
+          requestedQualityLabel: null,
         },
         new Date("2026-04-03T10:00:00.000Z"),
       ),

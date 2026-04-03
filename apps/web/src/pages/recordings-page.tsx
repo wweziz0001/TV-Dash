@@ -17,7 +17,7 @@ import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { api } from "@/services/api";
-import type { RecordingJob, RecordingJobStatus } from "@/types/api";
+import type { RecordingJob, RecordingJobStatus, RecordingQualityOption } from "@/types/api";
 
 const ACTIVE_RECORDING_STATUSES: RecordingJobStatus[] = ["PENDING", "SCHEDULED", "RECORDING"];
 const DEFAULT_LIBRARY_STATUSES: RecordingJobStatus[] = ["COMPLETED", "FAILED", "CANCELED"];
@@ -42,6 +42,18 @@ export function RecordingsPage() {
     queryKey: ["channels", token],
     queryFn: async () => (await api.listChannels(token)).channels,
     enabled: Boolean(token),
+  });
+
+  const recordingQualitiesQuery = useQuery({
+    queryKey: ["recording-qualities", form.channelId, token],
+    queryFn: async () => {
+      if (!token || !form.channelId) {
+        return [] satisfies RecordingQualityOption[];
+      }
+
+      return (await api.listRecordingQualities(form.channelId, token)).qualities;
+    },
+    enabled: Boolean(token && form.channelId),
   });
 
   const activeJobsQuery = useQuery({
@@ -101,8 +113,24 @@ export function RecordingsPage() {
     }));
   }, [editingJobId, searchParams]);
 
+  useEffect(() => {
+    if (!recordingQualitiesQuery.data?.length) {
+      return;
+    }
+
+    if (recordingQualitiesQuery.data.some((option) => option.value === form.requestedQualitySelector)) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      requestedQualitySelector: "AUTO",
+    }));
+  }, [form.requestedQualitySelector, recordingQualitiesQuery.data]);
+
   const validation = validateRecordingForm(form, {
     mode: editingJobId ? "update" : "create",
+    qualityOptions: recordingQualitiesQuery.data,
   });
 
   const createOrUpdateMutation = useMutation({
@@ -268,7 +296,16 @@ export function RecordingsPage() {
           </div>
 
           <Field error={getFieldError(validation.issues, "channelId", showValidation)} label="Channel" required>
-            <Select onChange={(event) => setForm((current) => ({ ...current, channelId: event.target.value }))} value={form.channelId}>
+            <Select
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  channelId: event.target.value,
+                  requestedQualitySelector: "AUTO",
+                }))
+              }
+              value={form.channelId}
+            >
               <option value="">Select a channel</option>
               {(channelsQuery.data ?? []).map((channel) => (
                 <option key={channel.id} value={channel.id}>
@@ -295,6 +332,20 @@ export function RecordingsPage() {
               />
             </Field>
           </div>
+
+          <Field label="Recording quality">
+            <Select
+              disabled={!form.channelId || recordingQualitiesQuery.isLoading}
+              onChange={(event) => setForm((current) => ({ ...current, requestedQualitySelector: event.target.value }))}
+              value={resolveRecordingQualitySelection(form.requestedQualitySelector, recordingQualitiesQuery.data ?? [])}
+            >
+              {(recordingQualitiesQuery.data ?? [{ value: "AUTO", label: "Source default", height: null }]).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
 
           {form.mode !== "IMMEDIATE" ? (
             <div className="grid gap-4 md:grid-cols-2">
@@ -474,6 +525,9 @@ function RecordingCard({
             {job.channelNameSnapshot} · {formatRecordingMode(job.mode)} · {timingLabel} {formatDateTime(startedAt)}
             {job.endAt ? ` · Ends ${formatDateTime(job.endAt)}` : ""}
           </p>
+          {job.requestedQualityLabel ? (
+            <p className="mt-1 text-[12px] text-slate-500">Recording quality: {job.requestedQualityLabel}</p>
+          ) : null}
           <p className="mt-1.5 text-[13px] text-slate-500">{durationLabel} · {fileSizeLabel}</p>
           {job.failureReason ? <p className="mt-2 text-[13px] text-amber-200">Failure: {job.failureReason}</p> : null}
           {job.cancellationReason ? <p className="mt-2 text-[13px] text-slate-400">Canceled: {job.cancellationReason}</p> : null}
@@ -626,6 +680,14 @@ function formatFileSize(fileSizeBytes: number) {
   }
 
   return `${(fileSizeBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function resolveRecordingQualitySelection(selectedValue: string, options: RecordingQualityOption[]) {
+  if (options.some((option) => option.value === selectedValue)) {
+    return selectedValue;
+  }
+
+  return "AUTO";
 }
 
 async function invalidateRecordingQueries(

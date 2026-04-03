@@ -41,9 +41,10 @@ describe("recording-input", () => {
       "-headers",
       "x-test-token: abc123\r\n",
     ]);
+    expect(config.captureMode).toBe("DIRECT");
   });
 
-  it("uses the direct upstream URL for proxy-playback channels with a master playlist", () => {
+  it("uses the internal API master for proxy-playback channels", () => {
     const config = buildRecordingInputConfig(
       buildChannel({
         playbackMode: "PROXY",
@@ -51,8 +52,24 @@ describe("recording-input", () => {
       4000,
     );
 
-    expect(config.sourceUrl).toBe("https://example.com/live/master.m3u8");
-    expect(config.ffmpegInputArgs).toEqual([]);
+    expect(config.sourceUrl).toBe("http://127.0.0.1:4000/api/streams/channels/11111111-1111-1111-1111-111111111111/master");
+    expect(config.ffmpegInputArgs).toEqual([
+      "-allowed_extensions",
+      "ALL",
+      "-protocol_whitelist",
+      "file,http,https,tcp,tls,crypto,data",
+      "-reconnect",
+      "1",
+      "-reconnect_streamed",
+      "1",
+      "-reconnect_on_network_error",
+      "1",
+      "-reconnect_delay_max",
+      "2",
+      "-fflags",
+      "+genpts+discardcorrupt",
+    ]);
+    expect(config.captureMode).toBe("PROXY");
   });
 
   it("uses the internal API master for manual-variant channels", () => {
@@ -70,6 +87,17 @@ describe("recording-input", () => {
       "ALL",
       "-protocol_whitelist",
       "file,http,https,tcp,tls,crypto,data",
+      "-reconnect",
+      "1",
+      "-reconnect_streamed",
+      "1",
+      "-reconnect_on_network_error",
+      "1",
+      "-reconnect_delay_max",
+      "2",
+      "-fflags",
+      "+genpts+discardcorrupt",
     ]);
+    expect(config.captureMode).toBe("PROXY");
   });
 });

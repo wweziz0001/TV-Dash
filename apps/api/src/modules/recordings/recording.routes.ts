@@ -3,7 +3,7 @@ import { stat } from "node:fs/promises";
 import { recordingJobInputSchema, recordingJobUpdateInputSchema } from "@tv-dash/shared";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { requirePermission } from "../../app/auth-guards.js";
-import { idParamSchema, recordingJobsQuerySchema, recordingPlaybackQuerySchema } from "../../app/request-schemas.js";
+import { channelIdParamSchema, idParamSchema, recordingJobsQuerySchema, recordingPlaybackQuerySchema } from "../../app/request-schemas.js";
 import { parseWithSchema } from "../../app/validation.js";
 import {
   cancelRecordingJobForViewer,
@@ -12,6 +12,7 @@ import {
   getRecordingJobForViewer,
   getRecordingMediaByPlaybackToken,
   getRecordingPlaybackAccessForViewer,
+  getRecordingQualityOptionsForViewer,
   listRecordingJobsForViewer,
   stopRecordingJobForViewer,
   updateRecordingJobForViewer,
@@ -72,6 +73,26 @@ function parseByteRange(rangeHeader: string, fileSize: number) {
 }
 
 export const recordingRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.get(
+    "/recordings/channels/:channelId/qualities",
+    { preHandler: [requirePermission("recordings:manage-own")] },
+    async (request, reply) => {
+      const params = parseWithSchema(channelIdParamSchema, request.params, reply);
+      if (!params) {
+        return;
+      }
+
+      try {
+        const qualities = await getRecordingQualityOptionsForViewer(getViewer(request), params.channelId);
+        return { qualities };
+      } catch (error) {
+        return reply.status(mapRecordingErrorStatus(error)).send({
+          message: error instanceof Error ? error.message : "Unable to load recording qualities",
+        });
+      }
+    },
+  );
+
   fastify.get("/recordings", { preHandler: [requirePermission("recordings:manage-own")] }, async (request, reply) => {
     const query = parseWithSchema(recordingJobsQuerySchema, request.query, reply);
     if (!query) {

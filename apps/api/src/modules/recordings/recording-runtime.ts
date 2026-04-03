@@ -248,9 +248,13 @@ async function startRecordingJobExecution(recordingJobId: string) {
   }
 
   const inputConfig = buildRecordingInputConfig(streamDetails, env.API_PORT);
-  const childProcess = spawn(env.RECORDINGS_FFMPEG_PATH, buildRecordingFfmpegArgs(inputConfig, absoluteOutputPath), {
+  const childProcess = spawn(
+    env.RECORDINGS_FFMPEG_PATH,
+    buildRecordingFfmpegArgs(inputConfig, absoluteOutputPath, claimed.job.requestedQualitySelector),
+    {
     stdio: ["pipe", "ignore", "pipe"],
-  });
+    },
+  );
   const startedAt = new Date();
   let resolveStopPromise: () => void = () => undefined;
   const stopPromise = new Promise<void>((resolve) => {

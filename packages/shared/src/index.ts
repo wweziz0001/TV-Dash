@@ -511,6 +511,22 @@ const optionalNullableIsoDateTimeSchema = isoDateTimeSchema
   .optional()
   .transform((value) => value ?? null);
 
+const optionalNullableRecordingQualitySelectorSchema = z
+  .string()
+  .trim()
+  .max(32)
+  .nullable()
+  .optional()
+  .transform((value) => (typeof value === "string" ? value || null : null));
+
+const optionalNullableRecordingQualityLabelSchema = z
+  .string()
+  .trim()
+  .max(80)
+  .nullable()
+  .optional()
+  .transform((value) => (typeof value === "string" ? value || null : null));
+
 export const recordingJobInputSchema = z
   .object({
     channelId: z.string().uuid(),
@@ -519,6 +535,8 @@ export const recordingJobInputSchema = z
     startAt: optionalNullableIsoDateTimeSchema,
     endAt: optionalNullableIsoDateTimeSchema,
     programEntryId: optionalNullableUuidSchema,
+    requestedQualitySelector: optionalNullableRecordingQualitySelectorSchema,
+    requestedQualityLabel: optionalNullableRecordingQualityLabelSchema,
   })
   .superRefine((value, context) => {
     if (value.mode === "IMMEDIATE") {
@@ -567,6 +585,8 @@ export const recordingJobUpdateInputSchema = z
     title: optionalNullableRecordingTitleSchema,
     startAt: isoDateTimeSchema,
     endAt: isoDateTimeSchema,
+    requestedQualitySelector: optionalNullableRecordingQualitySelectorSchema,
+    requestedQualityLabel: optionalNullableRecordingQualityLabelSchema,
   })
   .superRefine((value, context) => {
     const startAt = Date.parse(value.startAt);

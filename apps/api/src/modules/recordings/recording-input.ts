@@ -4,6 +4,7 @@ import type { StreamChannelRecord } from "../channels/channel.repository.js";
 export interface RecordingInputConfig {
   sourceUrl: string;
   ffmpegInputArgs: string[];
+  captureMode: "DIRECT" | "PROXY";
 }
 
 function buildInternalRecordingSourceUrl(channelId: string, apiPort: number) {
@@ -18,7 +19,18 @@ function buildInternalProxyInputConfig(channelId: string, apiPort: number): Reco
       "ALL",
       "-protocol_whitelist",
       "file,http,https,tcp,tls,crypto,data",
+      "-reconnect",
+      "1",
+      "-reconnect_streamed",
+      "1",
+      "-reconnect_on_network_error",
+      "1",
+      "-reconnect_delay_max",
+      "2",
+      "-fflags",
+      "+genpts+discardcorrupt",
     ],
+    captureMode: "PROXY",
   };
 }
 
@@ -49,11 +61,12 @@ function buildDirectUpstreamInputConfig(channel: StreamChannelRecord): Recording
   return {
     sourceUrl: channel.masterHlsUrl ?? "",
     ffmpegInputArgs,
+    captureMode: "DIRECT",
   };
 }
 
 export function buildRecordingInputConfig(channel: StreamChannelRecord, apiPort: number): RecordingInputConfig {
-  if (channel.sourceMode === "MANUAL_VARIANTS" || !channel.masterHlsUrl) {
+  if (channel.sourceMode === "MANUAL_VARIANTS" || channel.playbackMode === "PROXY" || !channel.masterHlsUrl) {
     return buildInternalProxyInputConfig(channel.id, apiPort);
   }
 

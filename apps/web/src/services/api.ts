@@ -30,6 +30,7 @@ import type {
   Favorite,
   ProgramEntry,
   RecordingJob,
+  RecordingQualityOption,
   SavedLayout,
   StreamTestResult,
   User,
@@ -159,6 +160,8 @@ export const api = {
   deleteLayout: (id: string, token: string) => request<void>(`/layouts/${id}`, { method: "DELETE" }, token),
   listRecordingJobs: (token: string, params?: URLSearchParams) =>
     request<{ jobs: RecordingJob[] }>(`/recordings${params ? `?${params.toString()}` : ""}`, {}, token),
+  listRecordingQualities: (channelId: string, token: string) =>
+    request<{ qualities: RecordingQualityOption[] }>(`/recordings/channels/${channelId}/qualities`, {}, token),
   getRecordingJob: (id: string, token: string) => request<{ job: RecordingJob }>(`/recordings/${id}`, {}, token),
   createRecordingJob: (payload: RecordingJobInput, token: string) =>
     request<{ job: RecordingJob }>("/recordings", { method: "POST", body: JSON.stringify(payload) }, token),

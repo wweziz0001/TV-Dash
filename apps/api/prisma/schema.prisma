@@ -246,6 +246,8 @@ model RecordingJob {
   createdByUserId     String             @db.Uuid
   createdByUser       User               @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
   title               String
+  requestedQualitySelector String?
+  requestedQualityLabel String?
   mode                RecordingMode
   status              RecordingJobStatus @default(PENDING)
   startAt             DateTime

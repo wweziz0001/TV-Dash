@@ -1,15 +1,16 @@
 import { recordingJobInputSchema, recordingJobUpdateInputSchema, type RecordingJobInput, type RecordingJobUpdateInput } from "@tv-dash/shared";
-import type { RecordingJob } from "@/types/api";
+import type { RecordingJob, RecordingQualityOption } from "@/types/api";
 
 export interface RecordingFormValue {
   channelId: string;
   title: string;
   mode: "IMMEDIATE" | "TIMED" | "SCHEDULED";
+  requestedQualitySelector: string;
   startAtLocal: string;
   endAtLocal: string;
 }
 
-export type RecordingFormField = "channelId" | "title" | "startAtLocal" | "endAtLocal" | "general";
+export type RecordingFormField = "channelId" | "title" | "requestedQualitySelector" | "startAtLocal" | "endAtLocal" | "general";
 
 export interface RecordingFormIssue {
   field: RecordingFormField;
@@ -27,6 +28,7 @@ export const emptyRecordingForm: RecordingFormValue = {
   channelId: "",
   title: "",
   mode: "IMMEDIATE",
+  requestedQualitySelector: "AUTO",
   startAtLocal: "",
   endAtLocal: "",
 };
@@ -36,6 +38,7 @@ export function buildRecordingForm(job: RecordingJob): RecordingFormValue {
     channelId: job.channelId ?? "",
     title: job.title,
     mode: job.mode === "IMMEDIATE" || job.mode === "TIMED" || job.mode === "SCHEDULED" ? job.mode : "SCHEDULED",
+    requestedQualitySelector: job.requestedQualitySelector ?? "AUTO",
     startAtLocal: toDateTimeLocal(job.startAt),
     endAtLocal: toDateTimeLocal(job.endAt),
   };
@@ -73,6 +76,7 @@ export function validateRecordingForm(
   options: {
     mode: "create" | "update";
     now?: Date;
+    qualityOptions?: RecordingQualityOption[];
   },
 ): RecordingFormValidationResult {
   const issues: RecordingFormIssue[] = [];
@@ -86,7 +90,7 @@ export function validateRecordingForm(
   }
 
   if (options.mode === "create") {
-    const payload = buildCreatePayload(form, now, issues);
+    const payload = buildCreatePayload(form, now, issues, options.qualityOptions ?? []);
 
     if (!payload || issues.length > 0) {
       return {
@@ -105,7 +109,7 @@ export function validateRecordingForm(
     };
   }
 
-  const updatePayload = buildUpdatePayload(form, now, issues);
+  const updatePayload = buildUpdatePayload(form, now, issues, options.qualityOptions ?? []);
 
   if (!updatePayload || issues.length > 0) {
     return {
@@ -124,7 +128,12 @@ export function validateRecordingForm(
   };
 }
 
-function buildCreatePayload(form: RecordingFormValue, now: Date, issues: RecordingFormIssue[]) {
+function buildCreatePayload(
+  form: RecordingFormValue,
+  now: Date,
+  issues: RecordingFormIssue[],
+  qualityOptions: RecordingQualityOption[],
+) {
   if (form.mode === "IMMEDIATE") {
     const payload = {
       channelId: form.channelId,
@@ -133,6 +142,8 @@ function buildCreatePayload(form: RecordingFormValue, now: Date, issues: Recordi
       startAt: null,
       endAt: null,
       programEntryId: null,
+      requestedQualitySelector: normalizeQualitySelector(form.requestedQualitySelector),
+      requestedQualityLabel: resolveQualityLabel(form.requestedQualitySelector, qualityOptions),
     } satisfies RecordingJobInput;
 
     return parseCreatePayload(payload, issues);
@@ -190,12 +201,19 @@ function buildCreatePayload(form: RecordingFormValue, now: Date, issues: Recordi
     startAt: startAt.toISOString(),
     endAt: endAt.toISOString(),
     programEntryId: null,
+    requestedQualitySelector: normalizeQualitySelector(form.requestedQualitySelector),
+    requestedQualityLabel: resolveQualityLabel(form.requestedQualitySelector, qualityOptions),
   } satisfies RecordingJobInput;
 
   return parseCreatePayload(payload, issues);
 }
 
-function buildUpdatePayload(form: RecordingFormValue, now: Date, issues: RecordingFormIssue[]) {
+function buildUpdatePayload(
+  form: RecordingFormValue,
+  now: Date,
+  issues: RecordingFormIssue[],
+  qualityOptions: RecordingQualityOption[],
+) {
   const startAt = parseLocalDateTime(form.startAtLocal);
   const endAt = parseLocalDateTime(form.endAtLocal);
 
@@ -246,6 +264,8 @@ function buildUpdatePayload(form: RecordingFormValue, now: Date, issues: Recordi
     title: normalizeOptionalText(form.title),
     startAt: startAt.toISOString(),
     endAt: endAt.toISOString(),
+    requestedQualitySelector: normalizeQualitySelector(form.requestedQualitySelector),
+    requestedQualityLabel: resolveQualityLabel(form.requestedQualitySelector, qualityOptions),
   } satisfies RecordingJobUpdateInput;
 
   const parsed = recordingJobUpdateInputSchema.safeParse(payload);
@@ -286,8 +306,18 @@ function normalizeOptionalText(value: string) {
   return normalized ? normalized : null;
 }
 
+function normalizeQualitySelector(value: string) {
+  const normalized = value.trim();
+  return normalized || "AUTO";
+}
+
+function resolveQualityLabel(requestedQualitySelector: string, qualityOptions: RecordingQualityOption[]) {
+  const normalized = normalizeQualitySelector(requestedQualitySelector);
+  return qualityOptions.find((option) => option.value === normalized)?.label ?? (normalized === "AUTO" ? "Source default" : null);
+}
+
 function mapSchemaIssueField(field: unknown): RecordingFormField {
-  if (field === "channelId" || field === "title") {
+  if (field === "channelId" || field === "title" || field === "requestedQualitySelector") {
     return field;
   }
 

@@ -78,6 +78,8 @@ const recordingRuntimeJobSelect = {
   channelNameSnapshot: true,
   channelSlugSnapshot: true,
   title: true,
+  requestedQualitySelector: true,
+  requestedQualityLabel: true,
   mode: true,
   status: true,
   startAt: true,
@@ -192,6 +194,8 @@ export function createRecordingJob(data: {
   channelSlugSnapshot: string;
   createdByUserId: string;
   title: string;
+  requestedQualitySelector: string | null;
+  requestedQualityLabel: string | null;
   mode: RecordingMode;
   status: RecordingJobStatus;
   startAt: Date;
@@ -211,6 +215,8 @@ export function updateRecordingJobSchedule(
     channelNameSnapshot: string;
     channelSlugSnapshot: string;
     title: string;
+    requestedQualitySelector: string | null;
+    requestedQualityLabel: string | null;
     startAt: Date;
     endAt: Date;
     status: RecordingJobStatus;

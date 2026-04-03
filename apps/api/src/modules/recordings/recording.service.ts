@@ -1,5 +1,6 @@
 import type { RecordingJobInput, RecordingJobUpdateInput, UserRole } from "@tv-dash/shared";
 import { createRecordingPlaybackToken, readRecordingPlaybackToken } from "./recording-playback-token.js";
+import { listRecordingQualityOptions } from "./recording-quality.js";
 import { resolveRecordingRunProgress } from "./recording-progress.js";
 import {
   cancelRecordingJob,
@@ -20,7 +21,7 @@ import {
   resolveRecordingJobStartAt,
 } from "./recording-status.js";
 import { deleteRecordingFile } from "./recording-storage.js";
-import { getChannelById } from "../channels/channel.service.js";
+import { getChannelById, getChannelStreamDetails } from "../channels/channel.service.js";
 import { recordAuditEvent } from "../audit/audit.service.js";
 import { pokeRecordingRuntime, stopActiveRecordingJob } from "./recording-runtime.js";
 
@@ -51,6 +52,8 @@ async function mapRecordingJob(record: RecordingJobRecord) {
     channelNameSnapshot: record.channelNameSnapshot,
     channelSlugSnapshot: record.channelSlugSnapshot,
     title: record.title,
+    requestedQualitySelector: record.requestedQualitySelector ?? null,
+    requestedQualityLabel: record.requestedQualityLabel ?? null,
     mode: record.mode,
     status: record.status,
     startAt: record.startAt.toISOString(),
@@ -196,6 +199,8 @@ export async function createRecordingJobForViewer(viewer: RecordingViewer, paylo
     channelSlugSnapshot: channel.slug,
     createdByUserId: viewer.id,
     title,
+    requestedQualitySelector: payload.requestedQualitySelector,
+    requestedQualityLabel: payload.requestedQualityLabel,
     mode: payload.mode,
     status: resolveInitialRecordingJobStatus(payload),
     startAt,
@@ -246,6 +251,8 @@ export async function updateRecordingJobForViewer(
     channelNameSnapshot: channel.name,
     channelSlugSnapshot: channel.slug,
     title: payload.title ?? currentJob.title,
+    requestedQualitySelector: payload.requestedQualitySelector,
+    requestedQualityLabel: payload.requestedQualityLabel,
     startAt,
     endAt,
     status: startAt.getTime() > Date.now() ? "SCHEDULED" : "PENDING",
@@ -359,6 +366,16 @@ export async function getRecordingPlaybackAccessForViewer(viewer: RecordingViewe
   return {
     playbackUrl: `/api/recordings/${recordingJobId}/media?token=${encodeURIComponent(token)}`,
   };
+}
+
+export async function getRecordingQualityOptionsForViewer(_viewer: RecordingViewer, channelId: string) {
+  const channel = await getChannelStreamDetails(channelId);
+
+  if (!channel) {
+    throw new Error("Channel not found");
+  }
+
+  return listRecordingQualityOptions(channel);
 }
 
 export async function getRecordingMediaByPlaybackToken(recordingJobId: string, token: string) {

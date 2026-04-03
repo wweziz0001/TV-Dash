@@ -26,6 +26,7 @@ export function ChannelWatchPage() {
   const playerFrameRef = useRef<HTMLDivElement | null>(null);
   const [qualities, setQualities] = useState<QualityOption[]>([...defaultQualityOptions]);
   const [selectedQuality, setSelectedQuality] = useState("AUTO");
+  const [recordingQuality, setRecordingQuality] = useState("AUTO");
   const [playerDiagnostics, setPlayerDiagnostics] = useState<PlayerDiagnostics>(() =>
     buildPlayerDiagnostics({
       status: "idle",
@@ -113,6 +114,8 @@ export function ChannelWatchPage() {
         return (await api.stopRecordingJob(job.id, token)).job;
       }
 
+      const effectiveRecordingQuality = recordingQuality === "AUTO" ? selectedQuality : recordingQuality;
+
       return (
         await api.createRecordingJob(
           {
@@ -122,6 +125,9 @@ export function ChannelWatchPage() {
             startAt: null,
             endAt: null,
             programEntryId: null,
+            requestedQualitySelector: effectiveRecordingQuality,
+            requestedQualityLabel:
+              qualities.find((option) => option.value === effectiveRecordingQuality)?.label ?? "Source default",
           },
           token,
         )
@@ -168,6 +174,7 @@ export function ChannelWatchPage() {
   useEffect(() => {
     setQualities([...defaultQualityOptions]);
     setSelectedQuality("AUTO");
+    setRecordingQuality("AUTO");
     setPlayerDiagnostics(
       buildPlayerDiagnostics({
         status: "idle",
@@ -175,6 +182,14 @@ export function ChannelWatchPage() {
       }),
     );
   }, [slug]);
+
+  useEffect(() => {
+    if (qualities.some((option) => option.value === recordingQuality)) {
+      return;
+    }
+
+    setRecordingQuality("AUTO");
+  }, [qualities, recordingQuality]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -307,14 +322,31 @@ export function ChannelWatchPage() {
             <div className="mt-3 space-y-3">
               <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
                 <div>
-                <label className="mb-1.5 block text-[13px] text-slate-400" htmlFor="quality">
-                  Quality
-                </label>
-                <Select id="quality" onChange={(event) => setSelectedQuality(event.target.value)} uiSize="sm" value={selectedQuality}>
-                  {qualities.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
+                  <label className="mb-1.5 block text-[13px] text-slate-400" htmlFor="quality">
+                    Playback quality
+                  </label>
+                  <Select id="quality" onChange={(event) => setSelectedQuality(event.target.value)} uiSize="sm" value={selectedQuality}>
+                    {qualities.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-[13px] text-slate-400" htmlFor="recording-quality">
+                    Recording quality
+                  </label>
+                  <Select
+                    id="recording-quality"
+                    onChange={(event) => setRecordingQuality(event.target.value)}
+                    uiSize="sm"
+                    value={recordingQuality}
+                  >
+                    {qualities.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
                     ))}
                   </Select>
                 </div>
@@ -338,6 +370,11 @@ export function ChannelWatchPage() {
                       ? "running now"
                       : activeRecording.status.toLowerCase()
                     : "not active"}
+                </p>
+                <p className="mt-1 text-[12px] text-slate-400">
+                  Record now quality:{" "}
+                  {qualities.find((option) => option.value === (recordingQuality === "AUTO" ? selectedQuality : recordingQuality))
+                    ?.label ?? "Source default"}
                 </p>
                 {playerDiagnostics.failureKind ? (
                   <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-slate-500">

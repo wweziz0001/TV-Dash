@@ -312,6 +312,8 @@ export interface RecordingJob {
   channelNameSnapshot: string;
   channelSlugSnapshot: string;
   title: string;
+  requestedQualitySelector: string | null;
+  requestedQualityLabel: string | null;
   mode: RecordingMode;
   status: RecordingJobStatus;
   startAt: string;
@@ -335,6 +337,12 @@ export interface RecordingJob {
   } | null;
   latestRun: RecordingRun | null;
   asset: RecordingAsset | null;
+}
+
+export interface RecordingQualityOption {
+  value: string;
+  label: string;
+  height: number | null;
 }
 
 export interface AuthResponse {
