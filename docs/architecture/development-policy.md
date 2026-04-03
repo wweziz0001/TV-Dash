@@ -37,6 +37,11 @@ Every change must preserve repository clarity. New functionality is only complet
   - add `*.routes.ts`, `*.service.ts`, and `*.repository.ts` changes in the owning module
   - validation happens at the route edge
   - persistence happens in repositories only
+- Auth, admin, or governance change:
+  - verify the server-side permission boundary first
+  - decide whether session invalidation or stale-session handling must change
+  - add or update durable audit coverage for sensitive admin mutations
+  - record remaining security tradeoffs in handoff docs before closing the task
 - Migration:
   - update `apps/api/prisma/schema.prisma`
   - create a Prisma migration

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, AlertTriangle, RadioTower, RefreshCw, ScrollText, Users } from "lucide-react";
+import { Activity, AlertTriangle, RadioTower, RefreshCw, ScrollText, ShieldCheck, Users } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { api } from "@/services/api";
 import type {
   AdminLogEntry,
   AdminMonitoringSession,
+  AuditEvent,
   ChannelViewerCount,
   MonitoringLogCategory,
   MonitoringLogLevel,
@@ -72,6 +73,19 @@ export function AdminObservabilityPage() {
     refetchInterval: AUTO_REFRESH_MS,
   });
 
+  const auditQuery = useQuery({
+    queryKey: ["admin-audit-events", token],
+    queryFn: async () => {
+      if (!token) {
+        throw new Error("Missing admin session");
+      }
+
+      return (await api.listAuditEvents(token, new URLSearchParams({ limit: "30" }))).events;
+    },
+    enabled: Boolean(token),
+    refetchInterval: AUTO_REFRESH_MS,
+  });
+
   const monitoring = monitoringQuery.data;
   const activeSessions = monitoring?.sessions ?? [];
   const watchingNowSurfaces = useMemo(() => buildWatchingNowSurfaces(activeSessions), [activeSessions]);
@@ -88,6 +102,7 @@ export function AdminObservabilityPage() {
               void Promise.all([
                 queryClient.invalidateQueries({ queryKey: ["admin-monitoring", token] }),
                 queryClient.invalidateQueries({ queryKey: ["admin-monitoring-logs", token] }),
+                queryClient.invalidateQueries({ queryKey: ["admin-audit-events", token] }),
               ]);
             }}
             size="sm"
@@ -190,6 +205,26 @@ export function AdminObservabilityPage() {
 
       <Panel className="overflow-hidden" density="flush">
         <SectionHeader
+          icon={ShieldCheck}
+          title="Recent Admin Audit Events"
+          subtitle="Durable governance records for important administrative changes without storing raw secret values."
+          timestamp={auditQuery.data?.[0]?.createdAt ?? monitoring?.generatedAt}
+        />
+        {auditQuery.isLoading && !auditQuery.data ? (
+          <EmptyState label="Loading admin audit events..." />
+        ) : !(auditQuery.data?.length ?? 0) ? (
+          <EmptyState label="No admin audit events have been recorded yet." />
+        ) : (
+          <div className="grid gap-3 px-3 py-3 lg:grid-cols-2">
+            {auditQuery.data?.map((event) => (
+              <AuditEventCard event={event} key={event.id} />
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <Panel className="overflow-hidden" density="flush">
+        <SectionHeader
           icon={ScrollText}
           title="Logs Viewer"
           subtitle="Filter structured events by severity, category, or free-text search."
@@ -270,6 +305,36 @@ export function AdminObservabilityPage() {
         Auto-refresh runs every {AUTO_REFRESH_MS / 1000} seconds. Active sessions fall out of the live views after{" "}
         {monitoring?.summary.staleAfterSeconds ?? 45} seconds without a heartbeat.
       </p>
+    </div>
+  );
+}
+
+function AuditEventCard({ event }: { event: AuditEvent }) {
+  return (
+    <div className="rounded-[1.25rem] border border-slate-800/80 bg-slate-950/75 p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge className="border-cyan-400/20 bg-cyan-500/10 text-cyan-100" size="sm">
+          {event.targetType}
+        </Badge>
+        <Badge size="sm">{event.action}</Badge>
+      </div>
+      <p className="mt-3 text-sm font-semibold text-white">
+        {event.targetName ?? event.targetId ?? "Administrative change"}
+      </p>
+      <p className="mt-1 text-[12px] text-slate-400">
+        {event.actorUser?.username ?? event.actorUserId ?? "Unknown actor"} · {event.actorRole ?? "Unknown role"} ·{" "}
+        {formatTimestamp(event.createdAt)}
+      </p>
+      {event.detail ? (
+        <dl className="mt-3 grid gap-2 text-[12px] text-slate-300">
+          {Object.entries(event.detail).map(([key, value]) => (
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-900/70 px-3 py-2" key={`${event.id}-${key}`}>
+              <dt className="text-slate-500">{key}</dt>
+              <dd className="text-right text-white">{String(value)}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
     </div>
   );
 }

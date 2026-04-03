@@ -10,6 +10,7 @@ import type {
 } from "@tv-dash/shared";
 import type {
   AdminLogEntry,
+  AuditEvent,
   AdminMonitoringSnapshot,
   AuthResponse,
   Channel,
@@ -27,6 +28,27 @@ import type {
 } from "@/types/api";
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api";
+export const AUTH_EXPIRED_EVENT = "tv-dash:auth-expired";
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+function notifyAuthExpired(message: string) {
+  window.dispatchEvent(
+    new CustomEvent(AUTH_EXPIRED_EVENT, {
+      detail: {
+        message,
+      },
+    }),
+  );
+}
 
 async function request<T>(path: string, init: RequestInit = {}, token?: string | null): Promise<T> {
   const headers = new Headers(init.headers);
@@ -51,7 +73,13 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string |
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(payload.message ?? "Request failed");
+    const message = payload.message ?? "Request failed";
+
+    if (response.status === 401 && token) {
+      notifyAuthExpired(message);
+    }
+
+    throw new ApiError(message, response.status);
   }
 
   return payload as T;
@@ -64,6 +92,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   me: (token: string) => request<{ user: User | null }>("/auth/me", { method: "GET" }, token),
+  logout: (token: string) => request<void>("/auth/logout", { method: "POST" }, token),
   listChannels: (token: string | null, params?: URLSearchParams) =>
     request<{ channels: Channel[] }>(`/channels${params ? `?${params.toString()}` : ""}`, {}, token),
   getChannelConfig: (id: string, token: string) =>
@@ -74,6 +103,8 @@ export const api = {
     request<{ monitoring: AdminMonitoringSnapshot }>("/diagnostics/monitoring", {}, token),
   listAdminLogs: (token: string, params?: URLSearchParams) =>
     request<{ logs: AdminLogEntry[] }>(`/diagnostics/logs${params ? `?${params.toString()}` : ""}`, {}, token),
+  listAuditEvents: (token: string, params?: URLSearchParams) =>
+    request<{ events: AuditEvent[] }>(`/audit/events${params ? `?${params.toString()}` : ""}`, {}, token),
   heartbeatPlaybackSessions: (payload: PlaybackSessionHeartbeatInput, token: string, keepalive = false) =>
     request<void>(
       "/diagnostics/playback-sessions/heartbeat",

@@ -189,7 +189,10 @@ export function validateChannelForm(form: ChannelAdminFormValue): ChannelFormVal
     message: buildFriendlyValidationMessage(form, issue),
   }));
   const issuesByPath = issues.reduce<Record<string, string[]>>((result, issue) => {
-    result[issue.path] = [...(result[issue.path] ?? []), issue.message];
+    const existingMessages = result[issue.path] ?? [];
+    result[issue.path] = existingMessages.includes(issue.message)
+      ? existingMessages
+      : [...existingMessages, issue.message];
     return result;
   }, {});
 

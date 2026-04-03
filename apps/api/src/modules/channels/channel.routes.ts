@@ -1,10 +1,11 @@
 import { channelInputSchema, channelSortOrderInputSchema } from "@tv-dash/shared";
 import type { FastifyPluginAsync } from "fastify";
-import { requireAdmin } from "../../app/auth-guards.js";
+import { requirePermission } from "../../app/auth-guards.js";
 import { getPrismaErrorCode } from "../../app/prisma-errors.js";
 import { channelListQuerySchema, idParamSchema, slugParamSchema } from "../../app/request-schemas.js";
 import { writeStructuredLog } from "../../app/structured-log.js";
 import { parseWithSchema } from "../../app/validation.js";
+import { recordAuditEvent, summarizeChannelAuditDetail } from "../audit/audit.service.js";
 import {
   createChannelRecord,
   deleteChannelRecord,
@@ -42,7 +43,7 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
     return { channel };
   });
 
-  fastify.get("/channels/:id/config", { preHandler: [requireAdmin] }, async (request, reply) => {
+  fastify.get("/channels/:id/config", { preHandler: [requirePermission("channels:manage")] }, async (request, reply) => {
     const params = parseWithSchema(idParamSchema, request.params, reply);
     if (!params) {
       return;
@@ -72,7 +73,7 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
     return { channel };
   });
 
-  fastify.post("/channels", { preHandler: [requireAdmin] }, async (request, reply) => {
+  fastify.post("/channels", { preHandler: [requirePermission("channels:manage")] }, async (request, reply) => {
     const payload = parseWithSchema(channelInputSchema, request.body, reply);
     if (!payload) {
       return;
@@ -80,9 +81,18 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       const channel = await createChannelRecord(payload);
+      await recordAuditEvent({
+        actorUserId: request.authUser?.id,
+        actorRole: request.authUser?.role,
+        action: "channel.create",
+        targetType: "channel",
+        targetId: channel.id,
+        targetName: channel.slug,
+        detail: summarizeChannelAuditDetail(payload),
+      });
       writeStructuredLog("info", {
         event: "channel.admin.create.succeeded",
-        actorUserId: request.user?.sub,
+        actorUserId: request.authUser?.id,
         channelId: channel.id,
         channelSlug: channel.slug,
         detail: {
@@ -108,7 +118,7 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  fastify.put("/channels/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+  fastify.put("/channels/:id", { preHandler: [requirePermission("channels:manage")] }, async (request, reply) => {
     const params = parseWithSchema(idParamSchema, request.params, reply);
     if (!params) {
       return;
@@ -121,9 +131,18 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       const channel = await updateChannelRecord(params.id, payload);
+      await recordAuditEvent({
+        actorUserId: request.authUser?.id,
+        actorRole: request.authUser?.role,
+        action: "channel.update",
+        targetType: "channel",
+        targetId: channel.id,
+        targetName: channel.slug,
+        detail: summarizeChannelAuditDetail(payload),
+      });
       writeStructuredLog("info", {
         event: "channel.admin.update.succeeded",
-        actorUserId: request.user?.sub,
+        actorUserId: request.authUser?.id,
         channelId: channel.id,
         channelSlug: channel.slug,
         detail: {
@@ -153,7 +172,7 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  fastify.put("/channels/:id/sort-order", { preHandler: [requireAdmin] }, async (request, reply) => {
+  fastify.put("/channels/:id/sort-order", { preHandler: [requirePermission("channels:manage")] }, async (request, reply) => {
     const params = parseWithSchema(idParamSchema, request.params, reply);
     if (!params) {
       return;
@@ -166,9 +185,20 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       const channel = await updateChannelSortOrderRecord(params.id, payload.sortOrder);
+      await recordAuditEvent({
+        actorUserId: request.authUser?.id,
+        actorRole: request.authUser?.role,
+        action: "channel.sort-order.update",
+        targetType: "channel",
+        targetId: channel.id,
+        targetName: channel.slug,
+        detail: {
+          sortOrder: channel.sortOrder,
+        },
+      });
       writeStructuredLog("info", {
         event: "channel.admin.sort-order.updated",
-        actorUserId: request.user?.sub,
+        actorUserId: request.authUser?.id,
         channelId: channel.id,
         channelSlug: channel.slug,
         detail: {
@@ -185,7 +215,7 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  fastify.delete("/channels/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+  fastify.delete("/channels/:id", { preHandler: [requirePermission("channels:manage")] }, async (request, reply) => {
     const params = parseWithSchema(idParamSchema, request.params, reply);
     if (!params) {
       return;
@@ -193,9 +223,16 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       await deleteChannelRecord(params.id);
+      await recordAuditEvent({
+        actorUserId: request.authUser?.id,
+        actorRole: request.authUser?.role,
+        action: "channel.delete",
+        targetType: "channel",
+        targetId: params.id,
+      });
       writeStructuredLog("info", {
         event: "channel.admin.delete.succeeded",
-        actorUserId: request.user?.sub,
+        actorUserId: request.authUser?.id,
         channelId: params.id,
       });
       return reply.status(204).send();

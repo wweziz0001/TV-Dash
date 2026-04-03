@@ -21,7 +21,7 @@ Routes own transport concerns only.
 Routes may:
 
 - register Fastify endpoints
-- run auth or admin guards
+- run auth, permission, or admin guards
 - validate body, params, and query input
 - map service outcomes to HTTP status codes
 
@@ -130,6 +130,26 @@ Rules:
 - do not leak raw Prisma or upstream stack traces to clients
 - log unexpected server errors with enough context for debugging
 - keep client-facing messages concise and actionable
+
+## Access Control Rules
+
+- Prefer explicit permission guards for protected routes over inline `request.user.role` checks.
+- Protected routes must resolve the current authenticated user when session freshness matters; do not trust stale role claims in a token forever.
+- Admin-only endpoints that accept operationally dangerous inputs, such as arbitrary upstream URLs or request-header overrides, must stay admin-only on the server even if the frontend route is already admin-gated.
+- Logout should invalidate current authenticated sessions server-side, not only clear client storage.
+
+## Audit Rules
+
+- Sensitive admin mutations should create a durable audit event with sanitized metadata.
+- Audit payloads may include:
+  - mode changes
+  - boolean flags
+  - counts
+  - safe ids or slugs
+- Audit payloads must not include:
+  - raw bearer tokens
+  - raw upstream header values
+  - full sensitive operational URLs
 
 ## Observability Rules
 

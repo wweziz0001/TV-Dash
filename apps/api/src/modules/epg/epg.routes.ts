@@ -1,10 +1,11 @@
 import { epgSourceInputSchema } from "@tv-dash/shared";
 import type { FastifyPluginAsync } from "fastify";
-import { requireAdmin, requireAuth } from "../../app/auth-guards.js";
+import { requirePermission } from "../../app/auth-guards.js";
 import { getPrismaErrorCode } from "../../app/prisma-errors.js";
 import { epgNowNextQuerySchema, idParamSchema } from "../../app/request-schemas.js";
 import { writeStructuredLog } from "../../app/structured-log.js";
 import { parseWithSchema } from "../../app/validation.js";
+import { recordAuditEvent, summarizeEpgSourceAuditDetail } from "../audit/audit.service.js";
 import {
   createConfiguredEpgSource,
   deleteConfiguredEpgSource,
@@ -16,12 +17,12 @@ import {
 } from "./epg.service.js";
 
 export const epgRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.get("/epg/sources", { preHandler: [requireAdmin] }, async () => {
+  fastify.get("/epg/sources", { preHandler: [requirePermission("epg:manage")] }, async () => {
     const sources = await listConfiguredEpgSources();
     return { sources };
   });
 
-  fastify.post("/epg/sources", { preHandler: [requireAdmin] }, async (request, reply) => {
+  fastify.post("/epg/sources", { preHandler: [requirePermission("epg:manage")] }, async (request, reply) => {
     const payload = parseWithSchema(epgSourceInputSchema, request.body, reply);
     if (!payload) {
       return;
@@ -32,9 +33,18 @@ export const epgRoutes: FastifyPluginAsync = async (fastify) => {
       if (!source) {
         throw new Error("EPG source was not created");
       }
+      await recordAuditEvent({
+        actorUserId: request.authUser?.id,
+        actorRole: request.authUser?.role,
+        action: "epg-source.create",
+        targetType: "epg-source",
+        targetId: source.id,
+        targetName: source.slug,
+        detail: summarizeEpgSourceAuditDetail(payload),
+      });
       writeStructuredLog("info", {
         event: "epg.source.create.succeeded",
-        actorUserId: request.user?.sub,
+        actorUserId: request.authUser?.id,
         epgSourceId: source.id,
         detail: {
           slug: source.slug,
@@ -52,7 +62,7 @@ export const epgRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  fastify.put("/epg/sources/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+  fastify.put("/epg/sources/:id", { preHandler: [requirePermission("epg:manage")] }, async (request, reply) => {
     const params = parseWithSchema(idParamSchema, request.params, reply);
     if (!params) {
       return;
@@ -68,9 +78,18 @@ export const epgRoutes: FastifyPluginAsync = async (fastify) => {
       if (!source) {
         return reply.status(404).send({ message: "EPG source not found" });
       }
+      await recordAuditEvent({
+        actorUserId: request.authUser?.id,
+        actorRole: request.authUser?.role,
+        action: "epg-source.update",
+        targetType: "epg-source",
+        targetId: source.id,
+        targetName: source.slug,
+        detail: summarizeEpgSourceAuditDetail(payload),
+      });
       writeStructuredLog("info", {
         event: "epg.source.update.succeeded",
-        actorUserId: request.user?.sub,
+        actorUserId: request.authUser?.id,
         epgSourceId: source.id,
         detail: {
           slug: source.slug,
@@ -94,7 +113,7 @@ export const epgRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  fastify.delete("/epg/sources/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+  fastify.delete("/epg/sources/:id", { preHandler: [requirePermission("epg:manage")] }, async (request, reply) => {
     const params = parseWithSchema(idParamSchema, request.params, reply);
     if (!params) {
       return;
@@ -102,9 +121,16 @@ export const epgRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       await deleteConfiguredEpgSource(params.id);
+      await recordAuditEvent({
+        actorUserId: request.authUser?.id,
+        actorRole: request.authUser?.role,
+        action: "epg-source.delete",
+        targetType: "epg-source",
+        targetId: params.id,
+      });
       writeStructuredLog("info", {
         event: "epg.source.delete.succeeded",
-        actorUserId: request.user?.sub,
+        actorUserId: request.authUser?.id,
         epgSourceId: params.id,
       });
       return reply.status(204).send();
@@ -117,7 +143,7 @@ export const epgRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  fastify.get("/epg/sources/:id/channels", { preHandler: [requireAdmin] }, async (request, reply) => {
+  fastify.get("/epg/sources/:id/channels", { preHandler: [requirePermission("epg:manage")] }, async (request, reply) => {
     const params = parseWithSchema(idParamSchema, request.params, reply);
     if (!params) {
       return;
@@ -138,7 +164,7 @@ export const epgRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  fastify.get("/epg/now-next", { preHandler: [requireAuth] }, async (request, reply) => {
+  fastify.get("/epg/now-next", { preHandler: [requirePermission("epg:read")] }, async (request, reply) => {
     const query = parseWithSchema(epgNowNextQuerySchema, request.query, reply);
     if (!query) {
       return;

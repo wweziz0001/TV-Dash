@@ -36,6 +36,10 @@ const mockPrisma = {
     update: vi.fn(),
     delete: vi.fn(),
   },
+  auditEvent: {
+    create: vi.fn(),
+    findMany: vi.fn(),
+  },
 };
 
 vi.mock("../../db/prisma.js", () => ({
@@ -50,6 +54,29 @@ describe("channelRoutes", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockPrisma.user.findUnique.mockImplementation(({ where }: { where?: { id?: string } }) =>
+      Promise.resolve(
+        where?.id === "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+          ? {
+              id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+              email: "admin@example.com",
+              username: "admin",
+              role: "ADMIN",
+              sessionVersion: 0,
+              createdAt: new Date("2026-04-02T00:00:00.000Z"),
+              updatedAt: new Date("2026-04-02T00:00:00.000Z"),
+            }
+          : {
+              id: "11111111-1111-1111-1111-111111111111",
+              email: "ops@example.com",
+              username: "ops-user",
+              role: "USER",
+              sessionVersion: 0,
+              createdAt: new Date("2026-04-02T00:00:00.000Z"),
+              updatedAt: new Date("2026-04-02T00:00:00.000Z"),
+            },
+      ),
+    );
     server = await buildServer();
   });
 
@@ -129,6 +156,45 @@ describe("channelRoutes", () => {
         qualityVariants: expect.any(Object),
       }),
     });
+    expect(mockPrisma.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "channel.create",
+          targetType: "channel",
+          targetName: "news-desk",
+        }),
+      }),
+    );
+  });
+
+  it("rejects reserved upstream headers before channel persistence", async () => {
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/channels",
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
+      payload: {
+        name: "Blocked Header Feed",
+        slug: "blocked-header-feed",
+        logoUrl: "",
+        sourceMode: "MASTER_PLAYLIST",
+        masterHlsUrl: "https://example.com/news.m3u8",
+        groupId: null,
+        isActive: true,
+        sortOrder: 2,
+        playbackMode: "PROXY",
+        upstreamUserAgent: "OpsBot/1.0",
+        upstreamReferrer: "https://ops.example.com/",
+        upstreamHeaders: {
+          authorization: "Bearer secret",
+        },
+        epgSourceId: null,
+        epgChannelId: null,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(mockPrisma.channel.create).not.toHaveBeenCalled();
+    expect(mockPrisma.auditEvent.create).not.toHaveBeenCalled();
   });
 
   it("creates a manual-variant channel with nested quality rows", async () => {

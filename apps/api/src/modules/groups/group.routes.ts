@@ -1,9 +1,11 @@
 import { channelGroupInputSchema } from "@tv-dash/shared";
 import type { FastifyPluginAsync } from "fastify";
-import { requireAdmin } from "../../app/auth-guards.js";
+import { requirePermission } from "../../app/auth-guards.js";
 import { getPrismaErrorCode } from "../../app/prisma-errors.js";
 import { idParamSchema } from "../../app/request-schemas.js";
+import { writeStructuredLog } from "../../app/structured-log.js";
 import { parseWithSchema } from "../../app/validation.js";
+import { recordAuditEvent, summarizeGroupAuditDetail } from "../audit/audit.service.js";
 import {
   createChannelGroup,
   deleteChannelGroup,
@@ -17,7 +19,7 @@ export const groupRoutes: FastifyPluginAsync = async (fastify) => {
     return { groups };
   });
 
-  fastify.post("/groups", { preHandler: [requireAdmin] }, async (request, reply) => {
+  fastify.post("/groups", { preHandler: [requirePermission("groups:manage")] }, async (request, reply) => {
     const payload = parseWithSchema(channelGroupInputSchema, request.body, reply);
     if (!payload) {
       return;
@@ -25,6 +27,23 @@ export const groupRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       const group = await createChannelGroup(payload);
+      await recordAuditEvent({
+        actorUserId: request.authUser?.id,
+        actorRole: request.authUser?.role,
+        action: "group.create",
+        targetType: "group",
+        targetId: group.id,
+        targetName: group.slug,
+        detail: summarizeGroupAuditDetail(payload),
+      });
+      writeStructuredLog("info", {
+        event: "group.admin.create.succeeded",
+        actorUserId: request.authUser?.id,
+        detail: {
+          slug: group.slug,
+          sortOrder: group.sortOrder,
+        },
+      });
       return reply.status(201).send({ group });
     } catch (error) {
       if (getPrismaErrorCode(error) === "P2002") {
@@ -35,7 +54,7 @@ export const groupRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  fastify.put("/groups/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+  fastify.put("/groups/:id", { preHandler: [requirePermission("groups:manage")] }, async (request, reply) => {
     const params = parseWithSchema(idParamSchema, request.params, reply);
     if (!params) {
       return;
@@ -48,6 +67,23 @@ export const groupRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       const group = await updateChannelGroup(params.id, payload);
+      await recordAuditEvent({
+        actorUserId: request.authUser?.id,
+        actorRole: request.authUser?.role,
+        action: "group.update",
+        targetType: "group",
+        targetId: group.id,
+        targetName: group.slug,
+        detail: summarizeGroupAuditDetail(payload),
+      });
+      writeStructuredLog("info", {
+        event: "group.admin.update.succeeded",
+        actorUserId: request.authUser?.id,
+        detail: {
+          slug: group.slug,
+          sortOrder: group.sortOrder,
+        },
+      });
       return { group };
     } catch (error) {
       const prismaCode = getPrismaErrorCode(error);
@@ -64,7 +100,7 @@ export const groupRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  fastify.delete("/groups/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+  fastify.delete("/groups/:id", { preHandler: [requirePermission("groups:manage")] }, async (request, reply) => {
     const params = parseWithSchema(idParamSchema, request.params, reply);
     if (!params) {
       return;
@@ -72,6 +108,20 @@ export const groupRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       await deleteChannelGroup(params.id);
+      await recordAuditEvent({
+        actorUserId: request.authUser?.id,
+        actorRole: request.authUser?.role,
+        action: "group.delete",
+        targetType: "group",
+        targetId: params.id,
+      });
+      writeStructuredLog("info", {
+        event: "group.admin.delete.succeeded",
+        actorUserId: request.authUser?.id,
+        detail: {
+          groupId: params.id,
+        },
+      });
       return reply.status(204).send();
     } catch (error) {
       if (getPrismaErrorCode(error) === "P2025") {

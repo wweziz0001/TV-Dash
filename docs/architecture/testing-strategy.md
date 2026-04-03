@@ -7,8 +7,10 @@ As of `2026-04-02`, TV-Dash has:
 - backend unit/integration foundation with Vitest
 - frontend unit and component test foundation with Vitest + jsdom
 - representative tests for:
+  - auth login/me/logout session-version handling
   - API health server boot path
   - channel, group, favorite, layout, and stream route validation/contract behavior via Fastify `inject`
+  - audit trail creation and admin audit-event listing
   - HLS master playlist parsing plus synthetic master generation for manual variants
   - runtime diagnostics snapshots and stream/EPG failure classification helpers
   - playback session heartbeat tracking, monitoring aggregation, and structured-log filtering
@@ -55,6 +57,7 @@ Required for:
 Target next phase:
 
 - auth login/me against isolated data
+- revoked-session and permission-matrix integration coverage against isolated data
 - database-backed channel/group/favorite/layout flows instead of mocked persistence
 - stream test endpoint behavior against controlled upstream fixtures
 
@@ -100,6 +103,7 @@ If a change touches one of those flows and no automated regression exists yet, e
 - route-edge contract and validation coverage complete for channels, groups, favorites, layouts, and streams
 - diagnostics route coverage now exists for channel and EPG runtime inspection endpoints
 - monitoring route coverage now exists for admin observability snapshots
+- auth and audit route coverage now exists for session-version enforcement plus admin governance events
 - next step is database-backed Fastify integration coverage for auth, channels, groups, layouts, favorites, and streams
 - introduce isolated database strategy for tests
 

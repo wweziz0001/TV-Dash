@@ -245,6 +245,23 @@ export interface AdminLogEntry {
   detail?: Record<string, string | number | boolean | null | undefined> | null;
 }
 
+export interface AuditEvent {
+  id: string;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  targetName: string | null;
+  actorUserId: string | null;
+  actorRole: UserRole | null;
+  actorUser: {
+    id: string;
+    username: string;
+    role: UserRole;
+  } | null;
+  detail: Record<string, string | number | boolean | null | undefined> | null;
+  createdAt: string;
+}
+
 export interface AdminMonitoringSession {
   sessionId: string;
   sessionType: PlaybackSessionType;

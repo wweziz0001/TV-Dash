@@ -41,6 +41,10 @@ const mockPrisma = {
     updateMany: vi.fn(),
     upsert: vi.fn(),
   },
+  auditEvent: {
+    create: vi.fn(),
+    findMany: vi.fn(),
+  },
 };
 
 vi.mock("../../db/prisma.js", () => ({
@@ -62,6 +66,29 @@ describe("diagnosticRoutes", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     resetRuntimeDiagnostics();
+    mockPrisma.user.findUnique.mockImplementation(({ where }: { where?: { id?: string } }) =>
+      Promise.resolve(
+        where?.id === "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+          ? {
+              id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+              email: "admin@example.com",
+              username: "admin",
+              role: "ADMIN",
+              sessionVersion: 0,
+              createdAt: new Date("2026-04-03T00:00:00.000Z"),
+              updatedAt: new Date("2026-04-03T00:00:00.000Z"),
+            }
+          : {
+              id: "11111111-1111-1111-1111-111111111111",
+              email: "ops@example.com",
+              username: "ops-user",
+              role: "USER",
+              sessionVersion: 0,
+              createdAt: new Date("2026-04-03T00:00:00.000Z"),
+              updatedAt: new Date("2026-04-03T00:00:00.000Z"),
+            },
+      ),
+    );
     server = await buildServer();
   });
 
