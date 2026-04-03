@@ -1,30 +1,6 @@
 import type { RecordingInputConfig } from "./recording-input.js";
-import { resolveRecordingVideoStreamIndex } from "./recording-quality.js";
 
-export function buildRecordingFfmpegArgs(
-  inputConfig: RecordingInputConfig,
-  outputPath: string,
-  requestedQualitySelector?: string | null,
-) {
-  const selectedVideoStreamIndex = resolveRecordingVideoStreamIndex(requestedQualitySelector);
-  const outputArgs =
-    inputConfig.captureMode === "PROXY"
-      ? [
-          "-max_interleave_delta",
-          "0",
-          "-avoid_negative_ts",
-          "make_zero",
-          "-c:v",
-          "copy",
-          "-c:a",
-          "aac",
-          "-b:a",
-          "128k",
-          "-af",
-          "aresample=async=1:first_pts=0",
-        ]
-      : ["-c", "copy"];
-
+export function buildRecordingFfmpegArgs(inputConfig: RecordingInputConfig, outputPath: string) {
   return [
     "-hide_banner",
     "-loglevel",
@@ -39,11 +15,12 @@ export function buildRecordingFfmpegArgs(
     "-i",
     inputConfig.sourceUrl,
     "-map",
-    `0:v:${selectedVideoStreamIndex}?`,
+    "0:v:0?",
     "-map",
     "0:a:0?",
     "-sn",
-    ...outputArgs,
+    "-c",
+    "copy",
     "-movflags",
     "+faststart",
     outputPath,

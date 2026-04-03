@@ -1,37 +1,15 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { normalizeUpstreamHeaders } from "../../app/upstream-request.js";
+import { env } from "../../config/env.js";
 import type { StreamChannelRecord } from "../channels/channel.repository.js";
+import { resolveRecordingSourceDescriptor } from "./recording-quality.js";
 
 export interface RecordingInputConfig {
   sourceUrl: string;
   ffmpegInputArgs: string[];
-  captureMode: "DIRECT" | "PROXY";
-}
-
-function buildInternalRecordingSourceUrl(channelId: string, apiPort: number) {
-  return `http://127.0.0.1:${apiPort}/api/streams/channels/${channelId}/master`;
-}
-
-function buildInternalProxyInputConfig(channelId: string, apiPort: number): RecordingInputConfig {
-  return {
-    sourceUrl: buildInternalRecordingSourceUrl(channelId, apiPort),
-    ffmpegInputArgs: [
-      "-allowed_extensions",
-      "ALL",
-      "-protocol_whitelist",
-      "file,http,https,tcp,tls,crypto,data",
-      "-reconnect",
-      "1",
-      "-reconnect_streamed",
-      "1",
-      "-reconnect_on_network_error",
-      "1",
-      "-reconnect_delay_max",
-      "2",
-      "-fflags",
-      "+genpts+discardcorrupt",
-    ],
-    captureMode: "PROXY",
-  };
+  temporaryFilePath: string | null;
 }
 
 function buildFfmpegHeaderArgument(headers: Record<string, string>) {
@@ -40,7 +18,7 @@ function buildFfmpegHeaderArgument(headers: Record<string, string>) {
   return lines.length ? `${lines.join("\r\n")}\r\n` : null;
 }
 
-function buildDirectUpstreamInputConfig(channel: StreamChannelRecord): RecordingInputConfig {
+function buildDirectUpstreamInputArgs(channel: StreamChannelRecord) {
   const ffmpegInputArgs: string[] = [];
 
   if (channel.upstreamUserAgent) {
@@ -59,16 +37,53 @@ function buildDirectUpstreamInputConfig(channel: StreamChannelRecord): Recording
   }
 
   return {
-    sourceUrl: channel.masterHlsUrl ?? "",
-    ffmpegInputArgs,
-    captureMode: "DIRECT",
+    ffmpegInputArgs: [
+      "-allowed_extensions",
+      "ALL",
+      "-protocol_whitelist",
+      "file,http,https,tcp,tls,crypto,data",
+      "-reconnect",
+      "1",
+      "-reconnect_streamed",
+      "1",
+      "-reconnect_on_network_error",
+      "1",
+      "-reconnect_delay_max",
+      "2",
+      ...ffmpegInputArgs,
+    ],
   };
 }
 
-export function buildRecordingInputConfig(channel: StreamChannelRecord, apiPort: number): RecordingInputConfig {
-  if (channel.sourceMode === "MANUAL_VARIANTS" || channel.playbackMode === "PROXY" || !channel.masterHlsUrl) {
-    return buildInternalProxyInputConfig(channel.id, apiPort);
+async function writeRecordingPlaylistFile(channelId: string, playlistText: string) {
+  const playlistDirectory = path.resolve(env.RECORDINGS_STORAGE_DIR, ".tmp");
+  await fs.mkdir(playlistDirectory, { recursive: true });
+  const playlistPath = path.join(playlistDirectory, `${channelId}-${randomUUID()}.m3u8`);
+  await fs.writeFile(playlistPath, playlistText, "utf8");
+  return playlistPath;
+}
+
+export async function buildRecordingInputConfig(
+  channel: StreamChannelRecord,
+  _apiPort: number,
+  requestedQualitySelector: string | null | undefined,
+): Promise<RecordingInputConfig> {
+  const inputArgs = buildDirectUpstreamInputArgs(channel);
+  const resolvedSource = await resolveRecordingSourceDescriptor(channel, requestedQualitySelector);
+
+  if (resolvedSource.singleVariantMasterPlaylist) {
+    const temporaryFilePath = await writeRecordingPlaylistFile(channel.id, resolvedSource.singleVariantMasterPlaylist);
+
+    return {
+      sourceUrl: temporaryFilePath,
+      ffmpegInputArgs: inputArgs.ffmpegInputArgs,
+      temporaryFilePath,
+    };
   }
 
-  return buildDirectUpstreamInputConfig(channel);
+  return {
+    sourceUrl: resolvedSource.sourceUrl ?? channel.masterHlsUrl ?? channel.qualityVariants[0]?.playlistUrl ?? "",
+    ffmpegInputArgs: inputArgs.ffmpegInputArgs,
+    temporaryFilePath: null,
+  };
 }

@@ -34,6 +34,7 @@ interface ActiveRecordingProcess {
   recordingJobId: string;
   recordingRunId: string;
   storagePath: string;
+  temporaryInputFilePath: string | null;
   endAt: Date | null;
   startedAt: Date;
   childProcess: ReturnType<typeof spawn>;
@@ -153,6 +154,10 @@ async function finalizeRecordingProcessExit(
     await fs.rm(fileStats.absolutePath, { force: true });
   }
 
+  if (activeRecording.temporaryInputFilePath) {
+    await fs.rm(activeRecording.temporaryInputFilePath, { force: true });
+  }
+
   if (jobStatus === "COMPLETED") {
     writeStructuredLog("info", {
       event: "recording.job.completed",
@@ -247,10 +252,14 @@ async function startRecordingJobExecution(recordingJobId: string) {
     return;
   }
 
-  const inputConfig = buildRecordingInputConfig(streamDetails, env.API_PORT);
+  const inputConfig = await buildRecordingInputConfig(
+    streamDetails,
+    env.API_PORT,
+    claimed.job.requestedQualitySelector,
+  );
   const childProcess = spawn(
     env.RECORDINGS_FFMPEG_PATH,
-    buildRecordingFfmpegArgs(inputConfig, absoluteOutputPath, claimed.job.requestedQualitySelector),
+    buildRecordingFfmpegArgs(inputConfig, absoluteOutputPath),
     {
     stdio: ["pipe", "ignore", "pipe"],
     },
@@ -264,6 +273,7 @@ async function startRecordingJobExecution(recordingJobId: string) {
     recordingJobId,
     recordingRunId: claimed.run.id,
     storagePath: output.storagePath,
+    temporaryInputFilePath: inputConfig.temporaryFilePath,
     endAt: claimed.job.endAt,
     startedAt,
     childProcess,

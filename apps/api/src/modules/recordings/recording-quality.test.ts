@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StreamChannelRecord } from "../channels/channel.repository.js";
-import { listRecordingQualityOptions, resolveRecordingVideoStreamIndex } from "./recording-quality.js";
+import { listRecordingQualityOptions, resolveRecordingSourceDescriptor } from "./recording-quality.js";
 
 function buildChannel(overrides: Partial<StreamChannelRecord> = {}): StreamChannelRecord {
   return {
@@ -49,6 +49,10 @@ function buildChannel(overrides: Partial<StreamChannelRecord> = {}): StreamChann
 }
 
 describe("recording-quality", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("returns sorted quality options for manual-variant channels", async () => {
     const qualities = await listRecordingQualityOptions(buildChannel());
 
@@ -59,10 +63,33 @@ describe("recording-quality", () => {
     ]);
   });
 
-  it("resolves the requested recording stream index", () => {
-    expect(resolveRecordingVideoStreamIndex(null)).toBe(0);
-    expect(resolveRecordingVideoStreamIndex("AUTO")).toBe(0);
-    expect(resolveRecordingVideoStreamIndex("2")).toBe(2);
-    expect(resolveRecordingVideoStreamIndex("invalid")).toBe(0);
+  it("builds a single-variant master playlist for master-playlist channels", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: vi.fn().mockResolvedValue(`#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aac",NAME="Arabic",DEFAULT=YES,AUTOSELECT=YES,URI="audio/chunks.m3u8"
+#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360,AUDIO="aac"
+low/index.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=1400000,RESOLUTION=1280x720,AUDIO="aac"
+mid/index.m3u8`),
+      }),
+    );
+
+    const descriptor = await resolveRecordingSourceDescriptor(
+      buildChannel({
+        sourceMode: "MASTER_PLAYLIST",
+        playbackMode: "DIRECT",
+        masterHlsUrl: "https://example.com/live/master.m3u8",
+      }),
+      "1",
+    );
+
+    expect(descriptor.sourceUrl).toBeNull();
+    expect(descriptor.selectedQualityLabel).toBe("720p");
+    expect(descriptor.singleVariantMasterPlaylist).toContain('URI="https://example.com/live/audio/chunks.m3u8"');
+    expect(descriptor.singleVariantMasterPlaylist).toContain("https://example.com/live/mid/index.m3u8");
   });
 });
