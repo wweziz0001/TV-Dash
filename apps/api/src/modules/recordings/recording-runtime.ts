@@ -21,7 +21,8 @@ import {
   readRecordingFileStats,
   resolveRecordingAbsolutePath,
 } from "./recording-storage.js";
-import { buildRecordingInputConfig, type RecordingInputConfig } from "./recording-input.js";
+import { buildRecordingInputConfig } from "./recording-input.js";
+import { buildRecordingFfmpegArgs } from "./recording-ffmpeg.js";
 
 interface StopRecordingOptions {
   reason: string;
@@ -52,26 +53,6 @@ const STOP_KILL_TIMEOUT_MS = 5_000;
 let runtimeStarted = false;
 let runtimeInterval: NodeJS.Timeout | null = null;
 let runtimeTickPromise: Promise<void> | null = null;
-
-function buildFfmpegArgs(inputConfig: RecordingInputConfig, outputPath: string) {
-  return [
-    "-hide_banner",
-    "-loglevel",
-    "warning",
-    "-y",
-    ...inputConfig.ffmpegInputArgs,
-    "-i",
-    inputConfig.sourceUrl,
-    "-map",
-    "0",
-    "-dn",
-    "-c",
-    "copy",
-    "-movflags",
-    "+faststart",
-    outputPath,
-  ];
-}
 
 function appendStderrLine(activeRecording: ActiveRecordingProcess, chunk: Buffer) {
   const lines = chunk
@@ -267,7 +248,7 @@ async function startRecordingJobExecution(recordingJobId: string) {
   }
 
   const inputConfig = buildRecordingInputConfig(streamDetails, env.API_PORT);
-  const childProcess = spawn(env.RECORDINGS_FFMPEG_PATH, buildFfmpegArgs(inputConfig, absoluteOutputPath), {
+  const childProcess = spawn(env.RECORDINGS_FFMPEG_PATH, buildRecordingFfmpegArgs(inputConfig, absoluteOutputPath), {
     stdio: ["pipe", "ignore", "pipe"],
   });
   const startedAt = new Date();
