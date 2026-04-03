@@ -168,6 +168,15 @@ export async function listRecordingQualityOptions(channel: StreamChannelRecord):
   return [RECORDING_DEFAULT_QUALITY_OPTION, ...variants];
 }
 
+export function resolveRecordingVideoStreamIndex(requestedQualitySelector: string | null | undefined) {
+  if (!requestedQualitySelector || requestedQualitySelector === "AUTO") {
+    return 0;
+  }
+
+  const parsed = Number.parseInt(requestedQualitySelector, 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+}
+
 export async function resolveRecordingSourceDescriptor(
   channel: StreamChannelRecord,
   requestedQualitySelector: string | null | undefined,

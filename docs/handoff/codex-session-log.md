@@ -1,5 +1,118 @@
 # Codex Session Log
 
+## `2026-04-04T09:30:00+03:00`
+
+### Objective
+
+Add real EPG-driven recording and recurring recording workflows to TV-Dash so operators can record a guide programme directly, manage recurring rules, and see how those jobs were created.
+
+### Work Completed
+
+- created the requested branch `017-epg-driven-and-recurring-recordings`
+- extended the recording data model with:
+  - guide-program snapshots and live `ProgramEntry` linkage on `RecordingJob`
+  - per-job padding metadata
+  - `RecordingRule` for recurring schedules
+  - `RECURRING_RULE` and `EPG_PROGRAM` recording origins
+- added the Prisma migration `20260404093000_epg_driven_and_recurring_recordings`
+- implemented recurring rule support in the backend `recordings` module:
+  - create, list, inspect, update, pause/resume, and delete recurring rules
+  - daily recurrence
+  - weekly recurrence
+  - selected-weekday recurrence
+  - timezone-aware recurrence projection with bounded lookahead
+- implemented real recurring job generation:
+  - the existing recording runtime now projects active recurring rules into concrete upcoming recording jobs
+  - generated jobs keep rule linkage and rule snapshot context
+  - rule edits/pauses remove future generated jobs before regeneration
+- implemented real guide-program recording creation:
+  - watch page now/next and upcoming-guide surfaces can create `Record this program` jobs directly
+  - the backend derives the actual capture window from the selected `ProgramEntry` plus optional padding
+  - created jobs retain programme linkage plus durable programme snapshots
+- added a future-ready recurring foundation from guide context:
+  - watch page programme actions can hand off into `/recordings` with a recurring-rule prefill
+  - recurring rules can keep an originating programme snapshot plus optional future-program title matching
+- expanded the `/recordings` workspace so operators can:
+  - keep using immediate/timed/scheduled one-off recording flows
+  - create and edit recurring rules
+  - pause/resume recurring rules
+  - delete recurring rules
+  - see origin, padding, linked programme, and linked rule context for generated jobs
+- added targeted tests for:
+  - recurrence calculation
+  - route-level EPG job creation
+  - route-level recurring rule creation
+  - recurring rule form validation
+  - updated recording form state with padding
+
+### Files Added Or Changed
+
+- shared/API contracts:
+  - `packages/shared/src/index.ts`
+  - `apps/web/src/types/api.ts`
+  - `apps/web/src/services/api.ts`
+- Prisma and docs:
+  - `apps/api/prisma/schema.prisma`
+  - `apps/api/prisma/migrations/20260404093000_epg_driven_and_recurring_recordings/migration.sql`
+  - `docs/architecture/api-boundaries.md`
+  - `docs/standards/backend-api-standards.md`
+  - `docs/standards/prisma-database-standards.md`
+  - `docs/standards/testing-standards.md`
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+- backend recordings/guide logic:
+  - `apps/api/src/modules/epg/epg.repository.ts`
+  - `apps/api/src/modules/epg/epg.service.ts`
+  - `apps/api/src/modules/recordings/recording.repository.ts`
+  - `apps/api/src/modules/recordings/recording.service.ts`
+  - `apps/api/src/modules/recordings/recording.routes.ts`
+  - `apps/api/src/modules/recordings/recording-runtime.ts`
+  - `apps/api/src/modules/recordings/recording-recurrence.ts`
+  - `apps/api/src/modules/recordings/recording-rule-sync.ts`
+  - `apps/api/src/modules/recordings/recording-status.ts`
+- frontend guide/recording UI:
+  - `apps/web/src/pages/channel-watch-page.tsx`
+  - `apps/web/src/pages/recordings-page.tsx`
+  - `apps/web/src/components/channels/channel-program-list.tsx`
+  - `apps/web/src/components/recordings/recording-form-state.ts`
+  - `apps/web/src/components/recordings/recording-rule-form-state.ts`
+  - `apps/web/src/components/recordings/recording-origin-badge.tsx`
+  - `apps/web/src/pages/multiview-page.tsx`
+- tests:
+  - `apps/api/src/modules/recordings/recording-recurrence.test.ts`
+  - `apps/api/src/modules/recordings/recording.routes.test.ts`
+  - `apps/api/src/modules/recordings/recording-status.test.ts`
+  - `apps/web/src/components/recordings/recording-form-state.test.ts`
+  - `apps/web/src/components/recordings/recording-rule-form-state.test.ts`
+
+### Key Decisions
+
+- Kept recurrence inside the existing single-process recording runtime instead of introducing a second scheduler subsystem, because the current repo already has a real polling runtime and this branch needed practical functionality more than architectural expansion.
+- Stored guide-program and recurring-rule snapshots on jobs in addition to optional live relations, because imported guide rows can be replaced on future XMLTV imports and history still needs to stay readable.
+- Treated recurring rules as job generators rather than a placeholder schema: rules materialize concrete recording jobs inside a bounded lookahead window so operators can inspect and cancel upcoming occurrences.
+- Blocked direct editing of generated recurring occurrences for now, because silently detaching or recreating them would be more confusing than asking operators to edit the rule or cancel the occurrence explicitly.
+- Used guide-to-recurring-rule prefills on the watch page as the practical first series-like workflow, while keeping exact title matching on rules as the current future-program linkage seam.
+
+### Verification Run
+
+- `npm run db:generate -w apps/api`
+- `npm run lint -w packages/shared`
+- `npm run lint -w apps/api`
+- `npm run lint -w apps/web`
+- `npm run test -w apps/api -- recording-recurrence.test.ts recording-status.test.ts recording.routes.test.ts`
+- `npm run test -w apps/web -- recording-form-state.test.ts recording-rule-form-state.test.ts`
+
+### Remaining Risk
+
+- The recording runtime is still single-process, so recurring-rule generation and due-job execution still need a shared lease/worker design before multi-replica deployment.
+- Recurring rules currently project jobs only inside a bounded lookahead window; there is not yet a long-horizon DVR queue or retention policy.
+- Future guide-program linkage for recurring rules currently depends on exact title matching when that match title is present; there is not yet a stronger series identifier strategy.
+- Guide-program recording assumes the selected programme has an end time; open-ended programme rows still cannot become direct programme recordings.
+
+### Exact Suggested Next Task
+
+Move recurring job generation and due-job ownership into a lease-based worker, then add stronger series matching and skip/override handling for recurring rules.
+
 ## `2026-04-03T21:35:00+03:00`
 
 ### Objective

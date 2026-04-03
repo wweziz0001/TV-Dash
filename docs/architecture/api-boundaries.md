@@ -90,7 +90,7 @@ Repositories must not:
 - `layouts`
   - per-user saved multiview walls
 - `recordings`
-  - recording job CRUD, real ffmpeg-backed capture orchestration, recording-run status, library listing, playback access tokens, and storage-backed recorded media lifecycle
+  - recording job CRUD, guide-program recording, recurring recording rules, real ffmpeg-backed capture orchestration, recording-run status, library listing, playback access tokens, and storage-backed recorded media lifecycle
 - `diagnostics`
   - runtime observability snapshots, structured log retention, playback session tracking, channel/EPG health summaries, and admin inspection endpoints
 - `streams`
@@ -135,6 +135,7 @@ Repositories must not:
   - storage-backed media delivery
 - Recording execution state belongs in dedicated recording entities such as:
   - `RecordingJob`
+  - `RecordingRule`
   - `RecordingRun`
   - `RecordingAsset`
 - Routes must not spawn ffmpeg directly; process lifecycle belongs in recording runtime helpers behind the service/repository boundary.

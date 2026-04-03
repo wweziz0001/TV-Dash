@@ -124,18 +124,20 @@ function formatDateTime(value: string) {
 }
 
 function formatDuration(durationSeconds: number) {
-  if (durationSeconds < 60) {
-    return `${durationSeconds}s`;
-  }
-
-  const hours = Math.floor(durationSeconds / 3600);
-  const minutes = Math.round((durationSeconds % 3600) / 60);
+  const normalizedDurationSeconds = Math.max(0, Math.floor(durationSeconds));
+  const hours = Math.floor(normalizedDurationSeconds / 3600);
+  const minutes = Math.floor((normalizedDurationSeconds % 3600) / 60);
+  const seconds = normalizedDurationSeconds % 60;
 
   if (hours > 0) {
-    return `${hours}h ${minutes}m`;
+    return `${hours}h ${minutes}m ${seconds}s`;
   }
 
-  return `${minutes}m`;
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+
+  return `${seconds}s`;
 }
 
 function formatFileSize(fileSizeBytes: number) {

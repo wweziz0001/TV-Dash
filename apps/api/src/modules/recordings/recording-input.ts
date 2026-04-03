@@ -9,6 +9,7 @@ import { resolveRecordingSourceDescriptor } from "./recording-quality.js";
 export interface RecordingInputConfig {
   sourceUrl: string;
   ffmpegInputArgs: string[];
+  captureMode: "DIRECT" | "PROXY";
   temporaryFilePath: string | null;
 }
 
@@ -18,7 +19,47 @@ function buildFfmpegHeaderArgument(headers: Record<string, string>) {
   return lines.length ? `${lines.join("\r\n")}\r\n` : null;
 }
 
-function buildDirectUpstreamInputArgs(channel: StreamChannelRecord) {
+function buildReconnectInputArgs(sourceUrl: string) {
+  if (!/^https?:\/\//i.test(sourceUrl)) {
+    return [];
+  }
+
+  return ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_on_network_error", "1", "-reconnect_delay_max", "2"];
+}
+
+function buildInternalRecordingSourceUrl(channelId: string, apiPort: number) {
+  return `http://127.0.0.1:${apiPort}/api/streams/channels/${channelId}/master?intent=recording`;
+}
+
+function buildInternalProxyInputConfig(channelId: string, apiPort: number): RecordingInputConfig {
+  return {
+    sourceUrl: buildInternalRecordingSourceUrl(channelId, apiPort),
+    ffmpegInputArgs: [
+      "-allowed_extensions",
+      "ALL",
+      "-allowed_segment_extensions",
+      "ALL",
+      "-extension_picky",
+      "0",
+      "-protocol_whitelist",
+      "file,http,https,tcp,tls,crypto,data",
+      "-reconnect",
+      "1",
+      "-reconnect_streamed",
+      "1",
+      "-reconnect_on_network_error",
+      "1",
+      "-reconnect_delay_max",
+      "2",
+      "-fflags",
+      "+genpts+discardcorrupt",
+    ],
+    captureMode: "PROXY",
+    temporaryFilePath: null,
+  };
+}
+
+function buildBaseInputArgs(channel: StreamChannelRecord) {
   const ffmpegInputArgs: string[] = [];
 
   if (channel.upstreamUserAgent) {
@@ -42,14 +83,6 @@ function buildDirectUpstreamInputArgs(channel: StreamChannelRecord) {
       "ALL",
       "-protocol_whitelist",
       "file,http,https,tcp,tls,crypto,data",
-      "-reconnect",
-      "1",
-      "-reconnect_streamed",
-      "1",
-      "-reconnect_on_network_error",
-      "1",
-      "-reconnect_delay_max",
-      "2",
       ...ffmpegInputArgs,
     ],
   };
@@ -65,10 +98,14 @@ async function writeRecordingPlaylistFile(channelId: string, playlistText: strin
 
 export async function buildRecordingInputConfig(
   channel: StreamChannelRecord,
-  _apiPort: number,
+  apiPort: number,
   requestedQualitySelector: string | null | undefined,
 ): Promise<RecordingInputConfig> {
-  const inputArgs = buildDirectUpstreamInputArgs(channel);
+  if (channel.playbackMode === "PROXY") {
+    return buildInternalProxyInputConfig(channel.id, apiPort);
+  }
+
+  const inputArgs = buildBaseInputArgs(channel);
   const resolvedSource = await resolveRecordingSourceDescriptor(channel, requestedQualitySelector);
 
   if (resolvedSource.singleVariantMasterPlaylist) {
@@ -77,13 +114,17 @@ export async function buildRecordingInputConfig(
     return {
       sourceUrl: temporaryFilePath,
       ffmpegInputArgs: inputArgs.ffmpegInputArgs,
+      captureMode: "DIRECT",
       temporaryFilePath,
     };
   }
 
+  const sourceUrl = resolvedSource.sourceUrl ?? channel.masterHlsUrl ?? channel.qualityVariants[0]?.playlistUrl ?? "";
+
   return {
-    sourceUrl: resolvedSource.sourceUrl ?? channel.masterHlsUrl ?? channel.qualityVariants[0]?.playlistUrl ?? "",
-    ffmpegInputArgs: inputArgs.ffmpegInputArgs,
+    sourceUrl,
+    ffmpegInputArgs: [...inputArgs.ffmpegInputArgs, ...buildReconnectInputArgs(sourceUrl)],
+    captureMode: "DIRECT",
     temporaryFilePath: null,
   };
 }

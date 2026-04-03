@@ -162,6 +162,8 @@ These areas are release-critical and should gain or maintain automated coverage 
 ### Recordings
 
 - recording job validation for immediate, timed, and scheduled modes
+- epg-program recording creation and programme linkage
+- recurring rule validation plus daily/weekly/weekday scheduling behavior
 - status transition helpers and lifecycle guard behavior
 - recording route contracts for create/list/update/cancel/stop/playback access
 - storage-path safety and playback media access behavior

@@ -4,6 +4,7 @@ import { Heart, LayoutTemplate, Maximize2, Minimize2, Search, Tv } from "lucide-
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { ChannelGuideCard } from "@/components/channels/channel-guide-card";
+import { ChannelProgramList } from "@/components/channels/channel-program-list";
 import { ChannelPickerDialog } from "@/components/channels/channel-picker-dialog";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,8 @@ export function ChannelWatchPage() {
   );
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isPlayerFullscreen, setIsPlayerFullscreen] = useState(false);
+  const [guidePaddingBeforeMinutes, setGuidePaddingBeforeMinutes] = useState(2);
+  const [guidePaddingAfterMinutes, setGuidePaddingAfterMinutes] = useState(5);
 
   const channelQuery = useQuery({
     queryKey: ["channel", slug, token],
@@ -62,6 +65,21 @@ export function ChannelWatchPage() {
       }
 
       return (await api.getNowNext([channelQuery.data.id], token)).items[0] ?? null;
+    },
+    enabled: Boolean(token && channelQuery.data?.id),
+  });
+
+  const guideWindowQuery = useQuery({
+    queryKey: ["guide-window", channelQuery.data?.id, token],
+    queryFn: async () => {
+      if (!token || !channelQuery.data) {
+        throw new Error("Missing channel context");
+      }
+
+      const startAt = new Date();
+      const endAt = new Date(startAt.getTime() + 24 * 60 * 60_000);
+
+      return (await api.getChannelGuideWindow(channelQuery.data.id, startAt.toISOString(), endAt.toISOString(), token)).guide;
     },
     enabled: Boolean(token && channelQuery.data?.id),
   });
@@ -125,6 +143,8 @@ export function ChannelWatchPage() {
             startAt: null,
             endAt: null,
             programEntryId: null,
+            paddingBeforeMinutes: 0,
+            paddingAfterMinutes: 0,
             requestedQualitySelector: effectiveRecordingQuality,
             requestedQualityLabel:
               qualities.find((option) => option.value === effectiveRecordingQuality)?.label ?? "Source default",
@@ -142,6 +162,46 @@ export function ChannelWatchPage() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to update recording");
+    },
+  });
+
+  const programRecordingMutation = useMutation({
+    mutationFn: async (programId: string) => {
+      if (!token || !channelQuery.data) {
+        throw new Error("Missing channel context");
+      }
+
+      return (
+        await api.createRecordingJob(
+          {
+            channelId: channelQuery.data.id,
+            title: null,
+            mode: "EPG_PROGRAM",
+            startAt: null,
+            endAt: null,
+            programEntryId: programId,
+            paddingBeforeMinutes: guidePaddingBeforeMinutes,
+            paddingAfterMinutes: guidePaddingAfterMinutes,
+            requestedQualitySelector: recordingQuality === "AUTO" ? selectedQuality : recordingQuality,
+            requestedQualityLabel:
+              qualities.find((option) => option.value === (recordingQuality === "AUTO" ? selectedQuality : recordingQuality))
+                ?.label ?? "Source default",
+          },
+          token,
+        )
+      ).job;
+    },
+    onSuccess: async () => {
+      toast.success("Guide programme recording created");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["recordings-watch", channelQuery.data?.id, token] }),
+        queryClient.invalidateQueries({ queryKey: ["recordings-active", token] }),
+        queryClient.invalidateQueries({ queryKey: ["recordings-library", token] }),
+        queryClient.invalidateQueries({ queryKey: ["recording-rules", token] }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to record this programme");
     },
   });
 
@@ -247,6 +307,9 @@ export function ChannelWatchPage() {
   const channel = channelQuery.data;
   const playbackUrl = getChannelPlaybackUrl(channel);
   const nowNext = nowNextQuery.data;
+  const guideProgrammes = (guideWindowQuery.data?.programmes ?? []).filter((programme) => {
+    return !nowNext?.now || programme.id !== nowNext.now.id;
+  });
 
   return (
     <div className="space-y-4">
@@ -407,6 +470,91 @@ export function ChannelWatchPage() {
               isLoading={nowNextQuery.isLoading}
               variant="detailed"
             />
+            {nowNext?.now || nowNext?.next ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {nowNext.now ? (
+                  <>
+                    <Button onClick={() => programRecordingMutation.mutate(nowNext.now!.id)} size="sm" variant="secondary">
+                      Record current program
+                    </Button>
+                    <Link
+                      to={`/recordings?workflow=rule&channelId=${encodeURIComponent(channel.id)}&programId=${encodeURIComponent(nowNext.now.id)}&programTitle=${encodeURIComponent(nowNext.now.title)}&startAt=${encodeURIComponent(nowNext.now.start)}&endAt=${encodeURIComponent(nowNext.now.stop ?? nowNext.now.start)}`}
+                    >
+                      <Button size="sm" variant="ghost">
+                        Repeat current program
+                      </Button>
+                    </Link>
+                  </>
+                ) : null}
+                {nowNext.next ? (
+                  <>
+                    <Button onClick={() => programRecordingMutation.mutate(nowNext.next!.id)} size="sm" variant="secondary">
+                      Record next program
+                    </Button>
+                    <Link
+                      to={`/recordings?workflow=rule&channelId=${encodeURIComponent(channel.id)}&programId=${encodeURIComponent(nowNext.next.id)}&programTitle=${encodeURIComponent(nowNext.next.title)}&startAt=${encodeURIComponent(nowNext.next.start)}&endAt=${encodeURIComponent(nowNext.next.stop ?? nowNext.next.start)}`}
+                    >
+                      <Button size="sm" variant="ghost">
+                        Repeat next program
+                      </Button>
+                    </Link>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <div>
+                <label className="mb-1.5 block text-[12px] text-slate-400" htmlFor="guide-padding-before">
+                  Start early
+                </label>
+                <Select
+                  id="guide-padding-before"
+                  onChange={(event) => setGuidePaddingBeforeMinutes(Number(event.target.value))}
+                  uiSize="sm"
+                  value={guidePaddingBeforeMinutes}
+                >
+                  {[0, 1, 2, 5, 10, 15].map((minutes) => (
+                    <option key={minutes} value={minutes}>
+                      {minutes === 0 ? "No padding" : `${minutes} min`}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-[12px] text-slate-400" htmlFor="guide-padding-after">
+                  End late
+                </label>
+                <Select
+                  id="guide-padding-after"
+                  onChange={(event) => setGuidePaddingAfterMinutes(Number(event.target.value))}
+                  uiSize="sm"
+                  value={guidePaddingAfterMinutes}
+                >
+                  {[0, 1, 2, 5, 10, 15].map((minutes) => (
+                    <option key={minutes} value={minutes}>
+                      {minutes === 0 ? "No padding" : `${minutes} min`}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-950/80 px-3 py-2.5 text-[12px] text-slate-400">
+                Guide recordings use the real programme window and apply these padding values before the job is scheduled.
+              </div>
+            </div>
+          </Panel>
+
+          <Panel density="compact">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Upcoming guide programmes</p>
+            <div className="mt-3">
+              <ChannelProgramList
+                buildRuleHref={(programme) =>
+                  `/recordings?workflow=rule&channelId=${encodeURIComponent(channel.id)}&programId=${encodeURIComponent(programme.id)}&programTitle=${encodeURIComponent(programme.title)}&startAt=${encodeURIComponent(programme.start)}&endAt=${encodeURIComponent(programme.stop ?? programme.start)}`
+                }
+                isLoading={guideWindowQuery.isLoading}
+                onRecordProgram={(programme) => programRecordingMutation.mutate(programme.id)}
+                programmes={guideProgrammes}
+              />
+            </div>
           </Panel>
 
           <Panel density="compact">

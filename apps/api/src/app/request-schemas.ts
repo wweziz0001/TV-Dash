@@ -24,6 +24,10 @@ export const streamProxyQuerySchema = z.object({
   token: z.string().min(20),
 });
 
+export const streamMasterQuerySchema = z.object({
+  intent: z.enum(["playback", "recording"]).optional(),
+});
+
 export const epgNowNextQuerySchema = z.object({
   channelIds: z
     .string()
@@ -73,6 +77,11 @@ export const recordingJobsQuerySchema = z.object({
       z.array(z.enum(["PENDING", "SCHEDULED", "RECORDING", "COMPLETED", "FAILED", "CANCELED"])).max(6),
     ),
   channelId: z.string().uuid().optional(),
+});
+
+export const recordingRulesQuerySchema = z.object({
+  channelId: z.string().uuid().optional(),
+  isActive: z.enum(["true", "false"]).optional(),
 });
 
 export const recordingPlaybackQuerySchema = z.object({

@@ -1,4 +1,10 @@
-import type { RecordingJobStatus, RecordingMode, RecordingRunStatus } from "@prisma/client";
+import type {
+  RecordingJobStatus,
+  RecordingMode,
+  RecordingRecurrenceType,
+  RecordingRunStatus,
+  RecordingWeekday,
+} from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 
@@ -29,6 +35,36 @@ const recordingAssetSelect = {
   updatedAt: true,
 } satisfies Prisma.RecordingAssetSelect;
 
+const recordingProgramSummarySelect = {
+  id: true,
+  sourceKind: true,
+  title: true,
+  startAt: true,
+  endAt: true,
+} satisfies Prisma.ProgramEntrySelect;
+
+const recordingRuleSummarySelect = {
+  id: true,
+  channelId: true,
+  titleTemplate: true,
+  recurrenceType: true,
+  weekdays: true,
+  startsAt: true,
+  durationMinutes: true,
+  timeZone: true,
+  paddingBeforeMinutes: true,
+  paddingAfterMinutes: true,
+  requestedQualitySelector: true,
+  requestedQualityLabel: true,
+  originProgramTitleSnapshot: true,
+  originProgramStartAt: true,
+  originProgramEndAt: true,
+  matchProgramTitle: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.RecordingRuleSelect;
+
 const recordingRunSelect = {
   id: true,
   recordingJobId: true,
@@ -50,6 +86,12 @@ const recordingRunSelect = {
 } satisfies Prisma.RecordingRunSelect;
 
 export const recordingJobInclude = {
+  programEntry: {
+    select: recordingProgramSummarySelect,
+  },
+  recordingRule: {
+    select: recordingRuleSummarySelect,
+  },
   channel: {
     select: recordingChannelSummarySelect,
   },
@@ -72,16 +114,40 @@ export const recordingJobInclude = {
   },
 } satisfies Prisma.RecordingJobInclude;
 
+const recordingRuleInclude = {
+  channel: {
+    select: recordingChannelSummarySelect,
+  },
+  createdByUser: {
+    select: {
+      id: true,
+      username: true,
+      role: true,
+    },
+  },
+  originProgramEntry: {
+    select: recordingProgramSummarySelect,
+  },
+} satisfies Prisma.RecordingRuleInclude;
+
 const recordingRuntimeJobSelect = {
   id: true,
   channelId: true,
   channelNameSnapshot: true,
   channelSlugSnapshot: true,
+  programEntryId: true,
+  programTitleSnapshot: true,
+  programStartAt: true,
+  programEndAt: true,
+  recordingRuleId: true,
+  recordingRuleNameSnapshot: true,
   title: true,
   requestedQualitySelector: true,
   requestedQualityLabel: true,
   mode: true,
   status: true,
+  paddingBeforeMinutes: true,
+  paddingAfterMinutes: true,
   startAt: true,
   endAt: true,
   actualStartAt: true,
@@ -122,6 +188,7 @@ const recordingPlaybackJobSelect = {
 export type RecordingJobRecord = Prisma.RecordingJobGetPayload<{ include: typeof recordingJobInclude }>;
 export type RecordingRuntimeJobRecord = Prisma.RecordingJobGetPayload<{ select: typeof recordingRuntimeJobSelect }>;
 export type RecordingPlaybackJobRecord = Prisma.RecordingJobGetPayload<{ select: typeof recordingPlaybackJobSelect }>;
+export type RecordingRuleRecord = Prisma.RecordingRuleGetPayload<{ include: typeof recordingRuleInclude }>;
 
 interface RecordingJobListFilters {
   userId: string;
@@ -192,15 +259,22 @@ export function createRecordingJob(data: {
   channelId: string;
   channelNameSnapshot: string;
   channelSlugSnapshot: string;
+  programEntryId: string | null;
+  programTitleSnapshot: string | null;
+  programStartAt: Date | null;
+  programEndAt: Date | null;
+  recordingRuleId: string | null;
+  recordingRuleNameSnapshot: string | null;
   createdByUserId: string;
   title: string;
   requestedQualitySelector: string | null;
   requestedQualityLabel: string | null;
   mode: RecordingMode;
   status: RecordingJobStatus;
+  paddingBeforeMinutes: number;
+  paddingAfterMinutes: number;
   startAt: Date;
   endAt: Date | null;
-  programEntryId: string | null;
 }) {
   return prisma.recordingJob.create({
     data,
@@ -215,6 +289,8 @@ export function updateRecordingJobSchedule(
     channelNameSnapshot: string;
     channelSlugSnapshot: string;
     title: string;
+    paddingBeforeMinutes: number;
+    paddingAfterMinutes: number;
     requestedQualitySelector: string | null;
     requestedQualityLabel: string | null;
     startAt: Date;
@@ -285,6 +361,185 @@ export function listRunningRecordingJobs() {
     select: {
       id: true,
       endAt: true,
+    },
+  });
+}
+
+interface RecordingRuleListFilters {
+  userId: string;
+  includeAllUsers?: boolean;
+  channelId?: string;
+  isActive?: boolean;
+}
+
+function buildRecordingRuleWhere(filters: RecordingRuleListFilters): Prisma.RecordingRuleWhereInput {
+  const where: Prisma.RecordingRuleWhereInput = {};
+
+  if (!filters.includeAllUsers) {
+    where.createdByUserId = filters.userId;
+  }
+
+  if (filters.channelId) {
+    where.channelId = filters.channelId;
+  }
+
+  if (typeof filters.isActive === "boolean") {
+    where.isActive = filters.isActive;
+  }
+
+  return where;
+}
+
+export function listRecordingRules(filters: RecordingRuleListFilters) {
+  return prisma.recordingRule.findMany({
+    where: buildRecordingRuleWhere(filters),
+    orderBy: [{ isActive: "desc" }, { startsAt: "asc" }, { createdAt: "asc" }],
+    include: recordingRuleInclude,
+  });
+}
+
+export function findRecordingRuleById(id: string) {
+  return prisma.recordingRule.findUnique({
+    where: { id },
+    include: recordingRuleInclude,
+  });
+}
+
+export function createRecordingRule(data: {
+  channelId: string;
+  createdByUserId: string;
+  titleTemplate: string;
+  recurrenceType: RecordingRecurrenceType;
+  weekdays: RecordingWeekday[];
+  startsAt: Date;
+  durationMinutes: number;
+  timeZone: string;
+  paddingBeforeMinutes: number;
+  paddingAfterMinutes: number;
+  requestedQualitySelector: string | null;
+  requestedQualityLabel: string | null;
+  originProgramEntryId: string | null;
+  originProgramTitleSnapshot: string | null;
+  originProgramStartAt: Date | null;
+  originProgramEndAt: Date | null;
+  matchProgramTitle: string | null;
+  isActive: boolean;
+}) {
+  return prisma.recordingRule.create({
+    data,
+    include: recordingRuleInclude,
+  });
+}
+
+export function updateRecordingRule(
+  id: string,
+  data: {
+    channelId: string;
+    titleTemplate: string;
+    recurrenceType: RecordingRecurrenceType;
+    weekdays: RecordingWeekday[];
+    startsAt: Date;
+    durationMinutes: number;
+    timeZone: string;
+    paddingBeforeMinutes: number;
+    paddingAfterMinutes: number;
+    requestedQualitySelector: string | null;
+    requestedQualityLabel: string | null;
+    originProgramEntryId: string | null;
+    originProgramTitleSnapshot: string | null;
+    originProgramStartAt: Date | null;
+    originProgramEndAt: Date | null;
+    matchProgramTitle: string | null;
+    isActive: boolean;
+  },
+) {
+  return prisma.recordingRule.update({
+    where: { id },
+    data,
+    include: recordingRuleInclude,
+  });
+}
+
+export function deleteRecordingRule(id: string) {
+  return prisma.recordingRule.delete({
+    where: { id },
+    include: recordingRuleInclude,
+  });
+}
+
+export function listActiveRecordingRules() {
+  return prisma.recordingRule.findMany({
+    where: {
+      isActive: true,
+    },
+    orderBy: [{ startsAt: "asc" }, { createdAt: "asc" }],
+    include: recordingRuleInclude,
+  });
+}
+
+export function listRecordingJobsForRulesInWindow(recordingRuleIds: string[], startAt: Date, endAt: Date) {
+  if (recordingRuleIds.length === 0) {
+    return Promise.resolve([] as RecordingJobRecord[]);
+  }
+
+  return prisma.recordingJob.findMany({
+    where: {
+      recordingRuleId: {
+        in: recordingRuleIds,
+      },
+      startAt: {
+        gte: startAt,
+        lt: endAt,
+      },
+    },
+    include: recordingJobInclude,
+  });
+}
+
+export function createManyRecordingJobs(
+  data: Array<{
+    channelId: string;
+    channelNameSnapshot: string;
+    channelSlugSnapshot: string;
+    programEntryId: string | null;
+    programTitleSnapshot: string | null;
+    programStartAt: Date | null;
+    programEndAt: Date | null;
+    recordingRuleId: string | null;
+    recordingRuleNameSnapshot: string | null;
+    createdByUserId: string;
+    title: string;
+    requestedQualitySelector: string | null;
+    requestedQualityLabel: string | null;
+    mode: RecordingMode;
+    status: RecordingJobStatus;
+    paddingBeforeMinutes: number;
+    paddingAfterMinutes: number;
+    startAt: Date;
+    endAt: Date | null;
+  }>,
+) {
+  if (data.length === 0) {
+    return Promise.resolve({ count: 0 });
+  }
+
+  return prisma.recordingJob.createMany({
+    data,
+    skipDuplicates: true,
+  });
+}
+
+export function deleteUpcomingGeneratedJobsForRule(recordingRuleId: string, now: Date) {
+  return prisma.recordingJob.deleteMany({
+    where: {
+      recordingRuleId,
+      status: {
+        in: ["PENDING", "SCHEDULED"],
+      },
+      startAt: {
+        gte: now,
+      },
+      actualStartAt: null,
     },
   });
 }

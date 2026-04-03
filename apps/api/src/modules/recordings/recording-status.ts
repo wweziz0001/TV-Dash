@@ -5,7 +5,8 @@ const RECORDING_MODE_LABELS: Record<RecordingMode, string> = {
   IMMEDIATE: "Immediate recording",
   TIMED: "Timed recording",
   SCHEDULED: "Scheduled recording",
-  EPG: "Program recording",
+  EPG_PROGRAM: "Program recording",
+  RECURRING_RULE: "Recurring recording",
 };
 
 export function resolveInitialRecordingJobStatus(payload: RecordingJobInput, now = new Date()): RecordingJobStatus {

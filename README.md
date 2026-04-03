@@ -73,11 +73,6 @@ TvDash currently supports:
 - 🏗️ Structured project architecture and engineering standards.
 - 🧪 Test coverage for critical flows.
 - 📚 Handoff, documentation, and development governance.
-
-## Planned Features
-
-TvDash will support soon:
-
 - 📅 Full EPG / TV guide support.
 - 📝 Manual program schedule entry per channel.
 - 🌐 Import program schedules from external sources.
@@ -87,6 +82,14 @@ TvDash will support soon:
 - 🗓️ Scheduled recording.
 - 🎞️ Recorded media library.
 - 📂 Recorded content browsing and playback.
+
+## Planned Features
+
+TvDash will support soon:
+
+- 🎞️ shared channel restream / edge caching for local viewers.
+- ▶️ Live Timeshift / DVR Buffer.
+- 📺 Player Controls Pip and Cross browser media ux.
 - 🔐 Security, access control, and admin hardening.
 - 👤 Role-based permissions.
 - 🧾 Audit trail for admin actions.

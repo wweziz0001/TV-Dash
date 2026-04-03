@@ -1,7 +1,7 @@
 import { streamTestInputSchema } from "@tv-dash/shared";
 import type { FastifyPluginAsync } from "fastify";
 import { requirePermission } from "../../app/auth-guards.js";
-import { channelIdParamSchema, streamProxyQuerySchema } from "../../app/request-schemas.js";
+import { channelIdParamSchema, streamMasterQuerySchema, streamProxyQuerySchema } from "../../app/request-schemas.js";
 import { parseWithSchema } from "../../app/validation.js";
 import { classifyStreamFailure } from "./stream-diagnostics.js";
 import { getChannelProxyAssetResponse, getChannelProxyMasterResponse, inspectStream } from "./stream.service.js";
@@ -13,8 +13,15 @@ export const streamRoutes: FastifyPluginAsync = async (fastify) => {
       return;
     }
 
+    const query = parseWithSchema(streamMasterQuerySchema, request.query, reply);
+    if (!query) {
+      return;
+    }
+
     try {
-      const proxied = await getChannelProxyMasterResponse(params.channelId);
+      const proxied = await getChannelProxyMasterResponse(params.channelId, {
+        intent: query.intent,
+      });
 
       if (!proxied) {
         return reply.status(404).send({ message: "Channel not found" });

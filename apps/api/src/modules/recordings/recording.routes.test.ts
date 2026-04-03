@@ -38,6 +38,7 @@ const mockPrisma = {
   },
   programEntry: {
     findMany: vi.fn(),
+    findUnique: vi.fn(),
     findFirst: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -58,6 +59,15 @@ const mockPrisma = {
     delete: vi.fn(),
   },
   recordingJob: {
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+    create: vi.fn(),
+    createMany: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+  },
+  recordingRule: {
     findMany: vi.fn(),
     findUnique: vi.fn(),
     create: vi.fn(),
@@ -124,10 +134,17 @@ function buildRecordingJobRecord(overrides: Record<string, unknown> = {}) {
     channelNameSnapshot: "TV Dash Live",
     channelSlugSnapshot: "tv-dash-live",
     programEntryId: null,
+    programTitleSnapshot: null,
+    programStartAt: null,
+    programEndAt: null,
+    recordingRuleId: null,
+    recordingRuleNameSnapshot: null,
     createdByUserId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
     title: "TV Dash Live · Scheduled recording",
     mode: "SCHEDULED",
     status: "SCHEDULED",
+    paddingBeforeMinutes: 0,
+    paddingAfterMinutes: 0,
     startAt: new Date("2026-04-04T12:00:00.000Z"),
     endAt: new Date("2026-04-04T13:00:00.000Z"),
     actualStartAt: null,
@@ -136,6 +153,8 @@ function buildRecordingJobRecord(overrides: Record<string, unknown> = {}) {
     cancellationReason: null,
     createdAt: new Date("2026-04-03T10:00:00.000Z"),
     updatedAt: new Date("2026-04-03T10:00:00.000Z"),
+    programEntry: null,
+    recordingRule: null,
     channel: {
       id: "22222222-2222-2222-2222-222222222222",
       name: "TV Dash Live",
@@ -149,6 +168,45 @@ function buildRecordingJobRecord(overrides: Record<string, unknown> = {}) {
       username: "admin",
       role: "ADMIN",
     },
+    ...overrides,
+  };
+}
+
+function buildRecordingRuleRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "rule-1",
+    channelId: "22222222-2222-2222-2222-222222222222",
+    createdByUserId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    titleTemplate: "Morning News",
+    recurrenceType: "WEEKLY",
+    weekdays: ["MONDAY"],
+    startsAt: new Date("2026-04-06T08:00:00.000Z"),
+    durationMinutes: 60,
+    timeZone: "UTC",
+    paddingBeforeMinutes: 2,
+    paddingAfterMinutes: 5,
+    requestedQualitySelector: "AUTO",
+    requestedQualityLabel: "Source default",
+    originProgramEntryId: null,
+    originProgramTitleSnapshot: null,
+    originProgramStartAt: null,
+    originProgramEndAt: null,
+    matchProgramTitle: "Morning News",
+    isActive: true,
+    createdAt: new Date("2026-04-03T10:00:00.000Z"),
+    updatedAt: new Date("2026-04-03T10:00:00.000Z"),
+    channel: {
+      id: "22222222-2222-2222-2222-222222222222",
+      name: "TV Dash Live",
+      slug: "tv-dash-live",
+      isActive: true,
+    },
+    createdByUser: {
+      id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      username: "admin",
+      role: "ADMIN",
+    },
+    originProgramEntry: null,
     ...overrides,
   };
 }
@@ -183,6 +241,10 @@ describe("recordingRoutes", () => {
       ),
     );
     mockPrisma.channel.findUnique.mockResolvedValue(buildChannelRecord());
+    mockPrisma.programEntry.findUnique.mockResolvedValue(null);
+    mockPrisma.recordingJob.createMany.mockResolvedValue({ count: 0 });
+    mockPrisma.recordingJob.deleteMany.mockResolvedValue({ count: 0 });
+    mockPrisma.recordingRule.findMany.mockResolvedValue([]);
     server = await buildServer();
   });
 
@@ -211,6 +273,8 @@ describe("recordingRoutes", () => {
         startAt: null,
         endAt: null,
         programEntryId: null,
+        paddingBeforeMinutes: 0,
+        paddingAfterMinutes: 0,
       },
     });
 
@@ -218,6 +282,77 @@ describe("recordingRoutes", () => {
     expect(mockPrisma.recordingJob.create).toHaveBeenCalled();
     expect(mockPokeRecordingRuntime).toHaveBeenCalled();
     expect(mockPrisma.auditEvent.create).toHaveBeenCalled();
+  });
+
+  it("creates an EPG-linked recording job from a guide programme", async () => {
+    mockPrisma.programEntry.findUnique.mockResolvedValue({
+      id: "44444444-4444-4444-4444-444444444444",
+      sourceKind: "IMPORTED",
+      channelId: null,
+      title: "Morning News",
+      subtitle: null,
+      description: null,
+      category: "News",
+      imageUrl: null,
+      startAt: new Date("2026-04-04T12:00:00.000Z"),
+      endAt: new Date("2026-04-04T13:00:00.000Z"),
+      channel: null,
+      sourceChannel: {
+        id: "source-channel-1",
+        externalId: "news",
+        source: {
+          id: "source-1",
+          name: "Guide Feed",
+          slug: "guide-feed",
+          sourceType: "XMLTV_URL",
+          isActive: true,
+        },
+      },
+    });
+    mockPrisma.recordingJob.create.mockResolvedValue(
+      buildRecordingJobRecord({
+        mode: "EPG_PROGRAM",
+        title: "Morning News",
+        status: "SCHEDULED",
+        programEntryId: "44444444-4444-4444-4444-444444444444",
+        programTitleSnapshot: "Morning News",
+        programStartAt: new Date("2026-04-04T12:00:00.000Z"),
+        programEndAt: new Date("2026-04-04T13:00:00.000Z"),
+        paddingBeforeMinutes: 2,
+        paddingAfterMinutes: 5,
+        startAt: new Date("2026-04-04T11:58:00.000Z"),
+        endAt: new Date("2026-04-04T13:05:00.000Z"),
+      }),
+    );
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/recordings",
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
+      payload: {
+        channelId: "22222222-2222-2222-2222-222222222222",
+        title: "",
+        mode: "EPG_PROGRAM",
+        startAt: null,
+        endAt: null,
+        programEntryId: "44444444-4444-4444-4444-444444444444",
+        paddingBeforeMinutes: 2,
+        paddingAfterMinutes: 5,
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(mockPrisma.recordingJob.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          mode: "EPG_PROGRAM",
+          programEntryId: "44444444-4444-4444-4444-444444444444",
+          programTitleSnapshot: "Morning News",
+          paddingBeforeMinutes: 2,
+          paddingAfterMinutes: 5,
+        }),
+      }),
+    );
   });
 
   it("lists recording jobs using the requested status filter", async () => {
@@ -250,6 +385,46 @@ describe("recordingRoutes", () => {
         },
       ],
     });
+  });
+
+  it("creates a recurring recording rule and generates upcoming jobs", async () => {
+    mockPrisma.recordingRule.create.mockResolvedValue(
+      buildRecordingRuleRecord({
+        matchProgramTitle: null,
+      }),
+    );
+    mockPrisma.recordingRule.findMany.mockResolvedValue([
+      buildRecordingRuleRecord({
+        matchProgramTitle: null,
+      }),
+    ]);
+    mockPrisma.recordingJob.findMany.mockResolvedValue([]);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/recording-rules",
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
+      payload: {
+        channelId: "22222222-2222-2222-2222-222222222222",
+        titleTemplate: "Morning News",
+        recurrenceType: "WEEKLY",
+        weekdays: ["MONDAY"],
+        startsAt: "2026-04-06T08:00:00.000Z",
+        durationMinutes: 60,
+        timeZone: "UTC",
+        originProgramEntryId: null,
+        matchProgramTitle: null,
+        paddingBeforeMinutes: 2,
+        paddingAfterMinutes: 5,
+        requestedQualitySelector: "AUTO",
+        requestedQualityLabel: "Source default",
+        isActive: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(mockPrisma.recordingRule.create).toHaveBeenCalled();
+    expect(mockPrisma.recordingJob.createMany).toHaveBeenCalled();
   });
 
   it("cancels a scheduled recording before it starts", async () => {
