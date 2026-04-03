@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { env } from "../../config/env.js";
 import { writeStructuredLog } from "../../app/structured-log.js";
+import { getChannelStreamDetails } from "../channels/channel.service.js";
 import {
   claimRecordingJobStart,
   failRecordingJobBeforeStart,
@@ -20,6 +21,7 @@ import {
   readRecordingFileStats,
   resolveRecordingAbsolutePath,
 } from "./recording-storage.js";
+import { buildRecordingInputConfig, type RecordingInputConfig } from "./recording-input.js";
 
 interface StopRecordingOptions {
   reason: string;
@@ -51,18 +53,15 @@ let runtimeStarted = false;
 let runtimeInterval: NodeJS.Timeout | null = null;
 let runtimeTickPromise: Promise<void> | null = null;
 
-function buildInternalRecordingSourceUrl(channelId: string) {
-  return `http://127.0.0.1:${env.API_PORT}/api/streams/channels/${channelId}/master`;
-}
-
-function buildFfmpegArgs(inputUrl: string, outputPath: string) {
+function buildFfmpegArgs(inputConfig: RecordingInputConfig, outputPath: string) {
   return [
     "-hide_banner",
     "-loglevel",
     "warning",
     "-y",
+    ...inputConfig.ffmpegInputArgs,
     "-i",
-    inputUrl,
+    inputConfig.sourceUrl,
     "-map",
     "0",
     "-dn",
@@ -247,8 +246,28 @@ async function startRecordingJobExecution(recordingJobId: string) {
     return;
   }
 
-  const sourceUrl = buildInternalRecordingSourceUrl(claimed.job.channelId ?? pendingJob.channelId);
-  const childProcess = spawn(env.RECORDINGS_FFMPEG_PATH, buildFfmpegArgs(sourceUrl, absoluteOutputPath), {
+  const streamDetails = await getChannelStreamDetails(claimed.job.channelId ?? pendingJob.channelId);
+
+  if (!streamDetails) {
+    await finalizeRecordingRun({
+      recordingJobId: claimed.job.id,
+      recordingRunId: claimed.run.id,
+      runStatus: "FAILED",
+      jobStatus: "FAILED",
+      endedAt: new Date(),
+      exitCode: null,
+      exitSignal: null,
+      failureReason: "Recording channel is no longer available",
+      stderrTail: null,
+      fileSizeBytes: null,
+      durationSeconds: 0,
+      createAsset: false,
+    });
+    return;
+  }
+
+  const inputConfig = buildRecordingInputConfig(streamDetails, env.API_PORT);
+  const childProcess = spawn(env.RECORDINGS_FFMPEG_PATH, buildFfmpegArgs(inputConfig, absoluteOutputPath), {
     stdio: ["pipe", "ignore", "pipe"],
   });
   const startedAt = new Date();
