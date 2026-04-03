@@ -6,11 +6,14 @@ const xmltv = `
     <channel id="news.one">
       <display-name>News One</display-name>
       <display-name>News 1 HD</display-name>
+      <icon src="https://example.com/news.png" />
     </channel>
-    <programme channel="news.one" start="20260402090000 +0000" stop="20260402100000 +0000">
+    <programme id="programme-1" channel="news.one" start="20260402090000 +0000" stop="20260402100000 +0000">
       <title>Morning Brief</title>
       <subTitle>Headlines</subTitle>
       <desc>Top stories.</desc>
+      <category>News</category>
+      <icon src="https://example.com/morning-brief.png" />
     </programme>
     <programme channel="news.one" start="20260402100000 +0000" stop="20260402110000 +0000">
       <title>Market Watch</title>
@@ -33,15 +36,19 @@ describe("parseXmltvDocument", () => {
       {
         id: "news.one",
         displayNames: ["News One", "News 1 HD"],
+        iconUrl: "https://example.com/news.png",
       },
     ]);
 
     expect(document.programmes).toHaveLength(2);
     expect(document.programmes[0]).toMatchObject({
+      externalId: "programme-1",
       channelId: "news.one",
       title: "Morning Brief",
       subtitle: "Headlines",
       description: "Top stories.",
+      category: "News",
+      imageUrl: "https://example.com/morning-brief.png",
     });
   });
 });

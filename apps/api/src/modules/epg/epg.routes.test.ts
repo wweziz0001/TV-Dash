@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockPrisma = {
+  $transaction: vi.fn(),
   user: {
     findUnique: vi.fn(),
   },
@@ -23,6 +24,24 @@ const mockPrisma = {
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+  },
+  epgSourceChannel: {
+    findMany: vi.fn(),
+    updateMany: vi.fn(),
+    upsert: vi.fn(),
+  },
+  epgChannelMapping: {
+    deleteMany: vi.fn(),
+    create: vi.fn(),
+  },
+  programEntry: {
+    findMany: vi.fn(),
+    findFirst: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+    createMany: vi.fn(),
   },
   favorite: {
     findMany: vi.fn(),
@@ -49,25 +68,41 @@ vi.mock("../../db/prisma.js", () => ({
 const { buildServer } = await import("../../app/build-server.js");
 const { createAuthHeaders, createPrismaError } = await import("../../app/test-support.js");
 
-const xmltv = `
-  <tv>
-    <channel id="news-desk">
-      <display-name>News Desk</display-name>
-    </channel>
-    <programme channel="news-desk" start="20260402090000 +0000" stop="20260402100000 +0000">
-      <title>Morning Brief</title>
-    </programme>
-    <programme channel="news-desk" start="20260402100000 +0000" stop="20260402110000 +0000">
-      <title>Market Watch</title>
-    </programme>
-  </tv>
-`;
+function buildSourceRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "11111111-1111-1111-1111-111111111111",
+    name: "Ops XMLTV",
+    slug: "ops-xmltv",
+    sourceType: "XMLTV_URL",
+    url: "https://example.com/guide.xml",
+    uploadedFileName: null,
+    isActive: true,
+    refreshIntervalMinutes: 360,
+    requestUserAgent: null,
+    requestReferrer: null,
+    requestHeaders: null,
+    lastImportStartedAt: null,
+    lastImportedAt: null,
+    lastImportStatus: "NEVER_IMPORTED",
+    lastImportMessage: null,
+    lastImportChannelCount: null,
+    lastImportProgramCount: null,
+    sourceChannels: [],
+    createdAt: new Date("2026-04-02T00:00:00.000Z"),
+    updatedAt: new Date("2026-04-02T00:00:00.000Z"),
+    _count: {
+      importedPrograms: 0,
+    },
+    ...overrides,
+  };
+}
 
 describe("epgRoutes", () => {
   let server: Awaited<ReturnType<typeof buildServer>>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockPrisma.$transaction.mockImplementation(async (callback: (tx: typeof mockPrisma) => unknown) => callback(mockPrisma));
     mockPrisma.user.findUnique.mockImplementation(({ where }: { where?: { id?: string } }) =>
       Promise.resolve(
         where?.id === "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -99,24 +134,8 @@ describe("epgRoutes", () => {
     vi.unstubAllGlobals();
   });
 
-  it("creates an EPG source for admins", async () => {
-    mockPrisma.epgSource.create.mockResolvedValue({
-      id: "11111111-1111-1111-1111-111111111111",
-      name: "Ops XMLTV",
-      slug: "ops-xmltv",
-      sourceType: "XMLTV",
-      url: "https://example.com/guide.xml",
-      isActive: true,
-      refreshIntervalMinutes: 360,
-      requestUserAgent: null,
-      requestReferrer: null,
-      requestHeaders: null,
-      createdAt: "2026-04-02T00:00:00.000Z",
-      updatedAt: "2026-04-02T00:00:00.000Z",
-      _count: {
-        channels: 0,
-      },
-    });
+  it("creates an XMLTV URL source for admins", async () => {
+    mockPrisma.epgSource.create.mockResolvedValue(buildSourceRecord());
 
     const response = await server.inject({
       method: "POST",
@@ -125,7 +144,7 @@ describe("epgRoutes", () => {
       payload: {
         name: "Ops XMLTV",
         slug: "ops-xmltv",
-        sourceType: "XMLTV",
+        sourceType: "XMLTV_URL",
         url: "https://example.com/guide.xml",
         isActive: true,
         refreshIntervalMinutes: 360,
@@ -154,7 +173,7 @@ describe("epgRoutes", () => {
       payload: {
         name: "Ops XMLTV",
         slug: "ops-xmltv",
-        sourceType: "XMLTV",
+        sourceType: "XMLTV_URL",
         url: "https://example.com/guide.xml",
         isActive: true,
         refreshIntervalMinutes: 360,
@@ -178,7 +197,7 @@ describe("epgRoutes", () => {
       payload: {
         name: "Ops XMLTV",
         slug: "ops-xmltv",
-        sourceType: "XMLTV",
+        sourceType: "XMLTV_URL",
         url: "https://example.com/guide.xml",
         isActive: true,
         refreshIntervalMinutes: 360,
@@ -190,32 +209,30 @@ describe("epgRoutes", () => {
     expect(response.json()).toEqual({ message: "EPG source slug already exists" });
   });
 
-  it("previews XMLTV channels for a configured source", async () => {
-    mockPrisma.epgSource.findUnique.mockResolvedValue({
-      id: "11111111-1111-1111-1111-111111111111",
-      name: "Ops XMLTV",
-      slug: "ops-xmltv",
-      sourceType: "XMLTV",
-      url: "https://example.com/guide.xml",
-      isActive: true,
-      refreshIntervalMinutes: 360,
-      requestUserAgent: null,
-      requestReferrer: null,
-      requestHeaders: null,
-      createdAt: new Date("2026-04-02T00:00:00.000Z"),
-      updatedAt: new Date("2026-04-02T00:00:00.000Z"),
-      _count: {
-        channels: 1,
+  it("lists imported source channels for mapping", async () => {
+    mockPrisma.epgSource.findUnique.mockResolvedValue(buildSourceRecord());
+    mockPrisma.epgSourceChannel.findMany.mockResolvedValue([
+      {
+        id: "source-channel-1",
+        sourceId: "11111111-1111-1111-1111-111111111111",
+        externalId: "news-desk",
+        displayName: "News Desk",
+        displayNames: ["News Desk"],
+        iconUrl: null,
+        isAvailable: true,
+        lastSeenAt: new Date("2026-04-02T09:00:00.000Z"),
+        createdAt: new Date("2026-04-02T09:00:00.000Z"),
+        updatedAt: new Date("2026-04-02T09:00:00.000Z"),
+        source: {
+          id: "11111111-1111-1111-1111-111111111111",
+          name: "Ops XMLTV",
+          slug: "ops-xmltv",
+          sourceType: "XMLTV_URL",
+          isActive: true,
+        },
+        mapping: null,
       },
-    });
-
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        text: vi.fn().mockResolvedValue(xmltv),
-      }),
-    );
+    ]);
 
     const response = await server.inject({
       method: "GET",
@@ -227,14 +244,46 @@ describe("epgRoutes", () => {
     expect(response.json()).toMatchObject({
       channels: [
         {
-          id: "news-desk",
+          externalId: "news-desk",
           displayNames: ["News Desk"],
         },
       ],
     });
   });
 
-  it("returns now/next programme data for linked channels", async () => {
+  it("rejects overlapping manual programme entries", async () => {
+    mockPrisma.programEntry.findMany.mockResolvedValue([
+      {
+        id: "manual-1",
+        channelId: "22222222-2222-2222-2222-222222222222",
+        startAt: new Date("2026-04-02T09:00:00.000Z"),
+        endAt: new Date("2026-04-02T10:00:00.000Z"),
+      },
+    ]);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/epg/programs/manual",
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
+      payload: {
+        channelId: "22222222-2222-2222-2222-222222222222",
+        title: "Manual bulletin",
+        subtitle: null,
+        startAt: "2026-04-02T09:30:00.000Z",
+        endAt: "2026-04-02T10:15:00.000Z",
+        description: null,
+        category: null,
+        imageUrl: null,
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({
+      message: "Manual programme overlaps an existing manual entry on this channel",
+    });
+  });
+
+  it("returns now/next programme data for mapped channels", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-02T09:30:00.000Z"));
 
@@ -242,29 +291,54 @@ describe("epgRoutes", () => {
       {
         id: "22222222-2222-2222-2222-222222222222",
         name: "News Desk",
-        epgChannelId: "news-desk",
-        epgSource: {
-          id: "11111111-1111-1111-1111-111111111111",
-          name: "Ops XMLTV",
-          slug: "ops-xmltv",
-          sourceType: "XMLTV",
-          url: "https://example.com/guide.xml",
-          isActive: true,
-          refreshIntervalMinutes: 360,
-          requestUserAgent: null,
-          requestReferrer: null,
-          requestHeaders: null,
+        epgMapping: {
+          sourceChannel: {
+            id: "source-channel-1",
+            externalId: "news-desk",
+            source: {
+              id: "11111111-1111-1111-1111-111111111111",
+              name: "Ops XMLTV",
+              slug: "ops-xmltv",
+              sourceType: "XMLTV_URL",
+              url: "https://example.com/guide.xml",
+              isActive: true,
+              refreshIntervalMinutes: 360,
+              requestUserAgent: null,
+              requestReferrer: null,
+              requestHeaders: null,
+            },
+          },
         },
       },
     ]);
-
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        text: vi.fn().mockResolvedValue(xmltv),
-      }),
-    );
+    mockPrisma.programEntry.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "imported-1",
+          sourceKind: "IMPORTED",
+          sourceChannelId: "source-channel-1",
+          title: "Morning Brief",
+          subtitle: null,
+          description: null,
+          category: "News",
+          imageUrl: null,
+          startAt: new Date("2026-04-02T09:00:00.000Z"),
+          endAt: new Date("2026-04-02T10:00:00.000Z"),
+        },
+        {
+          id: "imported-2",
+          sourceKind: "IMPORTED",
+          sourceChannelId: "source-channel-1",
+          title: "Market Watch",
+          subtitle: null,
+          description: null,
+          category: "Business",
+          imageUrl: null,
+          startAt: new Date("2026-04-02T10:00:00.000Z"),
+          endAt: new Date("2026-04-02T11:00:00.000Z"),
+        },
+      ]);
 
     const response = await server.inject({
       method: "GET",
@@ -279,16 +353,24 @@ describe("epgRoutes", () => {
           channelId: "22222222-2222-2222-2222-222222222222",
           status: "READY",
           now: {
+            id: "imported-1",
+            sourceKind: "IMPORTED",
             title: "Morning Brief",
             subtitle: null,
             description: null,
+            category: "News",
+            imageUrl: null,
             start: "2026-04-02T09:00:00.000Z",
             stop: "2026-04-02T10:00:00.000Z",
           },
           next: {
+            id: "imported-2",
+            sourceKind: "IMPORTED",
             title: "Market Watch",
             subtitle: null,
             description: null,
+            category: "Business",
+            imageUrl: null,
             start: "2026-04-02T10:00:00.000Z",
             stop: "2026-04-02T11:00:00.000Z",
           },

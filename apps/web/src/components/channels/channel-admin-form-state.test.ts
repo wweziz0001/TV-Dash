@@ -9,7 +9,7 @@ import {
 } from "./channel-admin-form-state";
 
 describe("channel admin form state", () => {
-  it("builds a persisted master-playlist payload with upstream headers and EPG mapping", () => {
+  it("builds a persisted master-playlist payload with upstream headers", () => {
     expect(
       buildChannelInput({
         name: "News Desk",
@@ -25,14 +25,14 @@ describe("channel admin form state", () => {
         upstreamUserAgent: "OpsBot/1.0",
         upstreamReferrer: "https://ops.example.com/",
         upstreamHeadersText: '{\n  "x-token": "abc"\n}',
-        epgSourceId: "22222222-2222-2222-2222-222222222222",
-        epgChannelId: "news-desk",
       }),
     ).toEqual({
       name: "News Desk",
       slug: "news-desk",
       logoUrl: "",
       groupId: "11111111-1111-1111-1111-111111111111",
+      epgSourceId: null,
+      epgChannelId: null,
       sourceMode: "MASTER_PLAYLIST",
       masterHlsUrl: "https://example.com/live.m3u8",
       isActive: true,
@@ -43,8 +43,6 @@ describe("channel admin form state", () => {
       upstreamHeaders: {
         "x-token": "abc",
       },
-      epgSourceId: "22222222-2222-2222-2222-222222222222",
-      epgChannelId: "news-desk",
     });
   });
 
@@ -85,14 +83,14 @@ describe("channel admin form state", () => {
         upstreamUserAgent: "",
         upstreamReferrer: "",
         upstreamHeadersText: "",
-        epgSourceId: "",
-        epgChannelId: "",
       }),
     ).toEqual({
       name: "Al Alam",
       slug: "al-alam",
       logoUrl: "",
       groupId: null,
+      epgSourceId: null,
+      epgChannelId: null,
       sourceMode: "MANUAL_VARIANTS",
       masterHlsUrl: null,
       manualVariants: [
@@ -123,8 +121,6 @@ describe("channel admin form state", () => {
       upstreamUserAgent: "",
       upstreamReferrer: "",
       upstreamHeaders: {},
-      epgSourceId: null,
-      epgChannelId: null,
     });
   });
 
@@ -164,8 +160,6 @@ describe("channel admin form state", () => {
       upstreamUserAgent: "",
       upstreamReferrer: "",
       upstreamHeadersText: "",
-      epgSourceId: "",
-      epgChannelId: "",
     });
 
     expect(validation.isValid).toBe(false);
@@ -188,12 +182,13 @@ describe("channel admin form state", () => {
         groupId: null,
         group: null,
         epgSourceId: "22222222-2222-2222-2222-222222222222",
+        epgSourceChannelId: "source-channel-1",
         epgChannelId: "news-desk",
         epgSource: {
           id: "22222222-2222-2222-2222-222222222222",
           name: "Ops XMLTV",
           slug: "ops-xmltv",
-          sourceType: "XMLTV",
+          sourceType: "XMLTV_URL",
           isActive: true,
         },
         upstreamUserAgent: "OpsBot/1.0",
@@ -235,8 +230,6 @@ describe("channel admin form state", () => {
       playbackMode: "PROXY",
       upstreamUserAgent: "OpsBot/1.0",
       upstreamReferrer: "https://ops.example.com/",
-      epgSourceId: "22222222-2222-2222-2222-222222222222",
-      epgChannelId: "news-desk",
       manualVariants: [
         {
           label: "low",
