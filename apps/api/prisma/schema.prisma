@@ -60,19 +60,44 @@ enum PlaybackSessionState {
   error
 }
 
+enum RecordingMode {
+  IMMEDIATE
+  TIMED
+  SCHEDULED
+  EPG
+}
+
+enum RecordingJobStatus {
+  PENDING
+  SCHEDULED
+  RECORDING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum RecordingRunStatus {
+  STARTING
+  RECORDING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
 model User {
-  id               String           @id @default(uuid()) @db.Uuid
-  email            String           @unique
-  username         String           @unique
+  id               String            @id @default(uuid()) @db.Uuid
+  email            String            @unique
+  username         String            @unique
   passwordHash     String
-  role             UserRole         @default(USER)
-  sessionVersion   Int              @default(0)
+  role             UserRole          @default(USER)
+  sessionVersion   Int               @default(0)
   favorites        Favorite[]
   savedLayouts     SavedLayout[]
   playbackSessions PlaybackSession[]
+  recordingJobs    RecordingJob[]
   auditEvents      AuditEvent[]
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 }
 
 model ChannelGroup {
@@ -86,28 +111,30 @@ model ChannelGroup {
 }
 
 model Channel {
-  id                String             @id @default(uuid()) @db.Uuid
+  id                String                  @id @default(uuid()) @db.Uuid
   name              String
-  slug              String             @unique
+  slug              String                  @unique
   logoUrl           String?
-  sourceMode        ChannelSourceMode  @default(MASTER_PLAYLIST)
+  sourceMode        ChannelSourceMode       @default(MASTER_PLAYLIST)
   masterHlsUrl      String?
-  playbackMode      StreamPlaybackMode @default(DIRECT)
+  playbackMode      StreamPlaybackMode      @default(DIRECT)
   upstreamUserAgent String?
   upstreamReferrer  String?
   upstreamHeaders   Json?
-  groupId           String?            @db.Uuid
-  group             ChannelGroup?      @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  isActive          Boolean            @default(true)
-  sortOrder         Int                @default(0)
+  groupId           String?                 @db.Uuid
+  group             ChannelGroup?           @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  isActive          Boolean                 @default(true)
+  sortOrder         Int                     @default(0)
   qualityVariants   ChannelQualityVariant[]
   epgMapping        EpgChannelMapping?
   manualPrograms    ProgramEntry[]
   favorites         Favorite[]
   layoutItems       SavedLayoutItem[]
   playbackSessions  PlaybackSession[]
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  recordingJobs     RecordingJob[]
+  recordingAssets   RecordingAsset[]
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
 }
 
 model ChannelQualityVariant {
@@ -130,43 +157,43 @@ model ChannelQualityVariant {
 }
 
 model EpgSource {
-  id                     String        @id @default(uuid()) @db.Uuid
+  id                     String             @id @default(uuid()) @db.Uuid
   name                   String
-  slug                   String        @unique
-  sourceType             EpgSourceType @default(XMLTV_URL)
+  slug                   String             @unique
+  sourceType             EpgSourceType      @default(XMLTV_URL)
   url                    String?
   uploadedFileName       String?
-  isActive               Boolean       @default(true)
+  isActive               Boolean            @default(true)
   refreshIntervalMinutes Int?
   requestUserAgent       String?
   requestReferrer        String?
   requestHeaders         Json?
   lastImportStartedAt    DateTime?
   lastImportedAt         DateTime?
-  lastImportStatus       EpgImportStatus @default(NEVER_IMPORTED)
+  lastImportStatus       EpgImportStatus    @default(NEVER_IMPORTED)
   lastImportMessage      String?
   lastImportChannelCount Int?
   lastImportProgramCount Int?
   sourceChannels         EpgSourceChannel[]
   importedPrograms       ProgramEntry[]
-  createdAt              DateTime      @default(now())
-  updatedAt              DateTime      @updatedAt
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
 }
 
 model EpgSourceChannel {
-  id            String            @id @default(uuid()) @db.Uuid
-  sourceId      String            @db.Uuid
-  source        EpgSource         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  externalId    String
-  displayName   String
-  displayNames  Json?
-  iconUrl       String?
-  isAvailable   Boolean           @default(true)
-  lastSeenAt    DateTime?
-  mapping       EpgChannelMapping?
-  programs      ProgramEntry[]
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  id           String             @id @default(uuid()) @db.Uuid
+  sourceId     String             @db.Uuid
+  source       EpgSource          @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  externalId   String
+  displayName  String
+  displayNames Json?
+  iconUrl      String?
+  isAvailable  Boolean            @default(true)
+  lastSeenAt   DateTime?
+  mapping      EpgChannelMapping?
+  programs     ProgramEntry[]
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
 
   @@unique([sourceId, externalId])
   @@index([sourceId, isAvailable, displayName])
@@ -183,28 +210,111 @@ model EpgChannelMapping {
 }
 
 model ProgramEntry {
-  id               String             @id @default(uuid()) @db.Uuid
-  sourceKind       ProgramEntrySource
-  sourceId         String?            @db.Uuid
-  source           EpgSource?         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  sourceChannelId  String?            @db.Uuid
-  sourceChannel    EpgSourceChannel?  @relation(fields: [sourceChannelId], references: [id], onDelete: Cascade)
-  channelId        String?            @db.Uuid
-  channel          Channel?           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  id                String             @id @default(uuid()) @db.Uuid
+  sourceKind        ProgramEntrySource
+  sourceId          String?            @db.Uuid
+  source            EpgSource?         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceChannelId   String?            @db.Uuid
+  sourceChannel     EpgSourceChannel?  @relation(fields: [sourceChannelId], references: [id], onDelete: Cascade)
+  channelId         String?            @db.Uuid
+  channel           Channel?           @relation(fields: [channelId], references: [id], onDelete: Cascade)
   externalProgramId String?
-  title            String
-  subtitle         String?
-  description      String?
-  category         String?
-  imageUrl         String?
-  startAt          DateTime
-  endAt            DateTime?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  title             String
+  subtitle          String?
+  description       String?
+  category          String?
+  imageUrl          String?
+  startAt           DateTime
+  endAt             DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  recordingJobs     RecordingJob[]
 
   @@index([channelId, sourceKind, startAt])
   @@index([sourceChannelId, startAt])
   @@index([sourceId, sourceKind, startAt])
+}
+
+model RecordingJob {
+  id                  String             @id @default(uuid()) @db.Uuid
+  channelId           String?            @db.Uuid
+  channel             Channel?           @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  channelNameSnapshot String
+  channelSlugSnapshot String
+  programEntryId      String?            @db.Uuid
+  programEntry        ProgramEntry?      @relation(fields: [programEntryId], references: [id], onDelete: SetNull)
+  createdByUserId     String             @db.Uuid
+  createdByUser       User               @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  title               String
+  mode                RecordingMode
+  status              RecordingJobStatus @default(PENDING)
+  startAt             DateTime
+  endAt               DateTime?
+  actualStartAt       DateTime?
+  actualEndAt         DateTime?
+  failureReason       String?
+  cancellationReason  String?
+  runs                RecordingRun[]
+  asset               RecordingAsset?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([createdByUserId, status, startAt])
+  @@index([channelId, startAt])
+  @@index([programEntryId, startAt])
+  @@index([status, startAt])
+}
+
+model RecordingRun {
+  id              String             @id @default(uuid()) @db.Uuid
+  recordingJobId  String             @db.Uuid
+  recordingJob    RecordingJob       @relation(fields: [recordingJobId], references: [id], onDelete: Cascade)
+  status          RecordingRunStatus @default(STARTING)
+  storagePath     String
+  outputFileName  String
+  containerFormat String
+  ffmpegPid       Int?
+  startedAt       DateTime?
+  endedAt         DateTime?
+  exitCode        Int?
+  exitSignal      String?
+  failureReason   String?
+  stderrTail      String?
+  fileSizeBytes   BigInt?
+  durationSeconds Int?
+  asset           RecordingAsset?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@unique([storagePath])
+  @@index([recordingJobId, createdAt])
+  @@index([status, createdAt])
+}
+
+model RecordingAsset {
+  id                  String       @id @default(uuid()) @db.Uuid
+  recordingJobId      String       @unique @db.Uuid
+  recordingJob        RecordingJob @relation(fields: [recordingJobId], references: [id], onDelete: Cascade)
+  recordingRunId      String       @unique @db.Uuid
+  recordingRun        RecordingRun @relation(fields: [recordingRunId], references: [id], onDelete: Cascade)
+  channelId           String?      @db.Uuid
+  channel             Channel?     @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  channelNameSnapshot String
+  channelSlugSnapshot String
+  title               String
+  storagePath         String       @unique
+  fileName            String
+  mimeType            String
+  containerFormat     String
+  startedAt           DateTime
+  endedAt             DateTime
+  durationSeconds     Int?
+  fileSizeBytes       BigInt?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@index([channelId, createdAt])
+  @@index([createdAt])
 }
 
 model Favorite {
@@ -267,16 +377,16 @@ model PlaybackSession {
 }
 
 model AuditEvent {
-  id         String    @id @default(uuid()) @db.Uuid
-  actorUserId String?  @db.Uuid
-  actorUser  User?     @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
-  actorRole  UserRole?
-  action     String
-  targetType String
-  targetId   String?
-  targetName String?
-  detailJson Json?
-  createdAt  DateTime  @default(now())
+  id          String    @id @default(uuid()) @db.Uuid
+  actorUserId String?   @db.Uuid
+  actorUser   User?     @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorRole   UserRole?
+  action      String
+  targetType  String
+  targetId    String?
+  targetName  String?
+  detailJson  Json?
+  createdAt   DateTime  @default(now())
 
   @@index([createdAt])
   @@index([actorUserId, createdAt])

@@ -61,3 +61,20 @@ export const auditEventsQuerySchema = z.object({
   search: optionalTrimmedString,
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
+
+export const recordingJobsQuerySchema = z.object({
+  search: optionalTrimmedString,
+  status: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => value?.split(",").map((part) => part.trim()).filter(Boolean) ?? [])
+    .pipe(
+      z.array(z.enum(["PENDING", "SCHEDULED", "RECORDING", "COMPLETED", "FAILED", "CANCELED"])).max(6),
+    ),
+  channelId: z.string().uuid().optional(),
+});
+
+export const recordingPlaybackQuerySchema = z.object({
+  token: z.string().min(20),
+});

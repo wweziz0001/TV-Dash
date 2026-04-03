@@ -12,6 +12,7 @@ export const accessPermissionSchema = z.enum([
   "epg:manage",
   "favorites:manage-own",
   "layouts:manage-own",
+  "recordings:manage-own",
   "diagnostics:read",
   "audit:read",
   "streams:inspect",
@@ -34,6 +35,9 @@ export const qualityModeSchema = z.enum(["AUTO", "LOWEST", "HIGHEST", "MANUAL"])
 export const playbackSessionTypeSchema = z.enum(["SINGLE_VIEW", "MULTIVIEW"]);
 export const playbackSessionStateSchema = z.enum(["idle", "loading", "playing", "buffering", "retrying", "error"]);
 export const diagnosticHealthStateSchema = z.enum(["healthy", "degraded", "failing", "unknown"]);
+export const recordingModeSchema = z.enum(["IMMEDIATE", "TIMED", "SCHEDULED", "EPG"]);
+export const recordingJobStatusSchema = z.enum(["PENDING", "SCHEDULED", "RECORDING", "COMPLETED", "FAILED", "CANCELED"]);
+export const recordingRunStatusSchema = z.enum(["STARTING", "RECORDING", "COMPLETED", "FAILED", "CANCELED"]);
 export const diagnosticFailureKindSchema = z.enum([
   "network",
   "playlist-fetch",
@@ -487,6 +491,96 @@ export const playbackSessionEndInputSchema = z.object({
   sessionIds: z.array(z.string().uuid()).min(1).max(9),
 });
 
+const optionalNullableRecordingTitleSchema = z
+  .string()
+  .trim()
+  .max(180)
+  .nullable()
+  .optional()
+  .transform((value) => value || null);
+
+const optionalNullableUuidSchema = z
+  .string()
+  .uuid()
+  .nullable()
+  .optional()
+  .transform((value) => value ?? null);
+
+const optionalNullableIsoDateTimeSchema = isoDateTimeSchema
+  .nullable()
+  .optional()
+  .transform((value) => value ?? null);
+
+export const recordingJobInputSchema = z
+  .object({
+    channelId: z.string().uuid(),
+    title: optionalNullableRecordingTitleSchema,
+    mode: recordingModeSchema.default("IMMEDIATE"),
+    startAt: optionalNullableIsoDateTimeSchema,
+    endAt: optionalNullableIsoDateTimeSchema,
+    programEntryId: optionalNullableUuidSchema,
+  })
+  .superRefine((value, context) => {
+    if (value.mode === "IMMEDIATE") {
+      if (value.endAt && !value.startAt) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["startAt"],
+          message: "Start time is required when an end time is provided",
+        });
+      }
+    } else {
+      if (!value.startAt) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["startAt"],
+          message: "Start time is required for timed or scheduled recordings",
+        });
+      }
+
+      if (!value.endAt) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["endAt"],
+          message: "End time is required for timed or scheduled recordings",
+        });
+      }
+    }
+
+    if (value.startAt && value.endAt) {
+      const startAt = Date.parse(value.startAt);
+      const endAt = Date.parse(value.endAt);
+
+      if (Number.isFinite(startAt) && Number.isFinite(endAt) && endAt <= startAt) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["endAt"],
+          message: "End time must be after start time",
+        });
+      }
+    }
+  });
+
+export const recordingJobUpdateInputSchema = z
+  .object({
+    channelId: z.string().uuid(),
+    title: optionalNullableRecordingTitleSchema,
+    startAt: isoDateTimeSchema,
+    endAt: isoDateTimeSchema,
+  })
+  .superRefine((value, context) => {
+    const startAt = Date.parse(value.startAt);
+    const endAt = Date.parse(value.endAt);
+
+    if (Number.isFinite(startAt) && Number.isFinite(endAt) && endAt <= startAt) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endAt"],
+        message: "End time must be after start time",
+      });
+    }
+  });
+
 export type UserRole = z.infer<typeof userRoleSchema>;
 export type AccessPermission = z.infer<typeof accessPermissionSchema>;
 export type LayoutType = z.infer<typeof layoutTypeSchema>;
@@ -499,6 +593,9 @@ export type QualityMode = z.infer<typeof qualityModeSchema>;
 export type PlaybackSessionType = z.infer<typeof playbackSessionTypeSchema>;
 export type PlaybackSessionState = z.infer<typeof playbackSessionStateSchema>;
 export type DiagnosticHealthState = z.infer<typeof diagnosticHealthStateSchema>;
+export type RecordingMode = z.infer<typeof recordingModeSchema>;
+export type RecordingJobStatus = z.infer<typeof recordingJobStatusSchema>;
+export type RecordingRunStatus = z.infer<typeof recordingRunStatusSchema>;
 export type DiagnosticFailureKind = z.infer<typeof diagnosticFailureKindSchema>;
 export type LoginInput = z.infer<typeof loginInputSchema>;
 export type ChannelGroupInput = z.infer<typeof channelGroupInputSchema>;
@@ -518,6 +615,8 @@ export type StreamVariant = z.infer<typeof streamVariantSchema>;
 export type PlaybackSessionHeartbeatItemInput = z.infer<typeof playbackSessionHeartbeatItemInputSchema>;
 export type PlaybackSessionHeartbeatInput = z.infer<typeof playbackSessionHeartbeatInputSchema>;
 export type PlaybackSessionEndInput = z.infer<typeof playbackSessionEndInputSchema>;
+export type RecordingJobInput = z.infer<typeof recordingJobInputSchema>;
+export type RecordingJobUpdateInput = z.infer<typeof recordingJobUpdateInputSchema>;
 
 export const ROLE_PERMISSION_MAP: Record<UserRole, AccessPermission[]> = {
   ADMIN: [
@@ -529,11 +628,12 @@ export const ROLE_PERMISSION_MAP: Record<UserRole, AccessPermission[]> = {
     "epg:manage",
     "favorites:manage-own",
     "layouts:manage-own",
+    "recordings:manage-own",
     "diagnostics:read",
     "audit:read",
     "streams:inspect",
   ],
-  USER: ["channels:read", "epg:read", "favorites:manage-own", "layouts:manage-own"],
+  USER: ["channels:read", "epg:read", "favorites:manage-own", "layouts:manage-own", "recordings:manage-own"],
 };
 
 export function roleHasPermission(role: UserRole, permission: AccessPermission) {

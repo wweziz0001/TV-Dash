@@ -13,6 +13,7 @@ import { favoriteRoutes } from "../modules/favorites/favorite.routes.js";
 import { groupRoutes } from "../modules/groups/group.routes.js";
 import { healthRoutes } from "../modules/health/health.routes.js";
 import { layoutRoutes } from "../modules/layouts/layout.routes.js";
+import { recordingRoutes } from "../modules/recordings/recording.routes.js";
 import { streamRoutes } from "../modules/streams/stream.routes.js";
 
 export async function buildServer() {
@@ -46,6 +47,7 @@ export async function buildServer() {
   await app.register(epgRoutes, { prefix: "/api" });
   await app.register(favoriteRoutes, { prefix: "/api" });
   await app.register(layoutRoutes, { prefix: "/api" });
+  await app.register(recordingRoutes, { prefix: "/api" });
   await app.register(streamRoutes, { prefix: "/api" });
 
   return app;
