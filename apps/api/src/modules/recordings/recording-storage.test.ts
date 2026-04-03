@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { buildRecordingStoragePath, getRecordingContainerFormat, getRecordingMimeType, resolveRecordingAbsolutePath } from "./recording-storage.js";
+import {
+  buildRecordingStoragePath,
+  formatRecordingFileSize,
+  getRecordingContainerFormat,
+  getRecordingMimeType,
+  isPlayableRecordingOutput,
+  parseRecordingMediaProbe,
+  resolveRecordingAbsolutePath,
+} from "./recording-storage.js";
 
 describe("recording-storage", () => {
   beforeEach(() => {
@@ -27,5 +35,29 @@ describe("recording-storage", () => {
     expect(() => resolveRecordingAbsolutePath("../escape.mp4")).toThrow(
       "Recording storage path escapes configured storage root",
     );
+  });
+
+  it("parses ffprobe output and captures media duration from audio/video streams", () => {
+    const probe = parseRecordingMediaProbe(
+      JSON.stringify({
+        format: {
+          duration: "44.312500",
+        },
+        streams: [
+          { codec_type: "video", duration: "44.200000" },
+          { codec_type: "audio", duration: "44.312500" },
+        ],
+      }),
+    );
+
+    expect(probe.streamCount).toBe(2);
+    expect(probe.durationSeconds).toBeCloseTo(44.3125);
+  });
+
+  it("rejects tiny or streamless outputs and formats byte-sized files honestly", () => {
+    expect(isPlayableRecordingOutput({ fileSizeBytes: 512, streamCount: 2 })).toBe(false);
+    expect(isPlayableRecordingOutput({ fileSizeBytes: 4096, streamCount: 0 })).toBe(false);
+    expect(isPlayableRecordingOutput({ fileSizeBytes: 4096, streamCount: 2 })).toBe(true);
+    expect(formatRecordingFileSize(512)).toBe("512 B");
   });
 });

@@ -671,6 +671,10 @@ function formatDuration(durationSeconds: number) {
 }
 
 function formatFileSize(fileSizeBytes: number) {
+  if (fileSizeBytes < 1024) {
+    return `${fileSizeBytes} B`;
+  }
+
   if (fileSizeBytes < 1024 * 1024) {
     return `${Math.round(fileSizeBytes / 1024)} KB`;
   }

@@ -18,7 +18,7 @@ import {
   buildRecordingStoragePath,
   ensureRecordingStoragePath,
   getRecordingContainerFormat,
-  readRecordingFileStats,
+  inspectRecordingOutput,
   resolveRecordingAbsolutePath,
 } from "./recording-storage.js";
 import { buildRecordingInputConfig } from "./recording-input.js";
@@ -79,15 +79,21 @@ function buildStderrTail(activeRecording: ActiveRecordingProcess) {
 
 async function getExistingRecordingFileStats(storagePath: string) {
   try {
-    const stats = await readRecordingFileStats(storagePath);
+    const stats = await inspectRecordingOutput(storagePath);
     return {
       absolutePath: stats.absolutePath,
-      fileSizeBytes: BigInt(stats.sizeBytes),
+      fileSizeBytes: stats.fileSizeBytes,
+      durationSeconds: stats.durationSeconds,
+      isPlayable: stats.isPlayable,
+      validationReason: stats.validationReason,
     };
   } catch {
     return {
       absolutePath: resolveRecordingAbsolutePath(storagePath),
       fileSizeBytes: null,
+      durationSeconds: null,
+      isPlayable: false,
+      validationReason: null,
     };
   }
 }
@@ -107,10 +113,10 @@ async function finalizeRecordingProcessExit(
 
   const endedAt = new Date();
   const fileStats = await getExistingRecordingFileStats(activeRecording.storagePath);
-  const durationSeconds = Math.max(
-    0,
-    Math.round((endedAt.getTime() - activeRecording.startedAt.getTime()) / 1000),
-  );
+  const durationSeconds =
+    fileStats.durationSeconds !== null
+      ? Math.max(1, Math.round(fileStats.durationSeconds))
+      : Math.max(0, Math.round((endedAt.getTime() - activeRecording.startedAt.getTime()) / 1000));
 
   let runStatus: "COMPLETED" | "FAILED" | "CANCELED" = "FAILED";
   let jobStatus: "COMPLETED" | "FAILED" | "CANCELED" = "FAILED";
@@ -120,19 +126,23 @@ async function finalizeRecordingProcessExit(
   if (activeRecording.stopKind === "shutdown") {
     failureReason = activeRecording.stopReason ?? "Recording runtime stopped before completion";
   } else if (activeRecording.stopKind === "manual" || activeRecording.stopKind === "scheduled") {
-    if (fileStats.fileSizeBytes && fileStats.fileSizeBytes > BigInt(0)) {
+    if (fileStats.isPlayable && fileStats.fileSizeBytes && fileStats.fileSizeBytes > BigInt(0)) {
       runStatus = "COMPLETED";
       jobStatus = "COMPLETED";
       createAsset = true;
     } else {
-      failureReason = activeRecording.stopReason ?? "Recording finished without media output";
+      failureReason =
+        fileStats.validationReason ?? activeRecording.stopReason ?? "Recording finished without playable media output";
     }
-  } else if ((exitCode ?? 1) === 0 && fileStats.fileSizeBytes && fileStats.fileSizeBytes > BigInt(0)) {
+  } else if ((exitCode ?? 1) === 0 && fileStats.isPlayable && fileStats.fileSizeBytes && fileStats.fileSizeBytes > BigInt(0)) {
     runStatus = "COMPLETED";
     jobStatus = "COMPLETED";
     createAsset = true;
   } else {
-    failureReason = buildStderrTail(activeRecording) ?? "ffmpeg exited before recording completed";
+    failureReason =
+      buildStderrTail(activeRecording) ??
+      fileStats.validationReason ??
+      "ffmpeg exited before recording completed";
   }
 
   await finalizeRecordingRun({
