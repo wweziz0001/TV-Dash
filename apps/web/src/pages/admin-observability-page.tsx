@@ -287,7 +287,7 @@ export function AdminObservabilityPage() {
                     </p>
                   </div>
                   <div className="min-w-0 text-[12px] text-slate-300">
-                    <p className="line-clamp-2">{buildLogDetailSummary(entry)}</p>
+                    <LogDetailBlock entry={entry} variant="table" />
                   </div>
                 </div>
               ))}
@@ -419,7 +419,7 @@ function LogEventCard({ entry }: { entry: AdminLogEntry }) {
         ) : null}
       </div>
       <p className="mt-2 text-sm font-semibold text-white">{entry.event}</p>
-      <p className="mt-1 text-[12px] text-slate-300">{buildLogDetailSummary(entry)}</p>
+      <LogDetailBlock entry={entry} variant="card" />
       <p className="mt-2 text-[11px] text-slate-500">
         {entry.channelSlug ?? entry.channelId ?? entry.actorUserId ?? entry.sessionId ?? "System scope"} · {formatTimestamp(entry.timestamp)}
       </p>
@@ -431,21 +431,60 @@ function EmptyState({ label }: { label: string }) {
   return <div className="px-4 py-6 text-sm text-slate-400">{label}</div>;
 }
 
-function buildLogDetailSummary(entry: AdminLogEntry) {
+function LogDetailBlock({
+  entry,
+  variant,
+}: {
+  entry: AdminLogEntry;
+  variant: "card" | "table";
+}) {
+  const detailLines = getLogDetailLines(entry);
+
+  if (!detailLines.length) {
+    return (
+      <p className={variant === "card" ? "mt-1 text-[12px] text-slate-300" : "text-[12px] text-slate-400"}>
+        Structured event with no additional detail payload.
+      </p>
+    );
+  }
+
+  return (
+    <div className={variant === "card" ? "mt-2 space-y-1.5 text-[12px] text-slate-300" : "space-y-1 text-[12px] text-slate-300"}>
+      {detailLines.map((line, index) => (
+        <p
+          key={`${entry.id}-detail-${index}`}
+          className={cn("leading-5", variant === "table" && index > 2 && "text-slate-400")}
+        >
+          {line}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function getLogDetailLines(entry: AdminLogEntry) {
+  const issueSummary = entry.detail?.issueSummary;
+  if (typeof issueSummary === "string" && issueSummary.trim()) {
+    return issueSummary
+      .split("|")
+      .map((part) => part.trim())
+      .filter(Boolean);
+  }
+
   const detailEntries = Object.entries(entry.detail ?? {})
     .filter(([, value]) => value !== null && value !== undefined && value !== "")
-    .slice(0, 3)
+    .slice(0, 5)
     .map(([key, value]) => `${key}: ${String(value)}`);
 
   if (detailEntries.length) {
-    return detailEntries.join(" · ");
+    return detailEntries;
   }
 
   if (entry.failureKind) {
-    return `Failure class ${entry.failureKind}`;
+    return [`Failure class: ${entry.failureKind}`];
   }
 
-  return "Structured event with no additional detail payload.";
+  return [];
 }
 
 function formatTimestamp(value: string) {

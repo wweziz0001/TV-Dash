@@ -38,15 +38,17 @@ const optionalNullableTrimmedStringSchema = z
   .string()
   .trim()
   .max(255)
+  .or(z.null())
   .optional()
-  .transform((value) => value || null);
+  .transform((value) => (typeof value === "string" ? value || null : null));
 
 const optionalNullableUrlSchema = z
   .string()
   .url()
   .or(z.literal(""))
+  .or(z.null())
   .optional()
-  .transform((value) => value || null);
+  .transform((value) => (typeof value === "string" ? value || null : null));
 
 const optionalNullablePositiveIntegerSchema = z
   .number()
