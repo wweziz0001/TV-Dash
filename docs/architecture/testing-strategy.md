@@ -111,6 +111,7 @@ If a change touches one of those flows and no automated regression exists yet, e
 
 - player lifecycle cleanup and retry component coverage now exists
 - guide-state and channel-picker component coverage now exists for operator workflow seams
+- responsive multi-view viewport policy coverage now exists for device-class layout fallbacks plus touch-first tile affordance behavior
 - next step is adding React route-level coverage for multi-view keyboard/reassignment flows plus dashboard/watch now-next orchestration
 - add route-level regression coverage for critical operator flows
 

@@ -70,6 +70,7 @@ Examples:
 - quality selector reacting to player callbacks
 - admin form loading, save, and delete states
 - multi-view tile mute/fullscreen controls
+- responsive picker, drawer, or fullscreen state behavior when layout mode changes are driven by explicit component logic
 
 Do not spend time snapshot-testing Tailwind markup that has no behavior risk.
 
@@ -83,6 +84,7 @@ These areas are release-critical and should gain or maintain automated coverage 
 - saved layouts create/update/delete/apply
 - quality switching logic
 - multi-view layout resizing and audio ownership
+- device-aware multi-view layout fallback and viewport policy
 - player error and retry behavior
 - schema validation boundaries
 
