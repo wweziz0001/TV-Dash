@@ -1,7 +1,7 @@
 import { AlertTriangle, CalendarClock, Clock3, RadioTower } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ChannelNowNext } from "@/types/api";
-import { formatProgrammeTime, getChannelGuideState } from "./channel-guide-state";
+import { formatProgrammeTime, formatProgrammeTimeWithDay, getChannelGuideState } from "./channel-guide-state";
 
 interface ChannelGuideCardProps {
   guide: ChannelNowNext | null | undefined;
@@ -95,7 +95,7 @@ export function ChannelGuideCard({
           <p className="mt-1 text-[13px] text-slate-400">{state.next.subtitle}</p>
         ) : null}
         {state.kind === "ready" && state.next ? (
-          <p className="mt-2 text-[11px] text-slate-500">{formatProgrammeTime(state.next)}</p>
+          <p className="mt-2 text-[11px] text-slate-500">{formatProgrammeTimeWithDay(state.next)}</p>
         ) : (
           <p className="mt-2 text-[11px] text-slate-500">
             {state.kind === "unconfigured"

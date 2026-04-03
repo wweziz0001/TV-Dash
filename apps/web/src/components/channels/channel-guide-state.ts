@@ -48,6 +48,36 @@ export function formatProgrammeTime(programme: NowNextProgram | null) {
   return stop ? `${start} - ${stop}` : `${start} onward`;
 }
 
+export function formatProgrammeTimeWithDay(programme: NowNextProgram | null, now = new Date()) {
+  if (!programme) {
+    return null;
+  }
+
+  const timeLabel = formatProgrammeTime(programme);
+
+  if (!timeLabel) {
+    return null;
+  }
+
+  const startDate = new Date(programme.start);
+  const dayDifference = getLocalDayDifference(startDate, now);
+
+  if (dayDifference === 0 || dayDifference === 1) {
+    const relativeDayFormatter = new Intl.RelativeTimeFormat(undefined, {
+      numeric: "auto",
+    });
+
+    return `${capitalizeLabel(relativeDayFormatter.format(dayDifference, "day"))} · ${timeLabel}`;
+  }
+
+  const dateFormatter = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+
+  return `${dateFormatter.format(startDate)} · ${timeLabel}`;
+}
+
 export function getChannelGuideState({
   hasEpgSource,
   guide,
@@ -121,4 +151,19 @@ export function getChannelGuideState({
     next: guide.next,
     progressPercent: getProgrammeProgressPercent(guide.now, now),
   };
+}
+
+function getLocalDayDifference(target: Date, now: Date) {
+  const currentDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const targetDay = new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime();
+
+  return Math.round((targetDay - currentDay) / 86_400_000);
+}
+
+function capitalizeLabel(value: string) {
+  if (!value) {
+    return value;
+  }
+
+  return value[0].toUpperCase() + value.slice(1);
 }
