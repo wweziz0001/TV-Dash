@@ -87,6 +87,8 @@ Repositories must not:
   - per-user pinned channels
 - `layouts`
   - per-user saved multiview walls
+- `diagnostics`
+  - runtime observability snapshots, failure classification, channel/EPG health summaries, and admin inspection endpoints
 - `streams`
   - stream inspection, proxy master/asset delivery, and upstream request behavior
 - `health`
@@ -128,3 +130,27 @@ Repositories must not:
 - XMLTV upstream preview/fetch failures: `502`
 
 Keep those mappings stable unless the contract explicitly changes.
+
+## Diagnostics Foundation Rules
+
+- Runtime diagnostics are currently process-local and in-memory; they summarize real playback, proxy, and EPG observations but do not persist across restarts yet.
+- Channel diagnostics may aggregate:
+  - proxy master and asset results
+  - synthetic master generation outcomes
+  - stream inspection outcomes
+  - last known guide lookup state
+- EPG diagnostics may aggregate:
+  - XMLTV fetch outcomes
+  - XMLTV parse outcomes
+  - cache freshness plus loaded channel/programme counts
+- Admin diagnostics routes belong in the `diagnostics` module, but they compose current channel/source configuration from the owning domain modules rather than duplicating repositories.
+- Failure classification should distinguish at least:
+  - `network`
+  - `playlist-fetch`
+  - `invalid-playlist`
+  - `proxy-forwarding`
+  - `epg-fetch`
+  - `epg-parse`
+  - `misconfiguration`
+  - `unsupported-stream`
+  - `synthetic-master`
