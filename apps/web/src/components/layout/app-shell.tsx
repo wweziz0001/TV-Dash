@@ -12,6 +12,7 @@ import {
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "@/features/auth/auth-context";
 import { cn } from "@/lib/utils";
+import { roleHasPermission } from "@tv-dash/shared";
 
 const primaryNav = [
   { to: "/", label: "Channels", icon: Clapperboard, end: true },
@@ -46,7 +47,7 @@ export function AppShell() {
             ))}
           </nav>
 
-          {user?.role === "ADMIN" ? (
+          {user && roleHasPermission(user.role, "admin:access") ? (
             <div className="mt-6">
               <p className="px-2 text-[11px] uppercase tracking-[0.24em] text-slate-500">Admin</p>
               <nav className="mt-2.5 space-y-1.5">
@@ -73,7 +74,9 @@ export function AppShell() {
             </div>
             <button
               className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-slate-700/70 bg-slate-950/70 px-3 text-[13px] font-semibold text-slate-200 transition hover:border-slate-600 hover:bg-slate-900"
-              onClick={logout}
+              onClick={() => {
+                void logout();
+              }}
               type="button"
             >
               <LogOut className="h-4 w-4" />

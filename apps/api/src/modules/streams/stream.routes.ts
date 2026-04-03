@@ -1,6 +1,6 @@
 import { streamTestInputSchema } from "@tv-dash/shared";
 import type { FastifyPluginAsync } from "fastify";
-import { requireAuth } from "../../app/auth-guards.js";
+import { requirePermission } from "../../app/auth-guards.js";
 import { channelIdParamSchema, streamProxyQuerySchema } from "../../app/request-schemas.js";
 import { parseWithSchema } from "../../app/validation.js";
 import { classifyStreamFailure } from "./stream-diagnostics.js";
@@ -68,7 +68,7 @@ export const streamRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  fastify.post("/streams/test", { preHandler: [requireAuth] }, async (request, reply) => {
+  fastify.post("/streams/test", { preHandler: [requirePermission("streams:inspect")] }, async (request, reply) => {
     const payload = parseWithSchema(streamTestInputSchema, request.body, reply);
     if (!payload) {
       return;
@@ -85,7 +85,7 @@ export const streamRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  fastify.get("/streams/metadata", { preHandler: [requireAuth] }, async (request, reply) => {
+  fastify.get("/streams/metadata", { preHandler: [requirePermission("streams:inspect")] }, async (request, reply) => {
     const url = (request.query as { url?: string }).url;
     const payload = parseWithSchema(streamTestInputSchema, { url }, reply);
     if (!payload) {

@@ -1,6 +1,6 @@
 import { playbackSessionEndInputSchema, playbackSessionHeartbeatInputSchema } from "@tv-dash/shared";
 import type { FastifyPluginAsync } from "fastify";
-import { requireAdmin, requireAuth } from "../../app/auth-guards.js";
+import { requirePermission } from "../../app/auth-guards.js";
 import { channelIdParamSchema, idParamSchema, monitoringLogsQuerySchema } from "../../app/request-schemas.js";
 import { parseWithSchema } from "../../app/validation.js";
 import { getChannelConfigForAdmin } from "../channels/channel.service.js";
@@ -10,7 +10,7 @@ import { buildAdminMonitoringSnapshot, listAdminMonitoringLogs } from "./monitor
 import { endPlaybackSessionsForUser, recordPlaybackSessionHeartbeat } from "./playback-session.service.js";
 
 export const diagnosticRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.get("/diagnostics/channels/:channelId", { preHandler: [requireAdmin] }, async (request, reply) => {
+  fastify.get("/diagnostics/channels/:channelId", { preHandler: [requirePermission("diagnostics:read")] }, async (request, reply) => {
     const params = parseWithSchema(channelIdParamSchema, request.params, reply);
     if (!params) {
       return;
@@ -27,7 +27,7 @@ export const diagnosticRoutes: FastifyPluginAsync = async (fastify) => {
     };
   });
 
-  fastify.get("/diagnostics/epg-sources/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+  fastify.get("/diagnostics/epg-sources/:id", { preHandler: [requirePermission("diagnostics:read")] }, async (request, reply) => {
     const params = parseWithSchema(idParamSchema, request.params, reply);
     if (!params) {
       return;
@@ -44,13 +44,13 @@ export const diagnosticRoutes: FastifyPluginAsync = async (fastify) => {
     };
   });
 
-  fastify.get("/diagnostics/monitoring", { preHandler: [requireAdmin] }, async () => {
+  fastify.get("/diagnostics/monitoring", { preHandler: [requirePermission("diagnostics:read")] }, async () => {
     return {
       monitoring: await buildAdminMonitoringSnapshot(),
     };
   });
 
-  fastify.get("/diagnostics/logs", { preHandler: [requireAdmin] }, async (request, reply) => {
+  fastify.get("/diagnostics/logs", { preHandler: [requirePermission("diagnostics:read")] }, async (request, reply) => {
     const query = parseWithSchema(monitoringLogsQuerySchema, request.query, reply);
     if (!query) {
       return;
@@ -61,14 +61,14 @@ export const diagnosticRoutes: FastifyPluginAsync = async (fastify) => {
     };
   });
 
-  fastify.post("/diagnostics/playback-sessions/heartbeat", { preHandler: [requireAuth] }, async (request, reply) => {
+  fastify.post("/diagnostics/playback-sessions/heartbeat", { preHandler: [requirePermission("channels:read")] }, async (request, reply) => {
     const payload = parseWithSchema(playbackSessionHeartbeatInputSchema, request.body, reply);
     if (!payload) {
       return;
     }
 
     try {
-      await recordPlaybackSessionHeartbeat(request.user.sub, payload);
+      await recordPlaybackSessionHeartbeat(request.authUser?.id ?? "", payload);
       return reply.status(204).send();
     } catch (error) {
       if (error instanceof Error && error.message === "Playback session ownership mismatch") {
@@ -79,13 +79,13 @@ export const diagnosticRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  fastify.post("/diagnostics/playback-sessions/end", { preHandler: [requireAuth] }, async (request, reply) => {
+  fastify.post("/diagnostics/playback-sessions/end", { preHandler: [requirePermission("channels:read")] }, async (request, reply) => {
     const payload = parseWithSchema(playbackSessionEndInputSchema, request.body, reply);
     if (!payload) {
       return;
     }
 
-    await endPlaybackSessionsForUser(request.user.sub, payload);
+    await endPlaybackSessionsForUser(request.authUser?.id ?? "", payload);
     return reply.status(204).send();
   });
 };

@@ -8,7 +8,7 @@ import { useAuth } from "@/features/auth/auth-context";
 
 export function LoginPage() {
   const location = useLocation();
-  const { login, user } = useAuth();
+  const { authNotice, clearAuthNotice, login, user } = useAuth();
   const [email, setEmail] = useState("admin@tvdash.local");
   const [password, setPassword] = useState("Admin123!");
   const [submitting, setSubmitting] = useState(false);
@@ -71,12 +71,24 @@ export function LoginPage() {
         <Panel className="self-center">
           <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Operator Sign-In</p>
           <h2 className="mt-3 text-2xl font-bold text-white">Enter the control room</h2>
+          {authNotice ? (
+            <div className="mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+              {authNotice}
+            </div>
+          ) : null}
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
             <div>
               <label className="mb-2 block text-sm text-slate-400" htmlFor="email">
                 Email
               </label>
-              <Input id="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+              <Input
+                id="email"
+                value={email}
+                onChange={(event) => {
+                  clearAuthNotice();
+                  setEmail(event.target.value);
+                }}
+              />
             </div>
             <div>
               <label className="mb-2 block text-sm text-slate-400" htmlFor="password">
@@ -86,7 +98,10 @@ export function LoginPage() {
                 id="password"
                 type="password"
                 value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                onChange={(event) => {
+                  clearAuthNotice();
+                  setPassword(event.target.value);
+                }}
               />
             </div>
             <Button className="w-full" disabled={submitting} type="submit">

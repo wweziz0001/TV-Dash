@@ -7,6 +7,7 @@ import { AdminGroupsPage } from "@/pages/admin-groups-page";
 import { AdminObservabilityPage } from "@/pages/admin-observability-page";
 import { ChannelWatchPage } from "@/pages/channel-watch-page";
 import { DashboardPage } from "@/pages/dashboard-page";
+import { ForbiddenPage } from "@/pages/forbidden-page";
 import { LoginPage } from "@/pages/login-page";
 import { MultiViewPage } from "@/pages/multiview-page";
 import { NotFoundPage } from "@/pages/not-found-page";
@@ -27,6 +28,7 @@ export function AppRouter() {
           <Route index element={<DashboardPage />} />
           <Route path="watch/:slug" element={<ChannelWatchPage />} />
           <Route path="multiview" element={<MultiViewPage />} />
+          <Route path="forbidden" element={<ForbiddenPage />} />
           <Route
             path="admin/observability"
             element={
