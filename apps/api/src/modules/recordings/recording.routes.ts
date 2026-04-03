@@ -1,21 +1,32 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { recordingJobInputSchema, recordingJobUpdateInputSchema } from "@tv-dash/shared";
+import { recordingJobInputSchema, recordingJobUpdateInputSchema, recordingRuleInputSchema } from "@tv-dash/shared";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { requirePermission } from "../../app/auth-guards.js";
-import { channelIdParamSchema, idParamSchema, recordingJobsQuerySchema, recordingPlaybackQuerySchema } from "../../app/request-schemas.js";
+import {
+  channelIdParamSchema,
+  idParamSchema,
+  recordingJobsQuerySchema,
+  recordingPlaybackQuerySchema,
+  recordingRulesQuerySchema,
+} from "../../app/request-schemas.js";
 import { parseWithSchema } from "../../app/validation.js";
 import {
   cancelRecordingJobForViewer,
   createRecordingJobForViewer,
+  createRecordingRuleForViewer,
   deleteRecordingJobForViewer,
+  deleteRecordingRuleForViewer,
   getRecordingJobForViewer,
   getRecordingMediaByPlaybackToken,
   getRecordingPlaybackAccessForViewer,
   getRecordingQualityOptionsForViewer,
+  getRecordingRuleForViewer,
   listRecordingJobsForViewer,
+  listRecordingRulesForViewer,
   stopRecordingJobForViewer,
   updateRecordingJobForViewer,
+  updateRecordingRuleForViewer,
 } from "./recording.service.js";
 import { resolveRecordingAbsolutePath } from "./recording-storage.js";
 
@@ -28,17 +39,24 @@ function mapRecordingErrorStatus(error: unknown) {
     return 404;
   }
 
+  if (error.message === "Guide program not found" || error.message === "Recording rule not found") {
+    return 404;
+  }
+
   if (error.message === "Recording media is not available") {
     return 409;
   }
 
   if (
+    error.message.includes("Guide program") ||
     error.message.includes("cannot start in the future") ||
     error.message.includes("must be in the future") ||
     error.message.includes("can be edited") ||
     error.message.includes("can be canceled") ||
     error.message.includes("can be stopped") ||
-    error.message.includes("Stop the active recording")
+    error.message.includes("Stop the active recording") ||
+    error.message.includes("Cancel recurring occurrences") ||
+    error.message.includes("Edit the recurring rule")
   ) {
     return 409;
   }
@@ -108,6 +126,20 @@ export const recordingRoutes: FastifyPluginAsync = async (fastify) => {
     return { jobs };
   });
 
+  fastify.get("/recording-rules", { preHandler: [requirePermission("recordings:manage-own")] }, async (request, reply) => {
+    const query = parseWithSchema(recordingRulesQuerySchema, request.query, reply);
+    if (!query) {
+      return;
+    }
+
+    const rules = await listRecordingRulesForViewer(getViewer(request), {
+      channelId: query.channelId,
+      isActive: query.isActive ? query.isActive === "true" : undefined,
+    });
+
+    return { rules };
+  });
+
   fastify.post("/recordings", { preHandler: [requirePermission("recordings:manage-own")] }, async (request, reply) => {
     const payload = parseWithSchema(recordingJobInputSchema, request.body, reply);
     if (!payload) {
@@ -124,6 +156,22 @@ export const recordingRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  fastify.post("/recording-rules", { preHandler: [requirePermission("recordings:manage-own")] }, async (request, reply) => {
+    const payload = parseWithSchema(recordingRuleInputSchema, request.body, reply);
+    if (!payload) {
+      return;
+    }
+
+    try {
+      const rule = await createRecordingRuleForViewer(getViewer(request), payload);
+      return reply.status(201).send({ rule });
+    } catch (error) {
+      return reply.status(mapRecordingErrorStatus(error)).send({
+        message: error instanceof Error ? error.message : "Unable to create recording rule",
+      });
+    }
+  });
+
   fastify.get("/recordings/:id", { preHandler: [requirePermission("recordings:manage-own")] }, async (request, reply) => {
     const params = parseWithSchema(idParamSchema, request.params, reply);
     if (!params) {
@@ -136,6 +184,22 @@ export const recordingRoutes: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       return reply.status(mapRecordingErrorStatus(error)).send({
         message: error instanceof Error ? error.message : "Unable to load recording job",
+      });
+    }
+  });
+
+  fastify.get("/recording-rules/:id", { preHandler: [requirePermission("recordings:manage-own")] }, async (request, reply) => {
+    const params = parseWithSchema(idParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    try {
+      const rule = await getRecordingRuleForViewer(getViewer(request), params.id);
+      return { rule };
+    } catch (error) {
+      return reply.status(mapRecordingErrorStatus(error)).send({
+        message: error instanceof Error ? error.message : "Unable to load recording rule",
       });
     }
   });
@@ -157,6 +221,27 @@ export const recordingRoutes: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       return reply.status(mapRecordingErrorStatus(error)).send({
         message: error instanceof Error ? error.message : "Unable to update recording job",
+      });
+    }
+  });
+
+  fastify.put("/recording-rules/:id", { preHandler: [requirePermission("recordings:manage-own")] }, async (request, reply) => {
+    const params = parseWithSchema(idParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const payload = parseWithSchema(recordingRuleInputSchema, request.body, reply);
+    if (!payload) {
+      return;
+    }
+
+    try {
+      const rule = await updateRecordingRuleForViewer(getViewer(request), params.id, payload);
+      return { rule };
+    } catch (error) {
+      return reply.status(mapRecordingErrorStatus(error)).send({
+        message: error instanceof Error ? error.message : "Unable to update recording rule",
       });
     }
   });
@@ -205,6 +290,22 @@ export const recordingRoutes: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       return reply.status(mapRecordingErrorStatus(error)).send({
         message: error instanceof Error ? error.message : "Unable to delete recording job",
+      });
+    }
+  });
+
+  fastify.delete("/recording-rules/:id", { preHandler: [requirePermission("recordings:manage-own")] }, async (request, reply) => {
+    const params = parseWithSchema(idParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    try {
+      await deleteRecordingRuleForViewer(getViewer(request), params.id);
+      return reply.status(204).send();
+    } catch (error) {
+      return reply.status(mapRecordingErrorStatus(error)).send({
+        message: error instanceof Error ? error.message : "Unable to delete recording rule",
       });
     }
   });

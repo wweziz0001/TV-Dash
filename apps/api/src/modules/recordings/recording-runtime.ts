@@ -23,6 +23,7 @@ import {
 } from "./recording-storage.js";
 import { buildRecordingInputConfig } from "./recording-input.js";
 import { buildRecordingFfmpegArgs } from "./recording-ffmpeg.js";
+import { syncRecurringRecordingJobs } from "./recording-rule-sync.js";
 
 interface StopRecordingOptions {
   reason: string;
@@ -350,6 +351,7 @@ async function runRecordingRuntimeTick() {
 
   runtimeTickPromise = (async () => {
     await stopDueRecordings();
+    await syncRecurringRecordingJobs();
     await startDueRecordings();
   })().finally(() => {
     runtimeTickPromise = null;
