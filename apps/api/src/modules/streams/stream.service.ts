@@ -8,8 +8,10 @@ import { isPlaylistResponse, rewritePlaylist } from "./playlist-rewrite.js";
 import { createProxyToken, readProxyToken } from "./proxy-token.js";
 import { buildSyntheticMasterPlaylist } from "./synthetic-master.js";
 
-function buildProxyAssetPath(channelId: string, target: string) {
-  const token = createProxyToken({ channelId, target });
+const RECORDING_PROXY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
+function buildProxyAssetPath(channelId: string, target: string, options: { ttlMs?: number } = {}) {
+  const token = createProxyToken({ channelId, target }, options.ttlMs ? { ttlMs: options.ttlMs } : undefined);
   return `/api/streams/channels/${channelId}/asset?token=${encodeURIComponent(token)}`;
 }
 
@@ -45,6 +47,9 @@ async function proxyStreamUrl(
   channelId: string,
   targetUrl: string,
   observationSource: "PROXY_MASTER" | "PROXY_ASSET",
+  options: {
+    assetTokenTtlMs?: number;
+  } = {},
 ) {
   const channel = await getChannelStreamDetails(channelId);
 
@@ -60,7 +65,7 @@ async function proxyStreamUrl(
       const playlist = await response.text();
       parseMasterPlaylist(playlist);
       const rewrittenPlaylist = rewritePlaylist(playlist, targetUrl, (absoluteUrl) =>
-        buildProxyAssetPath(channel.id, absoluteUrl),
+        buildProxyAssetPath(channel.id, absoluteUrl, { ttlMs: options.assetTokenTtlMs }),
       );
 
       recordChannelObservation(channel.id, observationSource === "PROXY_MASTER" ? "proxyMaster" : "proxyAsset", {
@@ -156,7 +161,12 @@ export async function inspectStream(url: string, requestConfig: UpstreamRequestC
   }
 }
 
-export async function getChannelProxyMasterResponse(channelId: string) {
+export async function getChannelProxyMasterResponse(
+  channelId: string,
+  options: {
+    intent?: "playback" | "recording";
+  } = {},
+) {
   const channel = await getChannelStreamDetails(channelId);
 
   if (!channel) {
@@ -165,10 +175,11 @@ export async function getChannelProxyMasterResponse(channelId: string) {
 
   if (channel.sourceMode === "MANUAL_VARIANTS") {
     try {
+      const assetTokenTtlMs = options.intent === "recording" ? RECORDING_PROXY_TOKEN_TTL_MS : undefined;
       const body = buildSyntheticMasterPlaylist(channel.qualityVariants, {
         rewriteUri:
           channel.playbackMode === "PROXY"
-            ? (absoluteUrl) => buildProxyAssetPath(channel.id, absoluteUrl)
+            ? (absoluteUrl) => buildProxyAssetPath(channel.id, absoluteUrl, { ttlMs: assetTokenTtlMs })
             : undefined,
       });
 
@@ -221,7 +232,9 @@ export async function getChannelProxyMasterResponse(channelId: string) {
     throw new Error("Channel master playlist is not configured");
   }
 
-  return proxyStreamUrl(channelId, channel.masterHlsUrl, "PROXY_MASTER");
+  return proxyStreamUrl(channelId, channel.masterHlsUrl, "PROXY_MASTER", {
+    assetTokenTtlMs: options.intent === "recording" ? RECORDING_PROXY_TOKEN_TTL_MS : undefined,
+  });
 }
 
 export async function getChannelProxyAssetResponse(channelId: string, token: string) {

@@ -24,6 +24,10 @@ export const streamProxyQuerySchema = z.object({
   token: z.string().min(20),
 });
 
+export const streamMasterQuerySchema = z.object({
+  intent: z.enum(["playback", "recording"]).optional(),
+});
+
 export const epgNowNextQuerySchema = z.object({
   channelIds: z
     .string()

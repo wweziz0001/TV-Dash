@@ -270,7 +270,7 @@ async function startRecordingJobExecution(recordingJobId: string) {
   );
   const childProcess = spawn(
     env.RECORDINGS_FFMPEG_PATH,
-    buildRecordingFfmpegArgs(inputConfig, absoluteOutputPath),
+    buildRecordingFfmpegArgs(inputConfig, absoluteOutputPath, claimed.job.requestedQualitySelector),
     {
     stdio: ["pipe", "ignore", "pipe"],
     },

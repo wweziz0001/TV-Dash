@@ -44,6 +44,7 @@ vi.mock("../../db/prisma.js", () => ({
 
 const { buildServer } = await import("../../app/build-server.js");
 const { createAuthHeaders } = await import("../../app/test-support.js");
+const { readProxyToken } = await import("./proxy-token.js");
 
 describe("streamRoutes", () => {
   let server: Awaited<ReturnType<typeof buildServer>>;
@@ -193,6 +194,52 @@ describe("streamRoutes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain("/api/streams/channels/11111111-1111-1111-1111-111111111111/asset?token=");
+  });
+
+  it("issues longer-lived asset tokens for recording-intent master requests", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-04T00:00:00.000Z"));
+
+    mockPrisma.channel.findUnique.mockResolvedValue({
+      id: "11111111-1111-1111-1111-111111111111",
+      name: "Pulse 24",
+      slug: "pulse-24",
+      isActive: true,
+      sourceMode: "MASTER_PLAYLIST",
+      masterHlsUrl: "https://origin.example.com/live/master.m3u8",
+      playbackMode: "PROXY",
+      upstreamUserAgent: null,
+      upstreamReferrer: null,
+      upstreamHeaders: null,
+      qualityVariants: [],
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: vi.fn().mockResolvedValue("#EXTM3U\nvariant/high.m3u8\n"),
+        headers: {
+          get: vi.fn().mockReturnValue("application/vnd.apple.mpegurl"),
+        },
+      }),
+    );
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/streams/channels/11111111-1111-1111-1111-111111111111/master?intent=recording",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const tokenMatch = response.body.match(/token=([^"\s]+)/);
+    expect(tokenMatch?.[1]).toBeTruthy();
+
+    const payload = readProxyToken(decodeURIComponent(tokenMatch?.[1] ?? ""), "11111111-1111-1111-1111-111111111111");
+
+    expect(payload).not.toBeNull();
+    expect((payload?.exp ?? 0) - Date.now()).toBe(24 * 60 * 60 * 1000);
+
+    vi.useRealTimers();
   });
 
   it("generates a synthetic master playlist for manual-variant channels", async () => {

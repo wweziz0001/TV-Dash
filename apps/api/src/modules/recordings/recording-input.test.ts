@@ -54,19 +54,12 @@ mid/index.m3u8`),
 
     expect(config.temporaryFilePath).toBeTruthy();
     expect(config.sourceUrl).toBe(config.temporaryFilePath);
+    expect(config.captureMode).toBe("DIRECT");
     expect(config.ffmpegInputArgs).toEqual([
       "-allowed_extensions",
       "ALL",
       "-protocol_whitelist",
       "file,http,https,tcp,tls,crypto,data",
-      "-reconnect",
-      "1",
-      "-reconnect_streamed",
-      "1",
-      "-reconnect_on_network_error",
-      "1",
-      "-reconnect_delay_max",
-      "2",
       "-user_agent",
       "TV-Dash Recorder/1.0",
       "-referer",
@@ -120,6 +113,7 @@ mid/index.m3u8`),
 
     expect(config.sourceUrl).toBe("https://example.com/720.m3u8");
     expect(config.temporaryFilePath).toBeNull();
+    expect(config.captureMode).toBe("DIRECT");
     expect(config.ffmpegInputArgs).toEqual([
       "-allowed_extensions",
       "ALL",
@@ -133,6 +127,69 @@ mid/index.m3u8`),
       "1",
       "-reconnect_delay_max",
       "2",
+    ]);
+  });
+
+  it("does not attach reconnect flags when the selected input is a temporary local playlist", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: vi.fn().mockResolvedValue(`#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-STREAM-INF:BANDWIDTH=1400000,RESOLUTION=1280x720
+mid/index.m3u8`),
+      }),
+    );
+
+    const config = await buildRecordingInputConfig(buildChannel(), 4000, "0");
+
+    expect(config.sourceUrl).toBe(config.temporaryFilePath);
+    expect(config.captureMode).toBe("DIRECT");
+    expect(config.ffmpegInputArgs).not.toContain("-reconnect");
+
+    if (config.temporaryFilePath) {
+      await fs.rm(config.temporaryFilePath, { force: true });
+    }
+  });
+
+  it("uses the internal proxy master for proxy-playback channels", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const config = await buildRecordingInputConfig(
+      buildChannel({
+        playbackMode: "PROXY",
+      }),
+      4000,
+      "1",
+    );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(config.sourceUrl).toBe(
+      "http://127.0.0.1:4000/api/streams/channels/11111111-1111-1111-1111-111111111111/master?intent=recording",
+    );
+    expect(config.captureMode).toBe("PROXY");
+    expect(config.temporaryFilePath).toBeNull();
+    expect(config.ffmpegInputArgs).toEqual([
+      "-allowed_extensions",
+      "ALL",
+      "-allowed_segment_extensions",
+      "ALL",
+      "-extension_picky",
+      "0",
+      "-protocol_whitelist",
+      "file,http,https,tcp,tls,crypto,data",
+      "-reconnect",
+      "1",
+      "-reconnect_streamed",
+      "1",
+      "-reconnect_on_network_error",
+      "1",
+      "-reconnect_delay_max",
+      "2",
+      "-fflags",
+      "+genpts+discardcorrupt",
     ]);
   });
 });

@@ -87,6 +87,9 @@ TvDash currently supports:
 
 TvDash will support soon:
 
+- 🎞️ shared channel restream / edge caching for local viewers.
+- ▶️ Live Timeshift / DVR Buffer.
+- 📺 Player Controls Pip and Cross browser media ux.
 - 🔐 Security, access control, and admin hardening.
 - 👤 Role-based permissions.
 - 🧾 Audit trail for admin actions.
