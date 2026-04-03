@@ -129,7 +129,7 @@ async function main() {
     where: { slug: "demo-xmltv" },
     update: {
       name: "Demo XMLTV",
-      sourceType: EpgSourceType.XMLTV,
+      sourceType: EpgSourceType.XMLTV_URL,
       url: "https://example.com/demo.xml",
       isActive: false,
       refreshIntervalMinutes: 360,
@@ -137,7 +137,7 @@ async function main() {
     create: {
       name: "Demo XMLTV",
       slug: "demo-xmltv",
-      sourceType: EpgSourceType.XMLTV,
+      sourceType: EpgSourceType.XMLTV_URL,
       url: "https://example.com/demo.xml",
       isActive: false,
       refreshIntervalMinutes: 360,
@@ -156,8 +156,6 @@ async function main() {
         masterHlsUrl: channel.masterHlsUrl,
         playbackMode: channel.slug === "pulse-24" ? StreamPlaybackMode.PROXY : StreamPlaybackMode.DIRECT,
         groupId: groupMap.get(channel.groupSlug) ?? null,
-        epgSourceId: channel.slug === "tv-dash-live" ? demoEpgSource.id : null,
-        epgChannelId: channel.slug === "tv-dash-live" ? "tv-dash-live" : null,
         isActive: true,
         sortOrder: channel.sortOrder,
         qualityVariants: {
@@ -173,8 +171,6 @@ async function main() {
         masterHlsUrl: channel.masterHlsUrl,
         playbackMode: channel.slug === "pulse-24" ? StreamPlaybackMode.PROXY : StreamPlaybackMode.DIRECT,
         groupId: groupMap.get(channel.groupSlug) ?? null,
-        epgSourceId: channel.slug === "tv-dash-live" ? demoEpgSource.id : null,
-        epgChannelId: channel.slug === "tv-dash-live" ? "tv-dash-live" : null,
         isActive: true,
         sortOrder: channel.sortOrder,
         qualityVariants: channel.manualVariants
@@ -188,6 +184,44 @@ async function main() {
   }
 
   const favoriteChannel = createdChannels[0];
+
+  const tvDashLiveChannel = createdChannels.find((channel) => channel.slug === "tv-dash-live");
+
+  if (tvDashLiveChannel) {
+    const demoSourceChannel = await prisma.epgSourceChannel.upsert({
+      where: {
+        sourceId_externalId: {
+          sourceId: demoEpgSource.id,
+          externalId: "tv-dash-live",
+        },
+      },
+      update: {
+        displayName: "TV Dash Live",
+        displayNames: ["TV Dash Live"],
+        isAvailable: true,
+      },
+      create: {
+        sourceId: demoEpgSource.id,
+        externalId: "tv-dash-live",
+        displayName: "TV Dash Live",
+        displayNames: ["TV Dash Live"],
+        isAvailable: true,
+      },
+    });
+
+    await prisma.epgChannelMapping.upsert({
+      where: {
+        channelId: tvDashLiveChannel.id,
+      },
+      update: {
+        sourceChannelId: demoSourceChannel.id,
+      },
+      create: {
+        channelId: tvDashLiveChannel.id,
+        sourceChannelId: demoSourceChannel.id,
+      },
+    });
+  }
 
   if (favoriteChannel) {
     await prisma.favorite.upsert({

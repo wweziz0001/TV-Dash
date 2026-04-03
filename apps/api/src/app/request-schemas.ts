@@ -31,6 +31,19 @@ export const epgNowNextQuerySchema = z.object({
     .pipe(z.array(z.string().uuid()).min(1).max(20)),
 });
 
+export const epgSourceChannelsQuerySchema = z.object({
+  search: optionalTrimmedString,
+});
+
+export const epgManualProgramsQuerySchema = z.object({
+  channelId: z.string().uuid().optional(),
+});
+
+export const epgGuideWindowQuerySchema = z.object({
+  startAt: z.string().datetime({ offset: true }).transform((value) => new Date(value)),
+  endAt: z.string().datetime({ offset: true }).transform((value) => new Date(value)),
+});
+
 export const monitoringLogsQuerySchema = z.object({
   level: z.enum(["info", "warn", "error"]).optional(),
   category: z.enum(["playback", "stream", "epg", "auth", "admin", "system"]).optional(),

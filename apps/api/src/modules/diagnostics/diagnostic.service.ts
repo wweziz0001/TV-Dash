@@ -139,6 +139,7 @@ type ChannelSnapshotInput = {
   sourceMode: ChannelSourceMode;
   masterHlsUrl: string | null;
   qualityVariants?: Array<unknown>;
+  hasManualPrograms?: boolean;
   epgSourceId?: string | null;
   epgChannelId?: string | null;
 };
@@ -456,7 +457,7 @@ export function buildChannelDiagnosticsSnapshot(channel: ChannelSnapshotInput): 
       hasManualVariants: Boolean(channel.qualityVariants?.length),
       syntheticMasterExpected: channel.sourceMode === "MANUAL_VARIANTS",
       proxyEnabled: channel.playbackMode === "PROXY",
-      epgLinked: Boolean(channel.epgSourceId && channel.epgChannelId),
+      epgLinked: Boolean((channel.epgSourceId && channel.epgChannelId) || channel.hasManualPrograms),
     },
     overall: buildOverallSummary(observations),
     streamInspection: buildObservationSummary(runtimeState.streamInspection),
@@ -466,6 +467,8 @@ export function buildChannelDiagnosticsSnapshot(channel: ChannelSnapshotInput): 
     guide: {
       status:
         channel.epgSourceId && channel.epgChannelId
+          ? runtimeState.guide.status
+          : channel.hasManualPrograms
           ? runtimeState.guide.status
           : "unconfigured",
       lastObservedAt: toIsoString(runtimeState.guide.lastObservedAt),
