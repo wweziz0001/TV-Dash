@@ -440,8 +440,12 @@ Add a scheduled EPG refresh worker plus a first full channel guide page so persi
   - `EpgChannelMapping` links one TV-Dash channel to one imported source channel
   - the admin EPG page manages those mappings per source
 - Manual program entry now works like this:
-  - admins can create, edit, browse, and delete manual `ProgramEntry` rows
-  - manual rows validate start/end times and reject overlapping manual entries on the same channel
+  - the real admin-facing workflow lives on `/admin/epg-sources` in `apps/web/src/pages/admin-epg-sources-page.tsx`
+  - the dedicated per-channel schedule manager UI is implemented in `apps/web/src/components/epg/channel-manual-program-manager.tsx`
+  - admins can select a channel and directly create, edit, browse, and delete manual `ProgramEntry` rows for that channel
+  - the form supports title, start date/time, end date/time, optional description, optional category/type, plus optional subtitle and image URL
+  - manual rows validate missing title, missing start/end, malformed local datetime input, end-before-start, and overlapping manual entries on the same channel before save
+  - backend validation still enforces the same overlap and DTO rules server-side
   - manual rows override imported rows when the resolved guide window is assembled
 - Now/next resolution now works like this:
   - the backend resolves a channel guide window from mapped imported rows plus manual rows
@@ -449,7 +453,7 @@ Add a scheduled EPG refresh worker plus a first full channel guide page so persi
   - dashboard cards, multiview tiles, and the single-view watch page consume the same now/next contract
 - Admin UI now includes:
   - expanded channel controls for proxy mode and upstream headers
-  - a dedicated EPG management page with source CRUD, import actions, mapping tools, source diagnostics, and manual program controls
+  - a dedicated EPG management page with source CRUD, import actions, mapping tools, source diagnostics, and a real per-channel manual schedule manager
 - Tests now cover proxy rewriting/token behavior, XMLTV parsing, guide resolution, EPG routes, proxy routes, and frontend helper logic for the new contracts.
 
 ## Flexible Channel Ingest Summary

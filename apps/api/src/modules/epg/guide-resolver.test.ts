@@ -82,4 +82,34 @@ describe("getNowNextProgrammes", () => {
     expect(result.next?.title).toBe("Imported follow-up");
     expect(result.next?.startAt.toISOString()).toBe("2026-04-03T10:15:00.000Z");
   });
+
+  it("resolves now and next from manual entries without imported guide data", () => {
+    const result = getNowNextProgrammes(
+      resolveGuideProgrammes({
+        imported: [],
+        manual: [
+          buildProgramme({
+            id: "manual-1",
+            sourceKind: "MANUAL",
+            title: "Manual morning",
+            startAt: new Date("2026-04-03T09:00:00.000Z"),
+            endAt: new Date("2026-04-03T10:00:00.000Z"),
+          }),
+          buildProgramme({
+            id: "manual-2",
+            sourceKind: "MANUAL",
+            title: "Manual follow-up",
+            startAt: new Date("2026-04-03T10:00:00.000Z"),
+            endAt: new Date("2026-04-03T11:00:00.000Z"),
+          }),
+        ],
+      }),
+      new Date("2026-04-03T09:15:00.000Z"),
+    );
+
+    expect(result.now?.title).toBe("Manual morning");
+    expect(result.now?.sourceKind).toBe("MANUAL");
+    expect(result.next?.title).toBe("Manual follow-up");
+    expect(result.next?.sourceKind).toBe("MANUAL");
+  });
 });

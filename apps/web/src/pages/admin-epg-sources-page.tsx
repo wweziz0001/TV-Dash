@@ -4,6 +4,7 @@ import { CheckCircle2, Link2, RefreshCw, Upload } from "lucide-react";
 import { toast } from "react-hot-toast";
 import type { EpgSourceInput, ProgramEntryInput } from "@tv-dash/shared";
 import { formatHeadersJson, parseHeadersJson } from "@/components/channels/channel-admin-form";
+import { ChannelManualProgramManager } from "@/components/epg/channel-manual-program-manager";
 import { EpgSourceDiagnosticsPanel } from "@/components/epg/epg-source-diagnostics-panel";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,7 @@ import { Select } from "@/components/ui/select";
 import { TextArea } from "@/components/ui/text-area";
 import { useAuth } from "@/features/auth/auth-context";
 import { api } from "@/services/api";
-import type { Channel, EpgSource, EpgSourceChannel, ProgramEntry } from "@/types/api";
+import type { Channel, EpgSource, EpgSourceChannel } from "@/types/api";
 
 interface EpgSourceFormValue {
   name: string;
@@ -25,17 +26,6 @@ interface EpgSourceFormValue {
   requestUserAgent: string;
   requestReferrer: string;
   requestHeadersText: string;
-}
-
-interface ManualProgramFormValue {
-  channelId: string;
-  title: string;
-  subtitle: string;
-  startAtLocal: string;
-  endAtLocal: string;
-  description: string;
-  category: string;
-  imageUrl: string;
 }
 
 const emptySourceForm: EpgSourceFormValue = {
@@ -50,17 +40,6 @@ const emptySourceForm: EpgSourceFormValue = {
   requestHeadersText: "",
 };
 
-const emptyManualProgramForm: ManualProgramFormValue = {
-  channelId: "",
-  title: "",
-  subtitle: "",
-  startAtLocal: "",
-  endAtLocal: "",
-  description: "",
-  category: "",
-  imageUrl: "",
-};
-
 export function AdminEpgSourcesPage() {
   const { token } = useAuth();
   const queryClient = useQueryClient();
@@ -69,9 +48,7 @@ export function AdminEpgSourcesPage() {
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [sourceChannelSearch, setSourceChannelSearch] = useState("");
   const [sourceForm, setSourceForm] = useState<EpgSourceFormValue>(emptySourceForm);
-  const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
   const [selectedProgramChannelId, setSelectedProgramChannelId] = useState("");
-  const [programForm, setProgramForm] = useState<ManualProgramFormValue>(emptyManualProgramForm);
 
   const sourcesQuery = useQuery({
     queryKey: ["epg-sources", token],
@@ -105,18 +82,16 @@ export function AdminEpgSourcesPage() {
   const manualProgramsQuery = useQuery({
     queryKey: ["manual-programs", selectedProgramChannelId, token],
     queryFn: async () => {
-      if (!token) {
+      if (!token || !selectedProgramChannelId) {
         throw new Error("Missing session");
       }
 
       const params = new URLSearchParams();
-      if (selectedProgramChannelId) {
-        params.set("channelId", selectedProgramChannelId);
-      }
+      params.set("channelId", selectedProgramChannelId);
 
       return (await api.listManualPrograms(token, params)).programs;
     },
-    enabled: Boolean(token),
+    enabled: Boolean(token && selectedProgramChannelId),
   });
 
   const diagnosticsQuery = useQuery({
@@ -140,10 +115,6 @@ export function AdminEpgSourcesPage() {
   useEffect(() => {
     if (!selectedProgramChannelId && channelsQuery.data?.[0]) {
       setSelectedProgramChannelId(channelsQuery.data[0].id);
-      setProgramForm((current) => ({
-        ...current,
-        channelId: channelsQuery.data[0]?.id ?? "",
-      }));
     }
   }, [channelsQuery.data, selectedProgramChannelId]);
 
@@ -288,24 +259,20 @@ export function AdminEpgSourcesPage() {
   });
 
   const saveProgramMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (input: { id?: string; payload: ProgramEntryInput }) => {
       if (!token) {
         throw new Error("Missing session");
       }
 
-      const payload = buildProgramEntryInput(programForm);
-
-      if (editingProgramId) {
-        return api.updateManualProgram(editingProgramId, payload, token);
+      if (input.id) {
+        return api.updateManualProgram(input.id, input.payload, token);
       }
 
-      return api.createManualProgram(payload, token);
+      return api.createManualProgram(input.payload, token);
     },
-    onSuccess: async (response) => {
-      toast.success(editingProgramId ? "Manual programme updated" : "Manual programme created");
-      setEditingProgramId(null);
-      resetProgramForm(response.program.channelId ?? selectedProgramChannelId);
-      await queryClient.invalidateQueries({ queryKey: ["manual-programs", selectedProgramChannelId, token] });
+    onSuccess: async (response, variables) => {
+      toast.success(variables.id ? "Manual programme updated" : "Manual programme created");
+      await invalidateManualProgramQueries(queryClient, response.program.channelId ?? selectedProgramChannelId, token);
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to save manual programme");
@@ -322,10 +289,7 @@ export function AdminEpgSourcesPage() {
     },
     onSuccess: async () => {
       toast.success("Manual programme deleted");
-      if (editingProgramId) {
-        resetProgramForm(selectedProgramChannelId);
-      }
-      await queryClient.invalidateQueries({ queryKey: ["manual-programs", selectedProgramChannelId, token] });
+      await invalidateManualProgramQueries(queryClient, selectedProgramChannelId, token);
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to delete manual programme");
@@ -346,20 +310,6 @@ export function AdminEpgSourcesPage() {
     setEditingSourceId(source.id);
     setSelectedSourceId(source.id);
     setSourceForm(buildSourceForm(source));
-  }
-
-  function resetProgramForm(channelId = selectedProgramChannelId) {
-    setEditingProgramId(null);
-    setProgramForm({
-      ...emptyManualProgramForm,
-      channelId,
-    });
-  }
-
-  function editProgram(program: ProgramEntry) {
-    setEditingProgramId(program.id);
-    setSelectedProgramChannelId(program.channelId ?? "");
-    setProgramForm(buildProgramForm(program));
   }
 
   async function handleImportFileSelection(event: React.ChangeEvent<HTMLInputElement>) {
@@ -719,154 +669,23 @@ export function AdminEpgSourcesPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[0.82fr_1.18fr]">
-        <Panel className="space-y-4" density="compact">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">
-              {editingProgramId ? "Edit manual programme" : "Create manual programme"}
-            </p>
-            <p className="mt-1.5 text-sm text-slate-400">
-              Manual entries are stored per TV-Dash channel and take precedence over imported guide rows inside their time window.
-            </p>
-          </div>
-
-          <Field label="Channel">
-            <Select
-              onChange={(event) => {
-                setSelectedProgramChannelId(event.target.value);
-                setProgramForm((current) => ({ ...current, channelId: event.target.value }));
-              }}
-              uiSize="sm"
-              value={programForm.channelId}
-            >
-              <option value="">Select a channel</option>
-              {channels.map((channel) => (
-                <option key={channel.id} value={channel.id}>
-                  {channel.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Title">
-              <Input onChange={(event) => setProgramForm((current) => ({ ...current, title: event.target.value }))} uiSize="sm" value={programForm.title} />
-            </Field>
-            <Field label="Subtitle">
-              <Input onChange={(event) => setProgramForm((current) => ({ ...current, subtitle: event.target.value }))} uiSize="sm" value={programForm.subtitle} />
-            </Field>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Start">
-              <Input
-                onChange={(event) => setProgramForm((current) => ({ ...current, startAtLocal: event.target.value }))}
-                type="datetime-local"
-                uiSize="sm"
-                value={programForm.startAtLocal}
-              />
-            </Field>
-            <Field label="End">
-              <Input
-                onChange={(event) => setProgramForm((current) => ({ ...current, endAtLocal: event.target.value }))}
-                type="datetime-local"
-                uiSize="sm"
-                value={programForm.endAtLocal}
-              />
-            </Field>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Category">
-              <Input onChange={(event) => setProgramForm((current) => ({ ...current, category: event.target.value }))} uiSize="sm" value={programForm.category} />
-            </Field>
-            <Field label="Image URL">
-              <Input onChange={(event) => setProgramForm((current) => ({ ...current, imageUrl: event.target.value }))} uiSize="sm" value={programForm.imageUrl} />
-            </Field>
-          </div>
-
-          <Field label="Description">
-            <TextArea
-              onChange={(event) => setProgramForm((current) => ({ ...current, description: event.target.value }))}
-              rows={4}
-              value={programForm.description}
-            />
-          </Field>
-
-          <div className="flex gap-3">
-            <Button className="flex-1" onClick={() => saveProgramMutation.mutate()}>
-              {editingProgramId ? "Update manual programme" : "Create manual programme"}
-            </Button>
-            {editingProgramId ? (
-              <Button className="flex-1" onClick={() => resetProgramForm(selectedProgramChannelId)} variant="secondary">
-                Cancel
-              </Button>
-            ) : null}
-          </div>
-        </Panel>
-
-        <Panel density="compact">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Manual programme entries</p>
-              <p className="mt-1.5 text-sm text-slate-400">
-                Existing manual rows for the selected channel. Overlaps on the same channel are rejected intentionally.
-              </p>
-            </div>
-            <span className="rounded-full border border-slate-800 bg-slate-900/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-slate-300">
-              {manualProgramsQuery.data?.length ?? 0} row(s)
-            </span>
-          </div>
-
-          <div className="mt-3">
-            <Select
-              onChange={(event) => {
-                setSelectedProgramChannelId(event.target.value);
-                if (!editingProgramId) {
-                  setProgramForm((current) => ({ ...current, channelId: event.target.value }));
-                }
-              }}
-              uiSize="sm"
-              value={selectedProgramChannelId}
-            >
-              <option value="">All channels</option>
-              {channels.map((channel) => (
-                <option key={channel.id} value={channel.id}>
-                  {channel.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-
-          {manualProgramsQuery.isLoading ? (
-            <p className="mt-4 text-sm text-slate-400">Loading manual programmes...</p>
-          ) : (
-            <div className="mt-4 space-y-3">
-              {(manualProgramsQuery.data ?? []).map((program) => (
-                <div key={program.id} className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
-                      <p className="font-semibold text-white">{program.title}</p>
-                      <p className="mt-1 text-sm text-slate-400">
-                        {program.channel?.name ?? "Unknown channel"} · {formatTimestamp(program.startAt)} - {formatTimestamp(program.endAt)}
-                      </p>
-                      {program.description ? <p className="mt-2 text-sm text-slate-500">{program.description}</p> : null}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button onClick={() => editProgram(program)} size="sm" variant="secondary">
-                        Edit
-                      </Button>
-                      <Button onClick={() => deleteProgramMutation.mutate(program.id)} size="sm" variant="danger">
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Panel>
-      </div>
+      <ChannelManualProgramManager
+        channels={channels}
+        isLoading={manualProgramsQuery.isLoading}
+        isSaving={saveProgramMutation.isPending || deleteProgramMutation.isPending}
+        onCreate={async (payload) => {
+          await saveProgramMutation.mutateAsync({ payload });
+        }}
+        onDelete={async (id) => {
+          await deleteProgramMutation.mutateAsync(id);
+        }}
+        onSelectedChannelIdChange={setSelectedProgramChannelId}
+        onUpdate={async (id, payload) => {
+          await saveProgramMutation.mutateAsync({ id, payload });
+        }}
+        programs={manualProgramsQuery.data ?? []}
+        selectedChannelId={selectedProgramChannelId}
+      />
     </div>
   );
 }
@@ -899,60 +718,34 @@ function buildSourceForm(source: EpgSource): EpgSourceFormValue {
   };
 }
 
-function buildProgramEntryInput(form: ManualProgramFormValue): ProgramEntryInput {
-  if (!form.channelId) {
-    throw new Error("Select a channel before saving a manual programme");
-  }
-
-  if (!form.startAtLocal || !form.endAtLocal) {
-    throw new Error("Start and end times are required");
-  }
-
-  return {
-    channelId: form.channelId,
-    title: form.title,
-    subtitle: form.subtitle || null,
-    startAt: new Date(form.startAtLocal).toISOString(),
-    endAt: new Date(form.endAtLocal).toISOString(),
-    description: form.description || null,
-    category: form.category || null,
-    imageUrl: form.imageUrl || null,
-  };
-}
-
-function buildProgramForm(program: ProgramEntry): ManualProgramFormValue {
-  return {
-    channelId: program.channelId ?? "",
-    title: program.title,
-    subtitle: program.subtitle ?? "",
-    startAtLocal: toDateTimeLocal(program.startAt),
-    endAtLocal: toDateTimeLocal(program.endAt),
-    description: program.description ?? "",
-    category: program.category ?? "",
-    imageUrl: program.imageUrl ?? "",
-  };
-}
-
-function toDateTimeLocal(value: string | null) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  const hours = `${date.getHours()}`.padStart(2, "0");
-  const minutes = `${date.getMinutes()}`.padStart(2, "0");
-
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
-
 async function invalidateEpgQueries(queryClient: ReturnType<typeof useQueryClient>, sourceId: string, token: string | null) {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ["epg-sources", token] }),
     queryClient.invalidateQueries({ queryKey: ["epg-source-channels", sourceId] }),
     queryClient.invalidateQueries({ queryKey: ["epg-diagnostics", sourceId, token] }),
+  ]);
+}
+
+async function invalidateManualProgramQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+  channelId: string,
+  token: string | null,
+) {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["manual-programs", channelId, token] }),
+    queryClient.invalidateQueries({ queryKey: ["channels", token] }),
+    queryClient.invalidateQueries({
+      predicate: (query) => {
+        const rootKey = query.queryKey[0];
+
+        return (
+          rootKey === "dashboard-now-next" ||
+          rootKey === "multiview-now-next" ||
+          rootKey === "now-next" ||
+          rootKey === "channel-guide-window"
+        );
+      },
+    }),
   ]);
 }
 
