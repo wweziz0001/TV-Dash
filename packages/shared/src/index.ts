@@ -3,6 +3,19 @@ import { z } from "zod";
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 export const userRoleSchema = z.enum(["ADMIN", "USER"]);
+export const accessPermissionSchema = z.enum([
+  "admin:access",
+  "channels:read",
+  "channels:manage",
+  "groups:manage",
+  "epg:read",
+  "epg:manage",
+  "favorites:manage-own",
+  "layouts:manage-own",
+  "diagnostics:read",
+  "audit:read",
+  "streams:inspect",
+]);
 
 export const layoutTypeSchema = z.enum([
   "LAYOUT_1X1",
@@ -34,17 +47,69 @@ export const diagnosticFailureKindSchema = z.enum([
   "unknown",
 ]);
 
-const optionalNullableTrimmedStringSchema = z
+const FORBIDDEN_UPSTREAM_HEADER_NAMES = new Set([
+  "authorization",
+  "cookie",
+  "set-cookie",
+  "host",
+  "origin",
+  "content-length",
+  "transfer-encoding",
+  "connection",
+  "proxy-authorization",
+  "proxy-connection",
+  "te",
+  "trailer",
+  "upgrade",
+  "via",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-real-ip",
+]);
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
+const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
+function isSafeConfiguredUrl(value: string) {
+  try {
+    const url = new URL(value);
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return false;
+    }
+
+    if (url.username || url.password || url.hash) {
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const boundedOperationalStringSchema = z
   .string()
   .trim()
   .max(255)
+  .refine((value) => !CONTROL_CHARACTER_PATTERN.test(value), {
+    message: "Value cannot contain control characters",
+  });
+
+const optionalNullableTrimmedStringSchema = boundedOperationalStringSchema
   .or(z.null())
   .optional()
   .transform((value) => (typeof value === "string" ? value || null : null));
 
-const optionalNullableUrlSchema = z
+const configuredUrlSchema = z
   .string()
+  .trim()
   .url()
+  .refine((value) => isSafeConfiguredUrl(value), {
+    message: "URL must use http/https without embedded credentials or fragments",
+  });
+
+const optionalNullableUrlSchema = configuredUrlSchema
   .or(z.literal(""))
   .or(z.null())
   .optional()
@@ -58,7 +123,59 @@ const optionalNullablePositiveIntegerSchema = z
   .optional()
   .transform((value) => value ?? null);
 
-export const upstreamHeadersInputSchema = z.record(z.string().min(1).max(120), z.string().min(1).max(2000)).default({});
+export const upstreamHeadersInputSchema = z
+  .record(
+    z
+      .string()
+      .trim()
+      .min(1)
+      .max(120)
+      .refine((value) => HTTP_HEADER_NAME_PATTERN.test(value), {
+        message: "Header names must use valid HTTP token characters",
+      }),
+    z
+      .string()
+      .trim()
+      .min(1)
+      .max(1024)
+      .refine((value) => !CONTROL_CHARACTER_PATTERN.test(value), {
+        message: "Header values cannot contain control characters",
+      }),
+  )
+  .default({})
+  .superRefine((headers, context) => {
+    const normalizedNames = new Set<string>();
+
+    if (Object.keys(headers).length > 20) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "No more than 20 upstream headers are allowed",
+      });
+    }
+
+    Object.keys(headers).forEach((headerName) => {
+      const normalizedName = headerName.trim().toLowerCase();
+
+      if (FORBIDDEN_UPSTREAM_HEADER_NAMES.has(normalizedName)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Header ${headerName} is reserved and cannot be configured manually`,
+          path: [headerName],
+        });
+      }
+
+      if (normalizedNames.has(normalizedName)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Duplicate header ${headerName} is not allowed`,
+          path: [headerName],
+        });
+        return;
+      }
+
+      normalizedNames.add(normalizedName);
+    });
+  });
 
 export const loginInputSchema = z.object({
   email: z.string().email(),
@@ -74,7 +191,7 @@ export const channelGroupInputSchema = z.object({
 export const channelQualityVariantInputSchema = z.object({
   label: z.string().trim().min(1).max(40),
   sortOrder: z.number().int().min(0).max(9999),
-  playlistUrl: z.string().url(),
+  playlistUrl: configuredUrlSchema,
   width: optionalNullablePositiveIntegerSchema,
   height: optionalNullablePositiveIntegerSchema,
   bandwidth: optionalNullablePositiveIntegerSchema,
@@ -111,7 +228,7 @@ const channelBaseInputSchema = z.object({
 
 const masterPlaylistChannelInputSchema = channelBaseInputSchema.extend({
   sourceMode: z.literal("MASTER_PLAYLIST"),
-  masterHlsUrl: z.string().url(),
+  masterHlsUrl: configuredUrlSchema,
   manualVariants: z.undefined().optional(),
 });
 
@@ -203,7 +320,7 @@ export const epgSourceInputSchema = z.object({
   name: z.string().min(2).max(120),
   slug: z.string().min(2).max(120),
   sourceType: epgSourceTypeSchema.default("XMLTV"),
-  url: z.string().url(),
+  url: configuredUrlSchema,
   isActive: z.boolean().default(true),
   refreshIntervalMinutes: z.number().int().min(5).max(1440).default(360),
   requestUserAgent: optionalNullableTrimmedStringSchema,
@@ -242,7 +359,7 @@ export const savedLayoutInputSchema = z.object({
 });
 
 export const streamTestInputSchema = z.object({
-  url: z.string().url(),
+  url: configuredUrlSchema,
   requestUserAgent: optionalNullableTrimmedStringSchema,
   requestReferrer: optionalNullableUrlSchema,
   requestHeaders: upstreamHeadersInputSchema,
@@ -287,6 +404,7 @@ export const playbackSessionEndInputSchema = z.object({
 });
 
 export type UserRole = z.infer<typeof userRoleSchema>;
+export type AccessPermission = z.infer<typeof accessPermissionSchema>;
 export type LayoutType = z.infer<typeof layoutTypeSchema>;
 export type StreamPlaybackMode = z.infer<typeof streamPlaybackModeSchema>;
 export type ChannelSourceMode = z.infer<typeof channelSourceModeSchema>;
@@ -311,3 +429,24 @@ export type StreamVariant = z.infer<typeof streamVariantSchema>;
 export type PlaybackSessionHeartbeatItemInput = z.infer<typeof playbackSessionHeartbeatItemInputSchema>;
 export type PlaybackSessionHeartbeatInput = z.infer<typeof playbackSessionHeartbeatInputSchema>;
 export type PlaybackSessionEndInput = z.infer<typeof playbackSessionEndInputSchema>;
+
+export const ROLE_PERMISSION_MAP: Record<UserRole, AccessPermission[]> = {
+  ADMIN: [
+    "admin:access",
+    "channels:read",
+    "channels:manage",
+    "groups:manage",
+    "epg:read",
+    "epg:manage",
+    "favorites:manage-own",
+    "layouts:manage-own",
+    "diagnostics:read",
+    "audit:read",
+    "streams:inspect",
+  ],
+  USER: ["channels:read", "epg:read", "favorites:manage-own", "layouts:manage-own"],
+};
+
+export function roleHasPermission(role: UserRole, permission: AccessPermission) {
+  return ROLE_PERMISSION_MAP[role].includes(permission);
+}

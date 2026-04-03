@@ -40,3 +40,11 @@ export const monitoringLogsQuerySchema = z.object({
   search: optionalTrimmedString,
   limit: z.coerce.number().int().min(1).max(500).optional(),
 });
+
+export const auditEventsQuerySchema = z.object({
+  actorUserId: z.string().uuid().optional(),
+  targetType: optionalTrimmedString,
+  action: optionalTrimmedString,
+  search: optionalTrimmedString,
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});

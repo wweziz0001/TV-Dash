@@ -9,6 +9,7 @@ declare module "@fastify/jwt" {
       sub: string;
       email: string;
       role: "ADMIN" | "USER";
+      sessionVersion: number;
     };
   }
 }
@@ -16,6 +17,18 @@ declare module "@fastify/jwt" {
 declare module "fastify" {
   interface FastifyInstance {
     authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void>;
+  }
+
+  interface FastifyRequest {
+    authUser?: {
+      id: string;
+      email: string;
+      username: string;
+      role: "ADMIN" | "USER";
+      sessionVersion: number;
+      createdAt: Date;
+      updatedAt: Date;
+    };
   }
 }
 
