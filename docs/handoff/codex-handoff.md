@@ -15,12 +15,15 @@ The current operator milestone also adds:
 - a compact manual quality-variant admin workflow with presets, normalization helpers, inline row validation, and faster repetitive entry controls
 - a first real observability layer with runtime stream/channel diagnostics, EPG diagnostics, structured backend event logs, and clearer playback-state reporting
 - a dedicated admin observability area with live viewer sessions, per-channel current viewer counts, recent failures, and a filterable logs viewer
+- a hardened auth/access baseline with session-version invalidation, explicit permission guards, admin-only stream inspection, and a durable admin audit trail
 
 ## Current Architecture Summary
 
 - Monorepo with `apps/api`, `apps/web`, and `packages/shared`
 - Backend now follows explicit `routes -> services -> repositories -> prisma` boundaries inside `apps/api/src/modules`
+- Backend auth now resolves the current user for protected requests so stale or revoked sessions fail server-side instead of trusting old token claims indefinitely
 - Backend observability now includes a dedicated `diagnostics` module for admin inspection endpoints plus shared structured-log helpers
+- Backend governance now also includes an `audit` module for durable admin action records with sanitized detail fields
 - Playback session tracking now persists real active player heartbeats in PostgreSQL so admin monitoring pages can show who is watching what now
 - Frontend keeps app bootstrap in `app`, route screens in `pages`, shared UI in `components`, auth in `features`, request logic in `services`, and player-specific code in `player`
 - Shared API validation contracts live in `packages/shared`
@@ -83,6 +86,7 @@ tests/
 ## Key Backend Modules
 
 - `auth`: login and current user lookup
+- `audit`: durable admin governance events and audit listing
 - `channels`: logical channel catalog CRUD, browse lookups, ingest-mode metadata, manual quality variants, playback-mode metadata, and channel-to-EPG linking
 - `epg`: EPG source CRUD, XMLTV preview/loading, and now/next lookup
 - `groups`: category/group CRUD
@@ -99,6 +103,7 @@ Prisma schema lives in `apps/api/prisma/schema.prisma`.
 Main models:
 
 - `User`
+- `AuditEvent`
 - `ChannelGroup`
 - `Channel`
 - `ChannelQualityVariant`
@@ -117,6 +122,7 @@ Key relationship rules:
 - favorites are per-user per-channel
 - saved layouts are per-user and contain ordered tile items
 - each logical channel resolves to one player-facing master source plus optional upstream request metadata
+- users now carry a `sessionVersion` field so logout and future auth-sensitive changes can invalidate stale JWT-backed sessions server-side
 
 ## Player Architecture Overview
 
@@ -144,6 +150,7 @@ Key relationship rules:
 - Frontend player behavior stays inside `src/player`.
 - Cross-app contracts go in `packages/shared`; app-local types stay local.
 - Frontend request payloads should use shared DTO types instead of `unknown` or ad-hoc object shapes.
+- Role and permission checks now have a shared foundation in `packages/shared`, with backend permission guards as the source of truth for protected APIs.
 - Saved layout config is now modeled as real JSON in shared contracts, not as an unbounded `any` record.
 - Proxy playback URL selection happens in frontend service helpers, not inside the player lifecycle code.
 - Manual-variant channels must resolve through the backend stream master path so HLS.js receives one logical manifest.
@@ -157,6 +164,8 @@ Key relationship rules:
   - stale sessions expire after a bounded inactivity window
   - per-channel viewer counts are aggregated from non-stale, non-ended playback sessions
 - Player state should flow upward through diagnostics callbacks for operator-facing surfaces instead of pages inferring status from raw HLS events.
+- Stream inspection endpoints (`/api/streams/test` and `/api/streams/metadata`) are now explicitly admin-only because they accept arbitrary upstream URLs plus request-header overrides.
+- Important admin mutations now create durable `AuditEvent` rows with sanitized details such as mode changes, booleans, ids, and counts instead of raw sensitive config values.
 
 ## Testing Status
 
@@ -164,6 +173,7 @@ Current automated coverage includes:
 
 - API health boot/injection test
 - Fastify inject coverage for channels, groups, favorites, layouts, streams, and EPG route contracts
+- Fastify inject coverage for auth login/me/logout session-version behavior and admin audit-event listing
 - HLS master playlist parsing and synthetic master generation tests
 - HLS playlist rewrite and proxy token tests
 - XMLTV parser and now/next lookup tests
@@ -197,6 +207,7 @@ Optional but recommended for risky changes:
 - Vite still warns that the player chunk is large; route-level lazy loading is the next high-value frontend optimization.
 - Fastify route tests still mock persistence; isolated database-backed CRUD coverage is the next backend confidence step.
 - Route-level UI regression coverage for favorites and saved-layout application is still missing on the frontend.
+- Logout currently invalidates all sessions for the current user via `sessionVersion`; per-device or per-session revocation is still future work.
 - Admin reorder remains sort-order based rather than drag-and-drop.
 - Manual variant rows now support presets, duplication, and auto-sort, but they still use button-driven ordering rather than drag-and-drop.
 - The proxy foundation currently buffers upstream asset bodies in memory instead of true streaming passthrough.
@@ -204,6 +215,7 @@ Optional but recommended for risky changes:
 - Channel and EPG diagnostics are also process-memory only right now; restarts clear last-success/last-failure history and there is no long-term metrics sink yet.
 - Structured admin logs are also process-memory only right now; restarts clear the log viewer history and there is no durable event sink yet.
 - Proxy playback is intentionally exposed through unauthenticated asset paths because the current HLS client stack does not inject bearer headers into playlist/segment requests.
+- Audit events are durable and queryable, but they currently store sanitized summaries rather than before/after diffs for every admin change.
 - Manual-variant channels in `DIRECT` playback mode still rely on browser access to each upstream variant playlist and segment URL, so providers that require custom headers should use `PROXY` mode.
 - The admin form shows the intended synthetic master order and row-level validation state, but it still does not render a full unsaved master-playlist preview.
 - route-level React coverage for the full multiview page is still missing; current frontend regression coverage focuses on the new workflow helpers and picker component seams.
@@ -252,6 +264,28 @@ Optional but recommended for risky changes:
   - each live player surface owns a stable playback session id
   - sessions store user, channel, session type, playback state, quality, mute state, tile index, and timestamps
   - admin monitoring excludes stale sessions by expiring rows whose heartbeat has gone quiet
+
+## Security And Governance Milestone Summary
+
+- JWT-backed sessions now include a persisted `sessionVersion`, and protected backend routes resolve the current user before trusting access.
+- `/api/auth/logout` now invalidates active sessions server-side instead of only clearing client storage.
+- Shared access permissions now define the current foundation for:
+  - `ADMIN`
+    - admin surface access plus channel, group, EPG, diagnostics, audit, and stream-inspection permissions
+  - `USER`
+    - operator-facing read access plus favorites/layout ownership actions
+- Sensitive admin inputs now reject:
+  - reserved upstream headers such as `authorization`, `cookie`, and proxy-forwarding headers
+  - control characters in operational header or user-agent values
+  - URLs with non-HTTP(S) schemes, embedded credentials, or fragments
+- Durable audit records now exist for:
+  - admin login/logout
+  - channel create/update/delete/sort-order changes
+  - group create/update/delete changes
+  - EPG source create/update/delete changes
+- Frontend auth UX now handles:
+  - expired or revoked sessions with a clearer sign-in notice
+  - denied admin access with a dedicated forbidden page instead of a silent redirect
 
 ## Operator UX Milestone Summary
 

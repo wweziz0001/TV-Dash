@@ -76,7 +76,9 @@ Repositories must not:
 ## Module Ownership
 
 - `auth`
-  - login and current-user session lookup
+  - login, logout, current-user session lookup, and session-version validation
+- `audit`
+  - durable admin governance events for sensitive operational actions
 - `channels`
   - logical channel catalog CRUD, browse lookups, channel ingest-mode metadata, manual quality variants, proxy-mode metadata, and channel-to-EPG mapping fields
 - `groups`
@@ -130,6 +132,27 @@ Repositories must not:
 - XMLTV upstream preview/fetch failures: `502`
 
 Keep those mappings stable unless the contract explicitly changes.
+
+## Auth And Access Boundary Rules
+
+- Protected routes must verify more than JWT signature alone:
+  - validate the token
+  - resolve the current user from persistence
+  - reject stale or revoked sessions when the stored `sessionVersion` no longer matches
+- Server-side permission checks are the source of truth for admin boundaries.
+- Frontend route guards may improve UX, but they must never be the only protection for admin pages or operational APIs.
+- Current role foundation:
+  - `ADMIN`
+    - has `admin:access` plus operational permissions such as `channels:manage`, `groups:manage`, `epg:manage`, `diagnostics:read`, `audit:read`, and `streams:inspect`
+  - `USER`
+    - has operator permissions such as `channels:read`, `epg:read`, `favorites:manage-own`, and `layouts:manage-own`
+- New protected endpoints should use explicit permission guards where practical instead of ad-hoc inline role comparisons.
+
+## Admin Governance Rules
+
+- Sensitive admin mutations must create a durable audit event with sanitized metadata.
+- Audit records must not store raw bearer tokens, raw upstream header values, or full sensitive operational URLs.
+- Stream inspection endpoints that accept arbitrary upstream URLs or request-header overrides are admin-only surfaces, even if the UI already lives inside an admin page.
 
 ## Diagnostics Foundation Rules
 

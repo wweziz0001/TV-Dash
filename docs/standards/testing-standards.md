@@ -52,6 +52,7 @@ Required for new or changed backend behavior when:
 - an endpoint contract changes
 - auth or ownership behavior changes
 - persistence behavior spans route, service, and repository layers
+- admin governance or audit behavior changes
 
 Preferred approach:
 
@@ -143,6 +144,14 @@ These areas are release-critical and should gain or maintain automated coverage 
 - failure classification helpers for stream and XMLTV errors
 - playback session tracking, stale-session cleanup, and per-channel viewer-count aggregation when monitoring behavior changes
 - structured-log filtering behavior when the admin logs viewer contract changes
+
+### Auth And Governance
+
+- login, logout, and `me` flows when session lifecycle behavior changes
+- stale or revoked session rejection for protected endpoints
+- admin-only endpoint rejection for non-admin/operator users
+- durable audit event creation for sensitive admin mutations
+- audit-event listing behavior when the admin observability contract changes
 
 ## Deferral Rule
 

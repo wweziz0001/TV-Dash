@@ -1,5 +1,113 @@
 # Codex Session Log
 
+## `2026-04-03T05:55:00+03:00`
+
+### Objective
+
+Harden real security, access control, and admin governance in TV-Dash by strengthening server-side auth/session handling, admin-only boundaries, sensitive config validation, and auditability.
+
+### Work Completed
+
+- created the requested working branch `012-security-access-and-admin-hardening`
+- added a cleaner role/access foundation in `packages/shared` with explicit permissions instead of relying on scattered admin checks
+- hardened backend auth/session behavior with:
+  - JWT `sessionVersion` claims
+  - persisted `User.sessionVersion`
+  - current-user resolution for protected requests
+  - server-side stale/revoked session rejection
+  - a real `POST /api/auth/logout` invalidation path
+- tightened protected API discipline:
+  - channel, group, EPG, diagnostics, audit, and stream-inspection routes now use explicit permission guards
+  - stream inspection endpoints are now admin-only because they accept arbitrary upstream URLs plus request-header overrides
+- strengthened sensitive admin-config validation by rejecting:
+  - reserved upstream header names such as `authorization`, `cookie`, `host`, and forwarding headers
+  - control characters in operational header/user-agent values
+  - URLs with non-HTTP(S) schemes, embedded credentials, or fragments
+- added a lightweight durable audit foundation with:
+  - Prisma `AuditEvent` storage
+  - new `audit` backend module
+  - `GET /api/audit/events` admin route
+  - sanitized audit summaries for important admin actions instead of raw secret-bearing config values
+- recorded audit events for:
+  - admin login/logout
+  - channel create/update/delete/sort-order changes
+  - group create/update/delete changes
+  - EPG source create/update/delete changes
+- improved admin security UX with:
+  - clearer expired/revoked-session handling on login
+  - dedicated forbidden route behavior for denied admin access
+  - frontend auth expiry handling driven by `401` responses
+- added targeted tests for:
+  - auth login/me/logout and stale-session rejection
+  - admin-only API protection
+  - reserved-header/config validation rejection
+  - durable audit event creation and listing
+  - frontend protected-route and expired-session behavior
+
+### Files Added Or Changed
+
+- shared role/access and validation contracts:
+  - `packages/shared/src/index.ts`
+- backend auth and access control:
+  - `apps/api/src/app/auth-guards.ts`
+  - `apps/api/src/app/plugins/auth.ts`
+  - `apps/api/src/modules/auth/*`
+- backend audit/governance:
+  - `apps/api/src/modules/audit/*`
+  - `apps/api/prisma/schema.prisma`
+  - `apps/api/prisma/migrations/202604030003_security_access_and_audit_foundation/migration.sql`
+- hardened backend routes:
+  - `apps/api/src/modules/channels/channel.routes.ts`
+  - `apps/api/src/modules/groups/group.routes.ts`
+  - `apps/api/src/modules/epg/epg.routes.ts`
+  - `apps/api/src/modules/diagnostics/diagnostic.routes.ts`
+  - `apps/api/src/modules/favorites/favorite.routes.ts`
+  - `apps/api/src/modules/layouts/layout.routes.ts`
+  - `apps/api/src/modules/streams/stream.routes.ts`
+- frontend auth/admin UX:
+  - `apps/web/src/features/auth/auth-context.tsx`
+  - `apps/web/src/features/auth/auth-context.test.tsx`
+  - `apps/web/src/pages/login-page.tsx`
+  - `apps/web/src/pages/forbidden-page.tsx`
+  - `apps/web/src/app/router.tsx`
+  - `apps/web/src/components/layout/app-shell.tsx`
+  - `apps/web/src/pages/admin-observability-page.tsx`
+  - `apps/web/src/services/api.ts`
+  - `apps/web/src/types/api.ts`
+- docs:
+  - `docs/architecture/api-boundaries.md`
+  - `docs/architecture/development-policy.md`
+  - `docs/architecture/testing-strategy.md`
+  - `docs/standards/backend-api-standards.md`
+  - `docs/standards/prisma-database-standards.md`
+  - `docs/standards/testing-standards.md`
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- Used `sessionVersion` as the first practical server-side invalidation seam instead of building a much larger IAM/session product in one branch.
+- Kept role modeling lightweight but explicit by introducing shared permissions and backend permission guards rather than scattering admin checks further.
+- Chose a durable `AuditEvent` table because in-memory logs alone were not enough for admin governance.
+- Stored only sanitized audit summaries so operational secrets and raw upstream config values do not leak into the audit trail.
+
+### Verification Run
+
+- `npm run db:generate`
+- `npm run lint`
+- `npm run test`
+- `npm run build`
+
+### Remaining Risk
+
+- Session invalidation is currently per-user via `sessionVersion`, so logout revokes all active sessions for that user rather than one device/tab only.
+- Audit events record durable sanitized summaries, but they do not yet capture richer before/after diffs or approval workflows.
+- Admin user/role management endpoints still do not exist, so the new permission foundation is ready for extension but not yet exercised by role mutation flows.
+
+### Exact Suggested Next Task
+
+Add real admin user management with role changes, password/session revocation workflows, and per-session/device invalidation so the new permission and audit foundations can govern administrators as well as channels and sources.
+
 ## `2026-04-03T04:35:00+03:00`
 
 ### Objective

@@ -49,6 +49,11 @@ Every long-lived top-level entity should have:
 
 Exceptions are allowed for join tables or append-only records that do not need update tracking, such as `Favorite`.
 
+Security-specific additions:
+
+- authenticated-user records may carry a session invalidation field such as `sessionVersion` when stateless tokens still need a server-side freshness check
+- durable admin governance records such as `AuditEvent` are expected to be append-only, timestamped, and sanitized rather than updated in place
+
 ## Enum Rules
 
 - Use enums for stable domain modes shared across code paths, such as `UserRole` and `LayoutType`.
