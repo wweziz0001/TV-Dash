@@ -1,6 +1,9 @@
+import { writeStructuredLog, sanitizeUrl, summarizeUpstreamRequestConfig } from "../../app/structured-log.js";
 import { buildUpstreamHeaders, type UpstreamRequestConfig } from "../../app/upstream-request.js";
 import { getChannelStreamDetails } from "../channels/channel.service.js";
+import { recordChannelObservation } from "../diagnostics/diagnostic.service.js";
 import { parseMasterPlaylist } from "./playlist-parser.js";
+import { classifyStreamFailure } from "./stream-diagnostics.js";
 import { isPlaylistResponse, rewritePlaylist } from "./playlist-rewrite.js";
 import { createProxyToken, readProxyToken } from "./proxy-token.js";
 import { buildSyntheticMasterPlaylist } from "./synthetic-master.js";
@@ -38,46 +41,119 @@ function mapChannelRequestConfig(channel: NonNullable<Awaited<ReturnType<typeof 
   } satisfies UpstreamRequestConfig;
 }
 
-async function proxyStreamUrl(channelId: string, targetUrl: string) {
+async function proxyStreamUrl(
+  channelId: string,
+  targetUrl: string,
+  observationSource: "PROXY_MASTER" | "PROXY_ASSET",
+) {
   const channel = await getChannelStreamDetails(channelId);
 
   if (!channel) {
     throw new Error("Channel not found");
   }
 
-  const response = await fetchUpstream(targetUrl, mapChannelRequestConfig(channel));
-  const contentType = response.headers.get("content-type");
+  try {
+    const response = await fetchUpstream(targetUrl, mapChannelRequestConfig(channel));
+    const contentType = response.headers.get("content-type");
 
-  if (isPlaylistResponse(contentType, targetUrl)) {
-    const playlist = await response.text();
-    const rewrittenPlaylist = rewritePlaylist(playlist, targetUrl, (absoluteUrl) =>
-      buildProxyAssetPath(channel.id, absoluteUrl),
-    );
+    if (isPlaylistResponse(contentType, targetUrl)) {
+      const playlist = await response.text();
+      parseMasterPlaylist(playlist);
+      const rewrittenPlaylist = rewritePlaylist(playlist, targetUrl, (absoluteUrl) =>
+        buildProxyAssetPath(channel.id, absoluteUrl),
+      );
+
+      recordChannelObservation(channel.id, observationSource === "PROXY_MASTER" ? "proxyMaster" : "proxyAsset", {
+        status: "success",
+        source: observationSource,
+        detail: {
+          contentType: contentType ?? "application/vnd.apple.mpegurl",
+          targetUrl: sanitizeUrl(targetUrl),
+        },
+      });
+
+      return {
+        body: rewrittenPlaylist,
+        contentType: contentType ?? "application/vnd.apple.mpegurl",
+      };
+    }
+
+    recordChannelObservation(channel.id, observationSource === "PROXY_MASTER" ? "proxyMaster" : "proxyAsset", {
+      status: "success",
+      source: observationSource,
+      detail: {
+        contentType: contentType ?? "application/octet-stream",
+        targetUrl: sanitizeUrl(targetUrl),
+      },
+    });
 
     return {
-      body: rewrittenPlaylist,
-      contentType: contentType ?? "application/vnd.apple.mpegurl",
+      body: Buffer.from(await response.arrayBuffer()),
+      contentType: contentType ?? "application/octet-stream",
     };
-  }
+  } catch (error) {
+    const classification = classifyStreamFailure(error, {
+      operation: observationSource === "PROXY_MASTER" ? "proxy-master" : "proxy-asset",
+    });
 
-  return {
-    body: Buffer.from(await response.arrayBuffer()),
-    contentType: contentType ?? "application/octet-stream",
-  };
+    recordChannelObservation(channel.id, observationSource === "PROXY_MASTER" ? "proxyMaster" : "proxyAsset", {
+      status: "failure",
+      source: observationSource,
+      reason: classification.message,
+      failureKind: classification.failureKind,
+      retryable: classification.retryable,
+      detail: {
+        statusCode: classification.statusCode,
+        targetUrl: sanitizeUrl(targetUrl),
+      },
+    });
+
+    writeStructuredLog("warn", {
+      event: observationSource === "PROXY_MASTER" ? "stream.proxy.master.failed" : "stream.proxy.asset.failed",
+      channelId: channel.id,
+      channelSlug: channel.slug,
+      failureKind: classification.failureKind,
+      retryable: classification.retryable,
+      statusCode: classification.statusCode,
+      detail: {
+        targetUrl: sanitizeUrl(targetUrl),
+      },
+    });
+
+    throw error;
+  }
 }
 
 export async function inspectStream(url: string, requestConfig: UpstreamRequestConfig = {}) {
-  const response = await fetchUpstream(url, requestConfig);
-  const text = await response.text();
-  const parsed = parseMasterPlaylist(text);
+  try {
+    const response = await fetchUpstream(url, requestConfig);
+    const text = await response.text();
+    const contentType = response.headers.get("content-type");
+    const parsed = parseMasterPlaylist(text);
 
-  return {
-    ok: true,
-    contentType: response.headers.get("content-type"),
-    variantCount: parsed.variantCount,
-    variants: parsed.variants,
-    isMasterPlaylist: parsed.isMasterPlaylist,
-  };
+    return {
+      ok: true,
+      contentType,
+      variantCount: parsed.variantCount,
+      variants: parsed.variants,
+      isMasterPlaylist: parsed.isMasterPlaylist,
+    };
+  } catch (error) {
+    const classification = classifyStreamFailure(error, { operation: "stream-inspection" });
+
+    writeStructuredLog("warn", {
+      event: "stream.inspect.failed",
+      failureKind: classification.failureKind,
+      retryable: classification.retryable,
+      statusCode: classification.statusCode,
+      detail: {
+        targetUrl: sanitizeUrl(url),
+        ...summarizeUpstreamRequestConfig(requestConfig),
+      },
+    });
+
+    throw error;
+  }
 }
 
 export async function getChannelProxyMasterResponse(channelId: string) {
@@ -88,22 +164,64 @@ export async function getChannelProxyMasterResponse(channelId: string) {
   }
 
   if (channel.sourceMode === "MANUAL_VARIANTS") {
-    return {
-      body: buildSyntheticMasterPlaylist(channel.qualityVariants, {
+    try {
+      const body = buildSyntheticMasterPlaylist(channel.qualityVariants, {
         rewriteUri:
           channel.playbackMode === "PROXY"
             ? (absoluteUrl) => buildProxyAssetPath(channel.id, absoluteUrl)
             : undefined,
-      }),
-      contentType: "application/vnd.apple.mpegurl",
-    };
+      });
+
+      recordChannelObservation(channel.id, "syntheticMaster", {
+        status: "success",
+        source: "SYNTHETIC_MASTER",
+        detail: {
+          variantCount: channel.qualityVariants.length,
+          playbackMode: channel.playbackMode,
+        },
+      });
+
+      return {
+        body,
+        contentType: "application/vnd.apple.mpegurl",
+      };
+    } catch (error) {
+      const classification = classifyStreamFailure(error, { operation: "synthetic-master" });
+
+      recordChannelObservation(channel.id, "syntheticMaster", {
+        status: "failure",
+        source: "SYNTHETIC_MASTER",
+        reason: classification.message,
+        failureKind: classification.failureKind,
+        retryable: classification.retryable,
+        detail: {
+          variantCount: channel.qualityVariants.length,
+          playbackMode: channel.playbackMode,
+        },
+      });
+
+      writeStructuredLog("error", {
+        event: "stream.synthetic-master.failed",
+        channelId: channel.id,
+        channelSlug: channel.slug,
+        failureKind: classification.failureKind,
+        retryable: classification.retryable,
+        statusCode: classification.statusCode,
+        detail: {
+          variantCount: channel.qualityVariants.length,
+          playbackMode: channel.playbackMode,
+        },
+      });
+
+      throw error;
+    }
   }
 
   if (!channel.masterHlsUrl) {
     throw new Error("Channel master playlist is not configured");
   }
 
-  return proxyStreamUrl(channelId, channel.masterHlsUrl);
+  return proxyStreamUrl(channelId, channel.masterHlsUrl, "PROXY_MASTER");
 }
 
 export async function getChannelProxyAssetResponse(channelId: string, token: string) {
@@ -113,5 +231,5 @@ export async function getChannelProxyAssetResponse(channelId: string, token: str
     throw new Error("Invalid or expired proxy token");
   }
 
-  return proxyStreamUrl(channelId, payload.target);
+  return proxyStreamUrl(channelId, payload.target, "PROXY_ASSET");
 }

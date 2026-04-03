@@ -74,8 +74,12 @@ export function parseXmltvDocument(xml: string) {
         subTitle?: unknown;
         desc?: unknown;
       }>;
-    };
+      };
   };
+
+  if (!parsed.tv || typeof parsed.tv !== "object") {
+    throw new Error("Invalid XMLTV document");
+  }
 
   const channels = asArray(parsed.tv?.channel)
     .flatMap((channel) => {

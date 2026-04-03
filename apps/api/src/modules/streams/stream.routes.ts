@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { requireAuth } from "../../app/auth-guards.js";
 import { channelIdParamSchema, streamProxyQuerySchema } from "../../app/request-schemas.js";
 import { parseWithSchema } from "../../app/validation.js";
+import { classifyStreamFailure } from "./stream-diagnostics.js";
 import { getChannelProxyAssetResponse, getChannelProxyMasterResponse, inspectStream } from "./stream.service.js";
 
 export const streamRoutes: FastifyPluginAsync = async (fastify) => {
@@ -23,8 +24,15 @@ export const streamRoutes: FastifyPluginAsync = async (fastify) => {
       reply.header("cache-control", "no-store");
       return reply.send(proxied.body);
     } catch (error) {
-      return reply.status(502).send({
-        message: error instanceof Error ? error.message : "Unable to proxy stream master playlist",
+      const classification = classifyStreamFailure(error, { operation: "proxy-master" });
+      const statusCode =
+        classification.statusCode === 404
+          ? 404
+          : classification.statusCode === 400
+            ? 400
+            : 502;
+      return reply.status(statusCode).send({
+        message: classification.message,
       });
     }
   });
@@ -46,16 +54,16 @@ export const streamRoutes: FastifyPluginAsync = async (fastify) => {
       reply.header("cache-control", "no-store");
       return reply.send(proxied.body);
     } catch (error) {
-      if (error instanceof Error && error.message === "Invalid or expired proxy token") {
-        return reply.status(400).send({ message: error.message });
-      }
+      const classification = classifyStreamFailure(error, { operation: "proxy-asset" });
+      const statusCode =
+        classification.statusCode === 404
+          ? 404
+          : classification.statusCode === 400
+            ? 400
+            : 502;
 
-      if (error instanceof Error && error.message === "Channel not found") {
-        return reply.status(404).send({ message: error.message });
-      }
-
-      return reply.status(502).send({
-        message: error instanceof Error ? error.message : "Unable to proxy stream asset",
+      return reply.status(statusCode).send({
+        message: classification.message,
       });
     }
   });
@@ -70,8 +78,9 @@ export const streamRoutes: FastifyPluginAsync = async (fastify) => {
       const result = await inspectStream(payload.url, payload);
       return { result };
     } catch (error) {
+      const classification = classifyStreamFailure(error, { operation: "stream-inspection" });
       return reply.status(502).send({
-        message: error instanceof Error ? error.message : "Stream test failed",
+        message: classification.message,
       });
     }
   });
@@ -87,8 +96,9 @@ export const streamRoutes: FastifyPluginAsync = async (fastify) => {
       const result = await inspectStream(payload.url);
       return { result };
     } catch (error) {
+      const classification = classifyStreamFailure(error, { operation: "stream-inspection" });
       return reply.status(502).send({
-        message: error instanceof Error ? error.message : "Stream metadata failed",
+        message: classification.message,
       });
     }
   });

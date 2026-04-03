@@ -1,6 +1,16 @@
 import type { EpgSourceInput } from "@tv-dash/shared";
+import {
+  sanitizeUrl,
+  summarizeUpstreamRequestConfig,
+  writeStructuredLog,
+} from "../../app/structured-log.js";
 import { normalizeUpstreamHeaders, buildUpstreamHeaders } from "../../app/upstream-request.js";
 import { getChannelsForEpgLookup } from "../channels/channel.service.js";
+import {
+  recordChannelGuideStatus,
+  recordEpgCacheState,
+  recordEpgObservation,
+} from "../diagnostics/diagnostic.service.js";
 import {
   createEpgSource,
   deleteEpgSource,
@@ -8,6 +18,7 @@ import {
   listEpgSources,
   updateEpgSource,
 } from "./epg.repository.js";
+import { classifyEpgFailure } from "./epg-diagnostics.js";
 import { getNowNextProgramme, parseXmltvDocument } from "./xmltv-parser.js";
 
 const xmltvCache = new Map<string, { expiresAt: number; document: ReturnType<typeof parseXmltvDocument> }>();
@@ -73,14 +84,70 @@ async function loadXmltvSource(
     }
 
     const xml = await response.text();
+    recordEpgObservation(source.id, "fetch", {
+      status: "success",
+      source: "XMLTV_LOAD",
+      detail: {
+        sourceUrl: sanitizeUrl(source.url),
+      },
+    });
     const document = parseXmltvDocument(xml);
+    const expiresAt = new Date(Date.now() + source.refreshIntervalMinutes * 60_000);
+
+    recordEpgObservation(source.id, "parse", {
+      status: "success",
+      source: "XMLTV_LOAD",
+      detail: {
+        channelCount: document.channels.length,
+        programmeCount: document.programmes.length,
+      },
+    });
+    recordEpgCacheState({
+      sourceId: source.id,
+      expiresAt,
+      channelCount: document.channels.length,
+      programmeCount: document.programmes.length,
+    });
 
     xmltvCache.set(source.id, {
-      expiresAt: Date.now() + source.refreshIntervalMinutes * 60_000,
+      expiresAt: expiresAt.getTime(),
       document,
     });
 
     return document;
+  } catch (error) {
+    const classification = classifyEpgFailure(error);
+    const subsystem = classification.failureKind === "epg-parse" ? "parse" : "fetch";
+
+    recordEpgObservation(source.id, subsystem, {
+      status: "failure",
+      source: "XMLTV_LOAD",
+      reason: classification.message,
+      failureKind: classification.failureKind,
+      retryable: classification.retryable,
+      detail: {
+        sourceUrl: sanitizeUrl(source.url),
+        statusCode: classification.statusCode,
+      },
+    });
+
+    writeStructuredLog(classification.failureKind === "epg-parse" ? "error" : "warn", {
+      event: classification.failureKind === "epg-parse" ? "epg.parse.failed" : "epg.fetch.failed",
+      epgSourceId: source.id,
+      failureKind: classification.failureKind,
+      retryable: classification.retryable,
+      statusCode: classification.statusCode,
+      detail: {
+        sourceUrl: sanitizeUrl(source.url),
+        ...summarizeUpstreamRequestConfig({
+          requestUserAgent: source.requestUserAgent,
+          requestReferrer: source.requestReferrer,
+          requestHeaders: normalizeUpstreamHeaders(source.requestHeaders),
+        }),
+      },
+    });
+
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
@@ -128,7 +195,29 @@ export async function getNowNextForChannels(channelIds: string[]) {
   const sourceDocuments = new Map<string, ReturnType<typeof parseXmltvDocument>>();
 
   for (const channel of channels) {
-    if (!channel.epgSource || !channel.epgChannelId || !channel.epgSource.isActive) {
+    if (!channel.epgSource || !channel.epgChannelId) {
+      recordChannelGuideStatus({
+        channelId: channel.id,
+        status: "unconfigured",
+        sourceId: channel.epgSource?.id ?? null,
+        epgChannelId: channel.epgChannelId ?? null,
+      });
+      results.push({
+        channelId: channel.id,
+        status: "UNCONFIGURED" as const,
+        now: null,
+        next: null,
+      });
+      continue;
+    }
+
+    if (!channel.epgSource.isActive) {
+      recordChannelGuideStatus({
+        channelId: channel.id,
+        status: "source-inactive",
+        sourceId: channel.epgSource.id,
+        epgChannelId: channel.epgChannelId,
+      });
       results.push({
         channelId: channel.id,
         status: "UNCONFIGURED" as const,
@@ -146,6 +235,12 @@ export async function getNowNextForChannels(channelIds: string[]) {
         document = await loadXmltvSource(channel.epgSource);
         sourceDocuments.set(cacheKey, document);
       } catch {
+        recordChannelGuideStatus({
+          channelId: channel.id,
+          status: "source-error",
+          sourceId: channel.epgSource.id,
+          epgChannelId: channel.epgChannelId,
+        });
         results.push({
           channelId: channel.id,
           status: "SOURCE_ERROR" as const,
@@ -157,10 +252,18 @@ export async function getNowNextForChannels(channelIds: string[]) {
     }
 
     const { now, next } = getNowNextProgramme(document.programmes, channel.epgChannelId);
+    const status = now || next ? ("READY" as const) : ("NO_DATA" as const);
+
+    recordChannelGuideStatus({
+      channelId: channel.id,
+      status: status === "READY" ? "ready" : "no-data",
+      sourceId: channel.epgSource.id,
+      epgChannelId: channel.epgChannelId,
+    });
 
     results.push({
       channelId: channel.id,
-      status: now || next ? ("READY" as const) : ("NO_DATA" as const),
+      status,
       now: now
         ? {
             title: now.title,

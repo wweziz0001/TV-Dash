@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { requireAdmin, requireAuth } from "../../app/auth-guards.js";
 import { getPrismaErrorCode } from "../../app/prisma-errors.js";
 import { epgNowNextQuerySchema, idParamSchema } from "../../app/request-schemas.js";
+import { writeStructuredLog } from "../../app/structured-log.js";
 import { parseWithSchema } from "../../app/validation.js";
 import {
   createConfiguredEpgSource,
@@ -28,6 +29,19 @@ export const epgRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       const source = await createConfiguredEpgSource(payload);
+      if (!source) {
+        throw new Error("EPG source was not created");
+      }
+      writeStructuredLog("info", {
+        event: "epg.source.create.succeeded",
+        actorUserId: request.user?.sub,
+        epgSourceId: source.id,
+        detail: {
+          slug: source.slug,
+          isActive: source.isActive,
+          refreshIntervalMinutes: source.refreshIntervalMinutes,
+        },
+      });
       return reply.status(201).send({ source });
     } catch (error) {
       if (getPrismaErrorCode(error) === "P2002") {
@@ -51,6 +65,19 @@ export const epgRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       const source = await updateConfiguredEpgSource(params.id, payload);
+      if (!source) {
+        return reply.status(404).send({ message: "EPG source not found" });
+      }
+      writeStructuredLog("info", {
+        event: "epg.source.update.succeeded",
+        actorUserId: request.user?.sub,
+        epgSourceId: source.id,
+        detail: {
+          slug: source.slug,
+          isActive: source.isActive,
+          refreshIntervalMinutes: source.refreshIntervalMinutes,
+        },
+      });
       return { source };
     } catch (error) {
       const code = getPrismaErrorCode(error);
@@ -75,6 +102,11 @@ export const epgRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       await deleteConfiguredEpgSource(params.id);
+      writeStructuredLog("info", {
+        event: "epg.source.delete.succeeded",
+        actorUserId: request.user?.sub,
+        epgSourceId: params.id,
+      });
       return reply.status(204).send();
     } catch (error) {
       if (getPrismaErrorCode(error) === "P2025") {
