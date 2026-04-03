@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getChannelGuideState, getProgrammeProgressPercent } from "./channel-guide-state";
+import { formatProgrammeTimeWithDay, getChannelGuideState, getProgrammeProgressPercent } from "./channel-guide-state";
 
 function buildProgram(start: string, stop: string, title = "Morning News") {
   return {
@@ -30,6 +30,33 @@ describe("getProgrammeProgressPercent", () => {
         new Date("2026-04-02T11:00:00.000Z"),
       ),
     ).toBe(100);
+  });
+});
+
+describe("formatProgrammeTimeWithDay", () => {
+  it("labels next programmes happening today or tomorrow", () => {
+    expect(
+      formatProgrammeTimeWithDay(
+        buildProgram("2026-04-02T20:30:00.000Z", "2026-04-02T21:30:00.000Z"),
+        new Date("2026-04-02T09:30:00.000Z"),
+      ),
+    ).toMatch(/^Today · /);
+
+    expect(
+      formatProgrammeTimeWithDay(
+        buildProgram("2026-04-03T20:30:00.000Z", "2026-04-03T21:30:00.000Z"),
+        new Date("2026-04-02T09:30:00.000Z"),
+      ),
+    ).toMatch(/^Tomorrow · /);
+  });
+
+  it("falls back to a short date for programmes beyond tomorrow", () => {
+    expect(
+      formatProgrammeTimeWithDay(
+        buildProgram("2026-04-05T20:30:00.000Z", "2026-04-05T21:30:00.000Z"),
+        new Date("2026-04-02T09:30:00.000Z"),
+      ),
+    ).toContain("·");
   });
 });
 

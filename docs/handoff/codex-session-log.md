@@ -1,5 +1,92 @@
 # Codex Session Log
 
+## `2026-04-03T20:35:00+03:00`
+
+### Objective
+
+Strengthen the manual EPG/program-entry workflow so TV-Dash has a real per-channel admin scheduling UI instead of only backend/manual-entry foundations.
+
+### Work Completed
+
+- created the requested working branch `015-manual-epg-program-entry-admin-ui`
+- kept the existing persisted manual-program backend and now/next integration intact, then hardened the operator workflow on top of it
+- extracted manual programme scheduling into a dedicated admin component:
+  - `apps/web/src/components/epg/channel-manual-program-manager.tsx`
+  - `apps/web/src/components/epg/manual-program-form-state.ts`
+- upgraded the admin EPG page so operators can now:
+  - select one channel and immediately manage that channel's manual schedule
+  - browse the stored schedule in a clear per-day list
+  - see title, start time, end time, category, status, description, edit, and delete actions
+  - add new manual rows and edit existing rows in a compact side-by-side workflow
+  - generate repeated manual rows automatically by choosing repeat start date, repeat end date, start time, end time, and weekdays
+- kept the form practical for repeated use by centering the required fields:
+  - title
+  - start date/time
+  - end date/time
+  - optional description
+  - optional category/type
+  - optional subtitle and image URL are still supported so existing data is not lost during edits
+- added practical client-side validation before save:
+  - missing channel
+  - missing title
+  - missing start or end time
+  - malformed local datetime input
+  - malformed repeat start/end dates
+  - missing repeat days
+  - end before start
+  - overlap detection against existing manual rows on the selected channel
+  - shared DTO validation for URL/length/schema rules before requests are sent
+- added overlap feedback that shows the conflicting manual rows directly in the editor instead of only relying on backend rejection
+- improved mutation invalidation so manual create/update/delete refreshes:
+  - channel list data
+  - manual-program queries
+  - now/next consumer queries used by dashboard, watch, and multiview flows
+- extended tests for:
+  - manual form validation and overlap handling
+  - admin create/edit/delete UI behavior
+  - manual-program API list/update/delete behavior
+  - manual-only now/next resolution
+
+### Files Added Or Changed
+
+- frontend manual-program admin workflow:
+  - `apps/web/src/components/epg/channel-manual-program-manager.tsx`
+  - `apps/web/src/components/epg/manual-program-form-state.ts`
+  - `apps/web/src/pages/admin-epg-sources-page.tsx`
+- frontend tests:
+  - `apps/web/src/components/epg/channel-manual-program-manager.test.tsx`
+  - `apps/web/src/components/epg/manual-program-form-state.test.ts`
+- backend tests:
+  - `apps/api/src/modules/epg/epg.routes.test.ts`
+  - `apps/api/src/modules/epg/guide-resolver.test.ts`
+- docs:
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- Kept manual scheduling inside the dedicated admin EPG page instead of moving it back into channel CRUD, because channel setup and ongoing schedule operations are still separate operator tasks.
+- Removed the old all-channels flat list behavior from the primary manual-entry workflow and made it explicitly channel-first, because operators need to open one channel and manage its schedule directly.
+- Added client-side overlap and datetime validation on top of the backend conflict checks, because operational users need immediate feedback before submitting repetitive schedule edits.
+- Preserved optional subtitle and image support in the form so existing manual rows can still be edited without dropping data, even though the core workflow now emphasizes title/time/category/description.
+
+### Verification Run
+
+- `npm run test -w apps/web -- manual-program-form-state.test.ts channel-manual-program-manager.test.tsx`
+- `npm run test -w apps/api -- epg.routes.test.ts guide-resolver.test.ts`
+- `npm run lint -w apps/web`
+- `npm run lint -w apps/api`
+
+### Remaining Risk
+
+- There is still no full time-grid guide editor yet; the current UI is a compact list-plus-form workflow rather than a drag/drop schedule canvas.
+- There is still no background XMLTV refresh scheduler; imported sources remain explicitly admin-triggered.
+- Manual schedule edits invalidate guide consumers in the current app session, but there is still no websocket/live-push mechanism for other active operator sessions.
+
+### Exact Suggested Next Task
+
+Add a first full channel guide grid or timeline view on top of the existing resolved guide APIs, then layer scheduled XMLTV refresh and multi-operator live refresh on top of that workflow.
+
 ## `2026-04-03T08:10:00+03:00`
 
 ### Objective

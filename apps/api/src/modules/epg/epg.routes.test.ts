@@ -99,6 +99,7 @@ function buildSourceRecord(overrides: Record<string, unknown> = {}) {
 
 describe("epgRoutes", () => {
   let server: Awaited<ReturnType<typeof buildServer>>;
+  const manualProgramId = "33333333-3333-3333-3333-333333333333";
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -280,6 +281,161 @@ describe("epgRoutes", () => {
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({
       message: "Manual programme overlaps an existing manual entry on this channel",
+    });
+  });
+
+  it("lists manual programme rows for a selected channel", async () => {
+    mockPrisma.programEntry.findMany.mockResolvedValue([
+      {
+        id: "manual-1",
+        sourceKind: "MANUAL",
+        channelId: "22222222-2222-2222-2222-222222222222",
+        title: "Manual bulletin",
+        subtitle: null,
+        description: "Lead-in",
+        category: "News",
+        imageUrl: null,
+        startAt: new Date("2026-04-02T09:00:00.000Z"),
+        endAt: new Date("2026-04-02T10:00:00.000Z"),
+        createdAt: new Date("2026-04-02T08:55:00.000Z"),
+        updatedAt: new Date("2026-04-02T08:55:00.000Z"),
+        channel: {
+          id: "22222222-2222-2222-2222-222222222222",
+          name: "News Desk",
+          slug: "news-desk",
+          isActive: true,
+        },
+      },
+    ]);
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/epg/programs/manual?channelId=22222222-2222-2222-2222-222222222222",
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      programs: [
+        {
+          id: "manual-1",
+          title: "Manual bulletin",
+          channelId: "22222222-2222-2222-2222-222222222222",
+        },
+      ],
+    });
+    expect(mockPrisma.programEntry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          sourceKind: "MANUAL",
+          channelId: "22222222-2222-2222-2222-222222222222",
+        }),
+      }),
+    );
+  });
+
+  it("rejects invalid manual time ranges before creating a programme", async () => {
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/epg/programs/manual",
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
+      payload: {
+        channelId: "22222222-2222-2222-2222-222222222222",
+        title: "Manual bulletin",
+        subtitle: null,
+        startAt: "2026-04-02T10:00:00.000Z",
+        endAt: "2026-04-02T09:00:00.000Z",
+        description: null,
+        category: null,
+        imageUrl: null,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(mockPrisma.programEntry.create).not.toHaveBeenCalled();
+  });
+
+  it("updates a manual programme row", async () => {
+    mockPrisma.programEntry.findMany.mockResolvedValue([]);
+    mockPrisma.programEntry.update.mockResolvedValue({
+      id: manualProgramId,
+      sourceKind: "MANUAL",
+      channelId: "22222222-2222-2222-2222-222222222222",
+      title: "Updated bulletin",
+      subtitle: null,
+      description: null,
+      category: "News",
+      imageUrl: null,
+      startAt: new Date("2026-04-02T10:00:00.000Z"),
+      endAt: new Date("2026-04-02T11:00:00.000Z"),
+      createdAt: new Date("2026-04-02T08:55:00.000Z"),
+      updatedAt: new Date("2026-04-02T09:55:00.000Z"),
+      channel: {
+        id: "22222222-2222-2222-2222-222222222222",
+        name: "News Desk",
+        slug: "news-desk",
+        isActive: true,
+      },
+    });
+
+    const response = await server.inject({
+      method: "PUT",
+      url: `/api/epg/programs/manual/${manualProgramId}`,
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
+      payload: {
+        channelId: "22222222-2222-2222-2222-222222222222",
+        title: "Updated bulletin",
+        subtitle: null,
+        startAt: "2026-04-02T10:00:00.000Z",
+        endAt: "2026-04-02T11:00:00.000Z",
+        description: null,
+        category: "News",
+        imageUrl: null,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      program: {
+        id: manualProgramId,
+        title: "Updated bulletin",
+      },
+    });
+    expect(mockPrisma.programEntry.update).toHaveBeenCalled();
+  });
+
+  it("deletes a manual programme row", async () => {
+    mockPrisma.programEntry.findFirst.mockResolvedValue({
+      id: manualProgramId,
+      sourceKind: "MANUAL",
+      channelId: "22222222-2222-2222-2222-222222222222",
+      title: "Manual bulletin",
+      subtitle: null,
+      description: null,
+      category: "News",
+      imageUrl: null,
+      startAt: new Date("2026-04-02T09:00:00.000Z"),
+      endAt: new Date("2026-04-02T10:00:00.000Z"),
+      createdAt: new Date("2026-04-02T08:55:00.000Z"),
+      updatedAt: new Date("2026-04-02T08:55:00.000Z"),
+      channel: {
+        id: "22222222-2222-2222-2222-222222222222",
+        name: "News Desk",
+        slug: "news-desk",
+        isActive: true,
+      },
+    });
+    mockPrisma.programEntry.delete.mockResolvedValue({ id: manualProgramId });
+
+    const response = await server.inject({
+      method: "DELETE",
+      url: `/api/epg/programs/manual/${manualProgramId}`,
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(mockPrisma.programEntry.delete).toHaveBeenCalledWith({
+      where: { id: manualProgramId },
     });
   });
 
