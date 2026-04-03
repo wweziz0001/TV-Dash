@@ -107,6 +107,8 @@ describe("manual-program-form-state", () => {
     const result = validateManualProgramForm({
       channelId: "11111111-1111-1111-1111-111111111111",
       form: {
+        ...createEmptyManualProgramForm(),
+        mode: "single",
         title: "  Morning bulletin  ",
         subtitle: "",
         startAtLocal: "2026-04-03T09:00",
@@ -128,6 +130,78 @@ describe("manual-program-form-state", () => {
       description: "Extended coverage",
       category: "News",
     });
+  });
+
+  it("generates recurring entries for selected weekdays inside a date range", () => {
+    const result = validateManualProgramForm({
+      channelId: "11111111-1111-1111-1111-111111111111",
+      form: {
+        ...createEmptyManualProgramForm(),
+        mode: "recurring",
+        title: "Daily recap",
+        recurrence: {
+          rangeStartDate: "2026-04-06",
+          rangeEndDate: "2026-04-12",
+          startTimeLocal: "18:00",
+          endTimeLocal: "19:00",
+          weekdays: [1, 3, 5],
+        },
+      },
+      existingPrograms: [],
+    });
+
+    expect(result.isValid).toBe(true);
+    expect(result.generatedPayloads).toHaveLength(3);
+    expect(result.generatedPayloads.map((payload) => payload.startAt)).toEqual([
+      new Date(2026, 3, 6, 18, 0, 0, 0).toISOString(),
+      new Date(2026, 3, 8, 18, 0, 0, 0).toISOString(),
+      new Date(2026, 3, 10, 18, 0, 0, 0).toISOString(),
+    ]);
+  });
+
+  it("rejects recurring saves without repeat days and reports recurring overlaps", () => {
+    const missingDays = validateManualProgramForm({
+      channelId: "11111111-1111-1111-1111-111111111111",
+      form: {
+        ...createEmptyManualProgramForm(),
+        mode: "recurring",
+        title: "Recurring recap",
+        recurrence: {
+          rangeStartDate: "2026-04-06",
+          rangeEndDate: "2026-04-12",
+          startTimeLocal: "18:00",
+          endTimeLocal: "19:00",
+          weekdays: [],
+        },
+      },
+      existingPrograms: [],
+    });
+
+    expect(missingDays.isValid).toBe(false);
+    expect(missingDays.issues.map((issue) => issue.message)).toContain("Select at least one repeat day.");
+
+    const overlap = validateManualProgramForm({
+      channelId: "11111111-1111-1111-1111-111111111111",
+      form: {
+        ...createEmptyManualProgramForm(),
+        mode: "recurring",
+        title: "Recurring recap",
+        recurrence: {
+          rangeStartDate: "2026-04-03",
+          rangeEndDate: "2026-04-03",
+          startTimeLocal: formatLocal("2026-04-03T09:30:00.000Z").slice(11),
+          endTimeLocal: formatLocal("2026-04-03T10:15:00.000Z").slice(11),
+          weekdays: [new Date("2026-04-03T09:00:00.000Z").getDay()],
+        },
+      },
+      existingPrograms: [buildProgram()],
+    });
+
+    expect(overlap.isValid).toBe(false);
+    expect(overlap.overlappingPrograms).toHaveLength(1);
+    expect(overlap.issues.map((issue) => issue.message)).toContain(
+      "Some generated entries overlap existing manual programmes on this channel.",
+    );
   });
 
   it("derives live and upcoming status from manual rows", () => {

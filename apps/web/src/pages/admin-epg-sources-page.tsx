@@ -279,6 +279,42 @@ export function AdminEpgSourcesPage() {
     },
   });
 
+  const saveProgramSeriesMutation = useMutation({
+    mutationFn: async (payloads: ProgramEntryInput[]) => {
+      if (!token) {
+        throw new Error("Missing session");
+      }
+
+      let createdCount = 0;
+
+      try {
+        for (const payload of payloads) {
+          await api.createManualProgram(payload, token);
+          createdCount += 1;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to create recurring manual programmes";
+
+        if (createdCount > 0) {
+          throw new Error(`Created ${createdCount} entries before stopping: ${message}`);
+        }
+
+        throw error;
+      }
+
+      return {
+        createdCount,
+      };
+    },
+    onSuccess: async (result) => {
+      toast.success(`${result.createdCount} manual programme entr${result.createdCount === 1 ? "y" : "ies"} created`);
+      await invalidateManualProgramQueries(queryClient, selectedProgramChannelId, token);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to create recurring manual programmes");
+    },
+  });
+
   const deleteProgramMutation = useMutation({
     mutationFn: async (id: string) => {
       if (!token) {
@@ -672,9 +708,12 @@ export function AdminEpgSourcesPage() {
       <ChannelManualProgramManager
         channels={channels}
         isLoading={manualProgramsQuery.isLoading}
-        isSaving={saveProgramMutation.isPending || deleteProgramMutation.isPending}
+        isSaving={saveProgramMutation.isPending || saveProgramSeriesMutation.isPending || deleteProgramMutation.isPending}
         onCreate={async (payload) => {
           await saveProgramMutation.mutateAsync({ payload });
+        }}
+        onCreateMany={async (payloads) => {
+          await saveProgramSeriesMutation.mutateAsync(payloads);
         }}
         onDelete={async (id) => {
           await deleteProgramMutation.mutateAsync(id);

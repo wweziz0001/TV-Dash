@@ -14,6 +14,7 @@ import {
   getManualProgramStatus,
   hasManualProgramFormChanges,
   validateManualProgramForm,
+  weekdayOptions,
   type ManualProgramFormField,
 } from "./manual-program-form-state";
 
@@ -25,6 +26,7 @@ interface ChannelManualProgramManagerProps {
   selectedChannelId: string;
   onSelectedChannelIdChange: (channelId: string) => void;
   onCreate: (payload: ProgramEntryInput) => Promise<void>;
+  onCreateMany: (payloads: ProgramEntryInput[]) => Promise<void>;
   onUpdate: (id: string, payload: ProgramEntryInput) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }
@@ -55,6 +57,7 @@ export function ChannelManualProgramManager({
   selectedChannelId,
   onSelectedChannelIdChange,
   onCreate,
+  onCreateMany,
   onUpdate,
   onDelete,
 }: ChannelManualProgramManagerProps) {
@@ -104,6 +107,8 @@ export function ChannelManualProgramManager({
 
     if (editingProgramId) {
       await onUpdate(editingProgramId, validation.payload);
+    } else if (form.mode === "recurring") {
+      await onCreateMany(validation.generatedPayloads);
     } else {
       await onCreate(validation.payload);
     }
@@ -246,6 +251,25 @@ export function ChannelManualProgramManager({
           {validation.durationMinutes !== null ? <Badge>{validation.durationMinutes} min</Badge> : null}
         </div>
 
+        {!editingProgramId ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button
+              onClick={() => setForm((current) => ({ ...current, mode: "single" }))}
+              type="button"
+              variant={form.mode === "single" ? "primary" : "secondary"}
+            >
+              Single entry
+            </Button>
+            <Button
+              onClick={() => setForm((current) => ({ ...current, mode: "recurring" }))}
+              type="button"
+              variant={form.mode === "recurring" ? "primary" : "secondary"}
+            >
+              Repeat on days
+            </Button>
+          </div>
+        ) : null}
+
         {showValidation && validation.issues.length > 0 ? (
           <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-3">
             <div className="flex items-start gap-2">
@@ -266,11 +290,17 @@ export function ChannelManualProgramManager({
           <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-3">
             <p className="text-sm font-semibold text-amber-100">Conflicting manual rows on this channel</p>
             <div className="mt-2 space-y-2">
-              {validation.overlappingPrograms.map((program) => (
-                <div key={program.id} className="rounded-xl border border-amber-300/20 bg-slate-950/40 p-2.5">
-                  <p className="text-sm font-semibold text-white">{program.title}</p>
+              {validation.overlappingPrograms.map((overlap) => (
+                <div
+                  key={`${overlap.program.id}-${overlap.payload.startAt}`}
+                  className="rounded-xl border border-amber-300/20 bg-slate-950/40 p-2.5"
+                >
+                  <p className="text-sm font-semibold text-white">{overlap.program.title}</p>
                   <p className="mt-1 text-xs text-slate-300">
-                    {formatProgramDateTime(program.startAt)} to {formatProgramDateTime(program.endAt)}
+                    Existing: {formatProgramDateTime(overlap.program.startAt)} to {formatProgramDateTime(overlap.program.endAt)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Generated: {formatProgramDateTime(overlap.payload.startAt)} to {formatProgramDateTime(overlap.payload.endAt)}
                   </p>
                 </div>
               ))}
@@ -299,26 +329,141 @@ export function ChannelManualProgramManager({
           </Field>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field error={getFieldError(validation.issues, "startAtLocal", showValidation)} label="Start" required>
-            <Input
-              aria-label="Start *"
-              onChange={(event) => setForm((current) => ({ ...current, startAtLocal: event.target.value }))}
-              type="datetime-local"
-              uiSize="sm"
-              value={form.startAtLocal}
-            />
-          </Field>
-          <Field error={getFieldError(validation.issues, "endAtLocal", showValidation)} label="End" required>
-            <Input
-              aria-label="End *"
-              onChange={(event) => setForm((current) => ({ ...current, endAtLocal: event.target.value }))}
-              type="datetime-local"
-              uiSize="sm"
-              value={form.endAtLocal}
-            />
-          </Field>
-        </div>
+        {form.mode === "single" || editingProgramId ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field error={getFieldError(validation.issues, "startAtLocal", showValidation)} label="Start" required>
+              <Input
+                aria-label="Start *"
+                onChange={(event) => setForm((current) => ({ ...current, startAtLocal: event.target.value }))}
+                type="datetime-local"
+                uiSize="sm"
+                value={form.startAtLocal}
+              />
+            </Field>
+            <Field error={getFieldError(validation.issues, "endAtLocal", showValidation)} label="End" required>
+              <Input
+                aria-label="End *"
+                onChange={(event) => setForm((current) => ({ ...current, endAtLocal: event.target.value }))}
+                type="datetime-local"
+                uiSize="sm"
+                value={form.endAtLocal}
+              />
+            </Field>
+          </div>
+        ) : (
+          <div className="space-y-3 rounded-2xl border border-slate-800/80 bg-slate-950/40 p-3">
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field error={getFieldError(validation.issues, "rangeStartDate", showValidation)} label="Repeat from" required>
+                <Input
+                  aria-label="Repeat from *"
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      recurrence: {
+                        ...current.recurrence,
+                        rangeStartDate: event.target.value,
+                      },
+                    }))
+                  }
+                  type="date"
+                  uiSize="sm"
+                  value={form.recurrence.rangeStartDate}
+                />
+              </Field>
+              <Field error={getFieldError(validation.issues, "rangeEndDate", showValidation)} label="Repeat until" required>
+                <Input
+                  aria-label="Repeat until *"
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      recurrence: {
+                        ...current.recurrence,
+                        rangeEndDate: event.target.value,
+                      },
+                    }))
+                  }
+                  type="date"
+                  uiSize="sm"
+                  value={form.recurrence.rangeEndDate}
+                />
+              </Field>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field error={getFieldError(validation.issues, "startTimeLocal", showValidation)} label="Start time" required>
+                <Input
+                  aria-label="Start time *"
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      recurrence: {
+                        ...current.recurrence,
+                        startTimeLocal: event.target.value,
+                      },
+                    }))
+                  }
+                  type="time"
+                  uiSize="sm"
+                  value={form.recurrence.startTimeLocal}
+                />
+              </Field>
+              <Field error={getFieldError(validation.issues, "endTimeLocal", showValidation)} label="End time" required>
+                <Input
+                  aria-label="End time *"
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      recurrence: {
+                        ...current.recurrence,
+                        endTimeLocal: event.target.value,
+                      },
+                    }))
+                  }
+                  type="time"
+                  uiSize="sm"
+                  value={form.recurrence.endTimeLocal}
+                />
+              </Field>
+            </div>
+
+            <Field error={getFieldError(validation.issues, "weekdays", showValidation)} label="Repeat days" required>
+              <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+                {weekdayOptions.map((weekday) => {
+                  const isSelected = form.recurrence.weekdays.includes(weekday.value);
+
+                  return (
+                    <Button
+                      key={weekday.value}
+                      aria-pressed={isSelected}
+                      onClick={() =>
+                        setForm((current) => ({
+                          ...current,
+                          recurrence: {
+                            ...current.recurrence,
+                            weekdays: isSelected
+                              ? current.recurrence.weekdays.filter((value) => value !== weekday.value)
+                              : [...current.recurrence.weekdays, weekday.value].sort((left, right) => left - right),
+                          },
+                        }))
+                      }
+                      size="sm"
+                      type="button"
+                      variant={isSelected ? "primary" : "secondary"}
+                    >
+                      {weekday.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </Field>
+
+            <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-3 text-xs text-slate-400">
+              {validation.generatedPayloads.length > 0
+                ? `This will generate ${validation.generatedPayloads.length} manual programme entr${validation.generatedPayloads.length === 1 ? "y" : "ies"}.`
+                : "Pick a date range, start/end time, and one or more repeat days to generate entries automatically."}
+            </div>
+          </div>
+        )}
 
         <Field label="Description">
           <TextArea
@@ -353,7 +498,7 @@ export function ChannelManualProgramManager({
 
         <div className="flex gap-3">
           <Button disabled={!selectedChannel || isSaving} onClick={() => void handleSave()} type="button">
-            {editingProgramId ? "Update programme" : "Save programme"}
+            {editingProgramId ? "Update programme" : form.mode === "recurring" ? "Generate programme entries" : "Save programme"}
           </Button>
           <Button onClick={handleReset} type="button" variant="secondary">
             {editingProgramId ? "Cancel edit" : "Clear form"}

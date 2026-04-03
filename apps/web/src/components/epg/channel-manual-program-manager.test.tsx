@@ -71,11 +71,13 @@ function buildProgram(overrides: Partial<ProgramEntry> = {}): ProgramEntry {
 function Harness({
   initialPrograms = [buildProgram()],
   onCreate = vi.fn().mockResolvedValue(undefined),
+  onCreateMany = vi.fn().mockResolvedValue(undefined),
   onUpdate = vi.fn().mockResolvedValue(undefined),
   onDelete = vi.fn().mockResolvedValue(undefined),
 }: {
   initialPrograms?: ProgramEntry[];
   onCreate?: ReturnType<typeof vi.fn>;
+  onCreateMany?: ReturnType<typeof vi.fn>;
   onUpdate?: ReturnType<typeof vi.fn>;
   onDelete?: ReturnType<typeof vi.fn>;
 }) {
@@ -85,6 +87,7 @@ function Harness({
     <ChannelManualProgramManager
       channels={channels}
       onCreate={onCreate}
+      onCreateMany={onCreateMany}
       onDelete={onDelete}
       onSelectedChannelIdChange={setSelectedChannelId}
       onUpdate={onUpdate}
@@ -165,5 +168,35 @@ describe("ChannelManualProgramManager", () => {
       screen.getByText("This time range overlaps another manual programme on the selected channel."),
     ).toBeInTheDocument();
     expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it("generates recurring entries for selected weekdays", async () => {
+    const user = userEvent.setup();
+    const onCreateMany = vi.fn().mockResolvedValue(undefined);
+
+    render(<Harness initialPrograms={[]} onCreateMany={onCreateMany} />);
+
+    await user.click(screen.getByRole("button", { name: "Repeat on days" }));
+    await user.type(screen.getByLabelText("Title *"), "Daily recap");
+    await user.type(screen.getByLabelText("Repeat from *"), "2026-04-06");
+    await user.type(screen.getByLabelText("Repeat until *"), "2026-04-12");
+    await user.type(screen.getByLabelText("Start time *"), "18:00");
+    await user.type(screen.getByLabelText("End time *"), "19:00");
+
+    await user.click(screen.getByRole("button", { name: "Sun" }));
+    await user.click(screen.getByRole("button", { name: "Tue" }));
+    await user.click(screen.getByRole("button", { name: "Thu" }));
+    await user.click(screen.getByRole("button", { name: "Sat" }));
+
+    expect(screen.getByText("This will generate 5 manual programme entries.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Generate programme entries" }));
+
+    expect(onCreateMany).toHaveBeenCalledTimes(1);
+    expect(onCreateMany.mock.calls[0][0]).toHaveLength(5);
+    expect(onCreateMany.mock.calls[0][0][0]).toMatchObject({
+      channelId: channels[0].id,
+      title: "Daily recap",
+    });
   });
 });

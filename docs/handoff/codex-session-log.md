@@ -18,6 +18,7 @@ Strengthen the manual EPG/program-entry workflow so TV-Dash has a real per-chann
   - browse the stored schedule in a clear per-day list
   - see title, start time, end time, category, status, description, edit, and delete actions
   - add new manual rows and edit existing rows in a compact side-by-side workflow
+  - generate repeated manual rows automatically by choosing repeat start date, repeat end date, start time, end time, and weekdays
 - kept the form practical for repeated use by centering the required fields:
   - title
   - start date/time
@@ -30,6 +31,8 @@ Strengthen the manual EPG/program-entry workflow so TV-Dash has a real per-chann
   - missing title
   - missing start or end time
   - malformed local datetime input
+  - malformed repeat start/end dates
+  - missing repeat days
   - end before start
   - overlap detection against existing manual rows on the selected channel
   - shared DTO validation for URL/length/schema rules before requests are sent
