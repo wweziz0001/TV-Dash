@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, PlayCircle, TestTube2 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import type { StreamTestInput } from "@tv-dash/shared";
 import { ChannelAdminFormFields } from "@/components/channels/channel-admin-form";
+import { ChannelDiagnosticsPanel } from "@/components/channels/channel-diagnostics-panel";
 import {
   buildChannelFormFromConfig,
   emptyChannelForm,
@@ -67,6 +68,18 @@ export function AdminChannelsPage() {
       }
 
       return (await api.getChannelConfig(editingChannelId, token)).channel;
+    },
+    enabled: Boolean(token && editingChannelId),
+  });
+
+  const channelDiagnosticsQuery = useQuery({
+    queryKey: ["channel-diagnostics", editingChannelId, token],
+    queryFn: async () => {
+      if (!editingChannelId || !token) {
+        throw new Error("Missing channel context");
+      }
+
+      return (await api.getChannelDiagnostics(editingChannelId, token)).diagnostics;
     },
     enabled: Boolean(token && editingChannelId),
   });
@@ -352,6 +365,22 @@ export function AdminChannelsPage() {
                 />
               </div>
             )}
+
+            <div className="mt-4">
+              <ChannelDiagnosticsPanel
+                diagnostics={channelDiagnosticsQuery.data}
+                isLoading={channelDiagnosticsQuery.isLoading}
+                onRefresh={
+                  editingChannelId
+                    ? () => {
+                        void queryClient.invalidateQueries({
+                          queryKey: ["channel-diagnostics", editingChannelId, token],
+                        });
+                      }
+                    : undefined
+                }
+              />
+            </div>
           </div>
         </Panel>
 

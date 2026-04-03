@@ -4,6 +4,7 @@ import { Eye, RefreshCw } from "lucide-react";
 import { toast } from "react-hot-toast";
 import type { EpgSourceInput } from "@tv-dash/shared";
 import { formatHeadersJson, parseHeadersJson } from "@/components/channels/channel-admin-form";
+import { EpgSourceDiagnosticsPanel } from "@/components/epg/epg-source-diagnostics-panel";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +60,18 @@ export function AdminEpgSourcesPage() {
       }
 
       return api.previewEpgSourceChannels(previewSourceId, token);
+    },
+    enabled: Boolean(previewSourceId && token),
+  });
+
+  const diagnosticsQuery = useQuery({
+    queryKey: ["epg-diagnostics", previewSourceId, token],
+    queryFn: async () => {
+      if (!previewSourceId || !token) {
+        throw new Error("Missing source context");
+      }
+
+      return (await api.getEpgSourceDiagnostics(previewSourceId, token)).diagnostics;
     },
     enabled: Boolean(previewSourceId && token),
   });
@@ -232,6 +245,21 @@ export function AdminEpgSourcesPage() {
         </Panel>
 
         <div className="space-y-6">
+          <EpgSourceDiagnosticsPanel
+            diagnostics={diagnosticsQuery.data}
+            isLoading={diagnosticsQuery.isLoading}
+            onRefresh={
+              previewSourceId
+                ? () => {
+                    void Promise.all([
+                      queryClient.invalidateQueries({ queryKey: ["epg-diagnostics", previewSourceId, token] }),
+                      queryClient.invalidateQueries({ queryKey: ["epg-source-preview", previewSourceId, token] }),
+                    ]);
+                  }
+                : undefined
+            }
+          />
+
           <Panel>
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -286,7 +314,10 @@ export function AdminEpgSourcesPage() {
               {previewSourceId ? (
                 <Button
                   onClick={() => {
-                    void queryClient.invalidateQueries({ queryKey: ["epg-source-preview", previewSourceId, token] });
+                    void Promise.all([
+                      queryClient.invalidateQueries({ queryKey: ["epg-source-preview", previewSourceId, token] }),
+                      queryClient.invalidateQueries({ queryKey: ["epg-diagnostics", previewSourceId, token] }),
+                    ]);
                   }}
                   variant="secondary"
                 >

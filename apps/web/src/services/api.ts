@@ -10,10 +10,12 @@ import type {
   AuthResponse,
   Channel,
   ChannelConfig,
+  ChannelDiagnostics,
   ChannelGroup,
   ChannelNowNext,
   EpgPreviewChannel,
   EpgSource,
+  EpgSourceDiagnostics,
   Favorite,
   SavedLayout,
   StreamTestResult,
@@ -62,6 +64,8 @@ export const api = {
     request<{ channels: Channel[] }>(`/channels${params ? `?${params.toString()}` : ""}`, {}, token),
   getChannelConfig: (id: string, token: string) =>
     request<{ channel: ChannelConfig }>(`/channels/${id}/config`, {}, token),
+  getChannelDiagnostics: (id: string, token: string) =>
+    request<{ diagnostics: ChannelDiagnostics }>(`/diagnostics/channels/${id}`, {}, token),
   getChannelBySlug: (slug: string, token: string | null) =>
     request<{ channel: Channel }>(`/channels/slug/${slug}`, {}, token),
   createChannel: (payload: ChannelInput, token: string) =>
@@ -95,6 +99,8 @@ export const api = {
     request<{ layout: SavedLayout }>(`/layouts/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token),
   deleteLayout: (id: string, token: string) => request<void>(`/layouts/${id}`, { method: "DELETE" }, token),
   listEpgSources: (token: string) => request<{ sources: EpgSource[] }>("/epg/sources", {}, token),
+  getEpgSourceDiagnostics: (id: string, token: string) =>
+    request<{ diagnostics: EpgSourceDiagnostics }>(`/diagnostics/epg-sources/${id}`, {}, token),
   createEpgSource: (payload: EpgSourceInput, token: string) =>
     request<{ source: EpgSource }>("/epg/sources", { method: "POST", body: JSON.stringify(payload) }, token),
   updateEpgSource: (id: string, payload: EpgSourceInput, token: string) =>

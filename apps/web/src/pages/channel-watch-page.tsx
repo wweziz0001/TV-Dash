@@ -11,7 +11,8 @@ import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { isEditableKeyboardTarget } from "@/lib/keyboard";
-import { HlsPlayer, type PlayerStatus } from "@/player/hls-player";
+import { HlsPlayer, type PlayerDiagnostics } from "@/player/hls-player";
+import { buildPlayerDiagnostics } from "@/player/playback-diagnostics";
 import { defaultQualityOptions } from "@/player/quality-options";
 import { api, getChannelPlaybackUrl } from "@/services/api";
 import type { QualityOption } from "@/types/api";
@@ -23,7 +24,12 @@ export function ChannelWatchPage() {
   const queryClient = useQueryClient();
   const [qualities, setQualities] = useState<QualityOption[]>([...defaultQualityOptions]);
   const [selectedQuality, setSelectedQuality] = useState("AUTO");
-  const [playerStatus, setPlayerStatus] = useState<PlayerStatus>("idle");
+  const [playerDiagnostics, setPlayerDiagnostics] = useState<PlayerDiagnostics>(() =>
+    buildPlayerDiagnostics({
+      status: "idle",
+      muted: false,
+    }),
+  );
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const channelQuery = useQuery({
@@ -83,7 +89,12 @@ export function ChannelWatchPage() {
   useEffect(() => {
     setQualities([...defaultQualityOptions]);
     setSelectedQuality("AUTO");
-    setPlayerStatus("idle");
+    setPlayerDiagnostics(
+      buildPlayerDiagnostics({
+        status: "idle",
+        muted: false,
+      }),
+    );
   }, [slug]);
 
   useEffect(() => {
@@ -155,7 +166,7 @@ export function ChannelWatchPage() {
               muted={false}
               onQualityOptionsChange={setQualities}
               onSelectedQualityChange={setSelectedQuality}
-              onStatusChange={setPlayerStatus}
+              onDiagnosticsChange={setPlayerDiagnostics}
               preferredQuality={selectedQuality}
               src={playbackUrl}
               title={channel.name}
@@ -182,12 +193,21 @@ export function ChannelWatchPage() {
               <div className="rounded-xl border border-slate-800/80 bg-slate-950/80 p-3">
                 <p className="text-[13px] font-semibold text-white">Current state</p>
                 <p className="mt-1.5 text-[13px] text-slate-400">
-                  {playerStatus} · {selectedQuality === "AUTO" ? "Auto quality" : `Manual quality ${selectedQuality}`}
+                  {playerDiagnostics.label} · {selectedQuality === "AUTO" ? "Auto quality" : `Manual quality ${selectedQuality}`}
                 </p>
+                <p className="mt-1.5 text-[12px] text-slate-300">{playerDiagnostics.summary}</p>
+                {playerDiagnostics.failureKind ? (
+                  <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-slate-500">
+                    Likely issue: {playerDiagnostics.failureKind}
+                  </p>
+                ) : null}
                 <p className="mt-1.5 text-[11px] text-slate-500">
                   {channel.playbackMode === "PROXY"
                     ? "Playback is routed through the TV-Dash stream gateway."
                     : "Playback uses the channel's direct upstream HLS URL."}
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Audio: {playerDiagnostics.isMuted ? "Muted by player" : "Live audio enabled"}
                 </p>
               </div>
             </div>

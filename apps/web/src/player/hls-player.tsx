@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { QualityOption } from "@/types/api";
 import { cn } from "@/lib/utils";
-import { getFatalRecoveryAction, type PlayerStatus } from "./playback-recovery";
+import { buildPlayerDiagnostics, type PlayerDiagnostics } from "./playback-diagnostics";
+import { getFatalRecoveryAction, type PlayerFailureKind, type PlayerStatus } from "./playback-recovery";
 import { buildQualityOptions, defaultQualityOptions, resolvePreferredQuality } from "./quality-options";
 
 interface HlsPlayerProps {
@@ -19,9 +20,11 @@ interface HlsPlayerProps {
   onQualityOptionsChange?: (options: QualityOption[]) => void;
   onSelectedQualityChange?: (value: string) => void;
   onStatusChange?: (status: PlayerStatus) => void;
+  onDiagnosticsChange?: (diagnostics: PlayerDiagnostics) => void;
 }
 
 export type { PlayerStatus } from "./playback-recovery";
+export type { PlayerDiagnostics } from "./playback-diagnostics";
 
 export function HlsPlayer({
   src,
@@ -34,6 +37,7 @@ export function HlsPlayer({
   onQualityOptionsChange,
   onSelectedQualityChange,
   onStatusChange,
+  onDiagnosticsChange,
 }: HlsPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -52,6 +56,7 @@ export function HlsPlayer({
     onQualityOptionsChange,
     onSelectedQualityChange,
     onStatusChange,
+    onDiagnosticsChange,
   });
   const playbackSettingsRef = useRef({
     autoPlay,
@@ -61,6 +66,7 @@ export function HlsPlayer({
 
   const [status, setStatus] = useState<PlayerStatus>(src ? "loading" : "idle");
   const [error, setError] = useState<string | null>(null);
+  const [failureKind, setFailureKind] = useState<PlayerFailureKind | null>(null);
   const [statusDetail, setStatusDetail] = useState<string | null>(null);
   const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -69,6 +75,7 @@ export function HlsPlayer({
     onQualityOptionsChange,
     onSelectedQualityChange,
     onStatusChange,
+    onDiagnosticsChange,
   };
   playbackSettingsRef.current = {
     autoPlay,
@@ -148,6 +155,19 @@ export function HlsPlayer({
   }
 
   useEffect(() => {
+    callbacksRef.current.onDiagnosticsChange?.(
+      buildPlayerDiagnostics({
+        status,
+        statusDetail,
+        error,
+        failureKind,
+        recoveryNotice,
+        muted,
+      }),
+    );
+  }, [error, failureKind, muted, recoveryNotice, status, statusDetail]);
+
+  useEffect(() => {
     const video = videoRef.current;
     if (!video) {
       return;
@@ -175,6 +195,7 @@ export function HlsPlayer({
     clearRecoveryNoticeTimeout();
     setRecoveryNotice(null);
     setError(null);
+    setFailureKind(null);
     setStatusDetail(null);
     publishQualityOptions([...defaultQualityOptions]);
     stopPlayback();
@@ -205,6 +226,7 @@ export function HlsPlayer({
       };
 
       setError(null);
+      setFailureKind(null);
       setStatusDetail(null);
       updateStatus("playing");
 
@@ -231,6 +253,7 @@ export function HlsPlayer({
       wasRecoveringRef.current = false;
       setStatusDetail(null);
       setError("The browser reported a media playback failure.");
+      setFailureKind("media-playback");
       updateStatus("error");
     };
 
@@ -313,6 +336,7 @@ export function HlsPlayer({
           wasRecoveringRef.current = true;
           recoveryStateRef.current.networkAttempts = action.networkAttempts;
           setError(null);
+          setFailureKind(action.failureKind);
           setStatusDetail(action.message);
           updateStatus("retrying");
           reconnectTimeoutRef.current = window.setTimeout(() => {
@@ -330,6 +354,7 @@ export function HlsPlayer({
           wasRecoveringRef.current = true;
           recoveryStateRef.current.mediaAttempts = action.mediaAttempts;
           setError(null);
+          setFailureKind(action.failureKind);
           setStatusDetail(action.message);
           updateStatus("retrying");
           hls.recoverMediaError();
@@ -339,6 +364,7 @@ export function HlsPlayer({
         wasRecoveringRef.current = false;
         setStatusDetail(null);
         setError(action.message);
+        setFailureKind(action.failureKind);
         updateStatus("error");
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
@@ -354,6 +380,7 @@ export function HlsPlayer({
     } else {
       setStatusDetail(null);
       setError("HLS playback is not supported in this browser.");
+      setFailureKind("unsupported-stream");
       updateStatus("error");
     }
 
@@ -388,6 +415,15 @@ export function HlsPlayer({
     stopPlayback();
   }, []);
 
+  const diagnostics = buildPlayerDiagnostics({
+    status,
+    statusDetail,
+    error,
+    failureKind,
+    recoveryNotice,
+    muted,
+  });
+
   return (
     <div className={cn("relative h-full overflow-hidden rounded-[1.1rem] bg-black", className)}>
       <video ref={videoRef} className="h-full w-full object-cover" playsInline muted={muted} />
@@ -407,7 +443,7 @@ export function HlsPlayer({
             status === "error" && "border-rose-400/30 bg-rose-500/10 text-rose-100",
           )}
         >
-          {status}
+          {diagnostics.label}
         </Badge>
         {recoveryNotice ? (
           <Badge className="border-emerald-400/30 bg-emerald-500/10 text-emerald-200" size="sm">{recoveryNotice}</Badge>
@@ -419,12 +455,7 @@ export function HlsPlayer({
           <div className="rounded-xl border border-slate-700/70 bg-slate-950/80 px-3 py-2 text-[13px] text-slate-200">
             <div className="flex items-center gap-1.5">
               <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-              {statusDetail ??
-                (status === "retrying"
-                  ? "Retrying stream connection..."
-                  : status === "buffering"
-                    ? "Buffering live stream..."
-                    : "Loading stream...")}
+              {diagnostics.summary}
             </div>
           </div>
         </div>
@@ -435,7 +466,10 @@ export function HlsPlayer({
           <div className="max-w-xs rounded-[1.25rem] border border-rose-500/20 bg-slate-950/90 p-4 text-center shadow-glow">
             <AlertTriangle className="mx-auto h-6 w-6 text-rose-300" />
             <p className="mt-2 font-semibold text-white">Playback interrupted</p>
-            <p className="mt-1.5 text-[13px] leading-5 text-slate-400">{error ?? "The stream could not be recovered."}</p>
+            <p className="mt-1.5 text-[13px] leading-5 text-slate-400">{diagnostics.summary}</p>
+            {diagnostics.technicalDetail ? (
+              <p className="mt-1.5 text-[11px] uppercase tracking-[0.14em] text-slate-500">{diagnostics.technicalDetail}</p>
+            ) : null}
             <Button className="mt-3" onClick={() => setReloadKey((value) => value + 1)} size="sm" variant="secondary">
               <RotateCcw className="h-4 w-4" />
               Retry
