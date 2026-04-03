@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
+import { usePlaybackSessionHeartbeat } from "@/features/observability/use-playback-session-heartbeat";
 import { isEditableKeyboardTarget } from "@/lib/keyboard";
 import { HlsPlayer, type PlayerDiagnostics } from "@/player/hls-player";
 import { buildPlayerDiagnostics } from "@/player/playback-diagnostics";
@@ -85,6 +86,25 @@ export function ChannelWatchPage() {
   const isFavorite = useMemo(() => {
     return (favoritesQuery.data ?? []).some((favorite) => favorite.channelId === channelQuery.data?.id);
   }, [channelQuery.data?.id, favoritesQuery.data]);
+  const playbackSessionDescriptors = useMemo(() => {
+    if (!channelQuery.data) {
+      return [];
+    }
+
+    return [
+      {
+        sessionKey: `watch:${channelQuery.data.id}`,
+        channelId: channelQuery.data.id,
+        sessionType: "SINGLE_VIEW" as const,
+        playbackState: playerDiagnostics.status,
+        selectedQuality,
+        isMuted: playerDiagnostics.isMuted,
+        failureKind: playerDiagnostics.failureKind,
+      },
+    ];
+  }, [channelQuery.data, playerDiagnostics.failureKind, playerDiagnostics.isMuted, playerDiagnostics.status, selectedQuality]);
+
+  usePlaybackSessionHeartbeat(token, playbackSessionDescriptors);
 
   useEffect(() => {
     setQualities([...defaultQualityOptions]);

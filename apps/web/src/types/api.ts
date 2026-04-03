@@ -4,6 +4,10 @@ import type {
   DiagnosticHealthState,
   EpgSourceType,
   LayoutType,
+  PlaybackSessionState,
+  PlaybackSessionType,
+  PlaybackSessionEndInput,
+  PlaybackSessionHeartbeatInput,
   SavedLayoutConfig,
   StreamPlaybackMode,
   UserRole,
@@ -216,4 +220,90 @@ export interface QualityOption {
   label: string;
   value: string;
   height: number | null;
+}
+
+export type PlaybackSessionHeartbeatPayload = PlaybackSessionHeartbeatInput;
+export type PlaybackSessionEndPayload = PlaybackSessionEndInput;
+
+export type MonitoringLogLevel = "info" | "warn" | "error";
+export type MonitoringLogCategory = "playback" | "stream" | "epg" | "auth" | "admin" | "system";
+
+export interface AdminLogEntry {
+  id: string;
+  timestamp: string;
+  level: MonitoringLogLevel;
+  category: MonitoringLogCategory;
+  event: string;
+  actorUserId?: string | null;
+  channelId?: string;
+  channelSlug?: string;
+  epgSourceId?: string;
+  sessionId?: string;
+  failureKind?: DiagnosticFailureKind;
+  retryable?: boolean | null;
+  statusCode?: number | null;
+  detail?: Record<string, string | number | boolean | null | undefined> | null;
+}
+
+export interface AdminMonitoringSession {
+  sessionId: string;
+  sessionType: PlaybackSessionType;
+  playbackState: PlaybackSessionState;
+  selectedQuality: string | null;
+  isMuted: boolean;
+  tileIndex: number | null;
+  failureKind: DiagnosticFailureKind | null;
+  startedAt: string;
+  lastSeenAt: string;
+  user: {
+    id: string;
+    username: string;
+    role: UserRole;
+  };
+  channel: {
+    id: string;
+    name: string;
+    slug: string;
+    playbackMode: StreamPlaybackMode;
+    sourceMode: ChannelSourceMode;
+    isActive: boolean;
+  } | null;
+}
+
+export interface ChannelViewerCount {
+  channel: {
+    id: string;
+    name: string;
+    slug: string;
+    playbackMode: StreamPlaybackMode;
+    sourceMode: ChannelSourceMode;
+    isActive: boolean;
+  };
+  viewerCount: number;
+  singleViewCount: number;
+  multiviewCount: number;
+  watchers: Array<{
+    sessionId: string;
+    userId: string;
+    username: string;
+    playbackState: PlaybackSessionState;
+    selectedQuality: string | null;
+    isMuted: boolean;
+    tileIndex: number | null;
+    lastSeenAt: string;
+  }>;
+}
+
+export interface AdminMonitoringSnapshot {
+  generatedAt: string;
+  summary: {
+    activeSessionCount: number;
+    activeChannelCount: number;
+    warningLogCount: number;
+    errorLogCount: number;
+    staleAfterSeconds: number;
+  };
+  sessions: AdminMonitoringSession[];
+  channelViewerCounts: ChannelViewerCount[];
+  recentFailures: AdminLogEntry[];
 }

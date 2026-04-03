@@ -4,6 +4,7 @@ import { RequireAdmin, RequireAuth } from "@/features/auth/auth-context";
 import { AdminChannelsPage } from "@/pages/admin-channels-page";
 import { AdminEpgSourcesPage } from "@/pages/admin-epg-sources-page";
 import { AdminGroupsPage } from "@/pages/admin-groups-page";
+import { AdminObservabilityPage } from "@/pages/admin-observability-page";
 import { ChannelWatchPage } from "@/pages/channel-watch-page";
 import { DashboardPage } from "@/pages/dashboard-page";
 import { LoginPage } from "@/pages/login-page";
@@ -26,6 +27,14 @@ export function AppRouter() {
           <Route index element={<DashboardPage />} />
           <Route path="watch/:slug" element={<ChannelWatchPage />} />
           <Route path="multiview" element={<MultiViewPage />} />
+          <Route
+            path="admin/observability"
+            element={
+              <RequireAdmin>
+                <AdminObservabilityPage />
+              </RequireAdmin>
+            }
+          />
           <Route
             path="admin/channels"
             element={
