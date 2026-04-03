@@ -133,6 +133,8 @@ Repositories must not:
   - stop/cancel actions
   - playback-access token issuance
   - storage-backed media delivery
+  - retention/protection updates for library items
+  - thumbnail delivery for recorded media previews
 - Recording execution state belongs in dedicated recording entities such as:
   - `RecordingJob`
   - `RecordingRule`
@@ -140,6 +142,8 @@ Repositories must not:
   - `RecordingAsset`
 - Routes must not spawn ffmpeg directly; process lifecycle belongs in recording runtime helpers behind the service/repository boundary.
 - Storage paths must stay relative to the configured recordings root and be resolved safely inside the backend before file IO happens.
+- Thumbnail extraction belongs to recording-runtime helpers or recording-specific services, not generic stream routes or frontend pages.
+- Retention policy evaluation belongs inside the `recordings` module and must exclude explicitly protected recordings before deleting media or job history.
 
 ## Error Handling Rules
 

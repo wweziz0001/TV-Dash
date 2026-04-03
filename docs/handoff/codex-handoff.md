@@ -242,16 +242,52 @@ Key relationship rules:
   - multiview tile `REC` / `Stop`
   - `/recordings` workspace for one-off create/edit/cancel/stop flows, recurring-rule create/edit/enable/disable/delete flows, browse, search, and delete flows
 - Recordings library capabilities:
-  - filter/search recorded jobs
+  - richer metadata for each item:
+    - title
+    - channel snapshots
+    - recording origin/mode
+    - start/end timing
+    - duration and file size
+    - guide-program title plus optional description/category when available
+    - storage path and protection state
+  - filter/search recorded jobs by:
+    - text
+    - status
+    - channel
+    - origin/mode
+    - protected vs auto-retained state
+    - recorded date range
+  - sort library results by newest/oldest/title/channel/status
   - distinguish `COMPLETED`, `FAILED`, `CANCELED`, `PENDING`, `SCHEDULED`, and `RECORDING`
+  - show real recording thumbnails when extraction succeeds, with lazy generation on first thumbnail request as a fallback
   - open completed media on `/recordings/:id`
+  - toggle `Keep forever` / protected on a recording
   - delete library items and underlying stored files
+- Current thumbnail/preview foundation:
+  - finalized playable recordings attempt one representative JPEG thumbnail extraction through ffmpeg
+  - thumbnails are stored as sidecar files under the recordings storage root using relative safe paths
+  - the library and playback page read thumbnails through short-lived signed URLs, using the same playback-token security model as recorded media access
+  - if extraction has not happened yet, the thumbnail endpoint can try one lazy generation pass when the first preview is requested
+- Current retention model:
+  - global/default policy currently lives in env/config:
+    - `RECORDINGS_RETENTION_DAYS`
+    - `RECORDINGS_RETENTION_MAX_PER_CHANNEL`
+    - `RECORDINGS_FAILED_CLEANUP_HOURS`
+    - `RECORDINGS_RETENTION_SWEEP_INTERVAL_MS`
+  - the single-process recording runtime evaluates retention on a bounded sweep interval
+  - completed recordings are cleaned up when either:
+    - they exceed the max-age policy
+    - they fall outside the newest-N-per-channel window
+  - failed/canceled recording history is cleaned up on the shorter failed-cleanup window
+  - protected recordings are excluded from all automatic deletion decisions
 - Current first-version storage/runtime limitations:
   - one API process owns the scheduler/runtime today
   - active recordings interrupted by process restart are marked failed instead of resumed
   - recurring jobs are projected inside a bounded lookahead window instead of a long-horizon scheduler queue
   - editing generated recurring occurrences is intentionally blocked today; edit the rule or cancel the occurrence instead
   - playback currently assumes browser-playable MP4 output from the captured stream path
+  - thumbnail generation currently targets one first representative frame only; there is not yet a multi-preview scrubber or scene-selection pass
+  - retention policy is global today; there is not yet a per-channel or per-rule retention settings UI
 
 ## Testing Status
 

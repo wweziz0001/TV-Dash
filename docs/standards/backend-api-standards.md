@@ -174,6 +174,7 @@ Guide-management additions:
 Recording additions:
 
 - admin-triggered recording create, update, cancel, stop, and delete actions should create sanitized audit events.
+- admin-triggered recording protection or keep-forever changes should also create sanitized audit events.
 - recording logs may include safe ids, channel slugs, durations, and ffmpeg exit outcomes, but they must not log raw filesystem roots outside the already configured relative storage key.
 
 ## Guide Management Rules
@@ -198,6 +199,11 @@ Recording additions:
   - `CANCELED`
 - Recording media playback should use short-lived playback access URLs or equivalent signed access, not long-lived bearer tokens in query strings.
 - Recording file delivery must keep storage-root resolution server-side and must support practical browser playback behavior such as byte-range requests.
+- Recording thumbnails may use the same short-lived signed-access foundation as playback media, but thumbnail extraction/generation still belongs in the recording module.
+- Retention settings should stay explicit and bounded:
+  - global/default storage policy in env/config for now
+  - per-recording operator override via a protected/keep-forever flag
+  - cleanup logic in recording services/runtime helpers rather than ad-hoc route handlers
 
 ## Observability Rules
 

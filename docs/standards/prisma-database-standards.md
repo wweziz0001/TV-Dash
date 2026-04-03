@@ -129,6 +129,8 @@ Recording-specific migration review must also check:
 - whether recording history survives channel deletion through snapshot fields where needed
 - whether job-status and library list filters have the indexes they need before release
 - whether storage-path uniqueness and run-to-asset uniqueness are explicit instead of implied by application code
+- whether library metadata snapshots such as programme title/description/category remain readable after guide rows change
+- whether thumbnail sidecar paths and protected/retention fields are explicit instead of inferred in application code
 
 ## Seed Strategy
 
