@@ -13,6 +13,18 @@ const envSchema = z.object({
   CLIENT_URL: z.string().url().default("http://localhost:5173"),
   CLIENT_URLS: z.string().optional(),
   RECORDINGS_STORAGE_DIR: z.string().min(1).default(path.resolve(currentDir, "../../../../recordings")),
+  TIMESHIFT_ENABLED: z
+    .string()
+    .optional()
+    .transform((value) => value !== "false"),
+  TIMESHIFT_STORAGE_DIR: z
+    .string()
+    .min(1)
+    .default(path.resolve(currentDir, "../../../../recordings/timeshift")),
+  TIMESHIFT_DEFAULT_WINDOW_MINUTES: z.coerce.number().int().min(5).max(360).default(30),
+  TIMESHIFT_MIN_AVAILABLE_WINDOW_SECONDS: z.coerce.number().int().min(10).max(600).default(30),
+  TIMESHIFT_POLL_INTERVAL_MS: z.coerce.number().int().min(1000).max(30000).default(4000),
+  TIMESHIFT_IDLE_TTL_MS: z.coerce.number().int().min(60000).max(3600000).default(900000),
   RECORDINGS_FFMPEG_PATH: z.string().min(1).default("ffmpeg"),
   RECORDINGS_FFPROBE_PATH: z.string().min(1).default("ffprobe"),
   RECORDINGS_POLL_INTERVAL_MS: z.coerce.number().int().min(1000).max(60000).default(5000),

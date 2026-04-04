@@ -8,7 +8,7 @@ export interface StreamFailureClassification {
 }
 
 export interface StreamFailureContext {
-  operation: "stream-inspection" | "proxy-master" | "proxy-asset" | "synthetic-master";
+  operation: "stream-inspection" | "proxy-master" | "proxy-asset" | "synthetic-master" | "timeshift";
 }
 
 function parseStatusCode(message: string) {
@@ -53,6 +53,20 @@ export function classifyStreamFailure(error: unknown, context: StreamFailureCont
 
   if (message === "Channel master playlist is not configured") {
     return buildClassification("misconfiguration", message, false);
+  }
+
+  if (
+    message === "Timeshift asset not found" ||
+    message === "Timeshift variant not found" ||
+    message === "Timeshift is not available for this channel" ||
+    message === "Timeshift is disabled for this channel." ||
+    message === "Timeshift requires proxy playback so TV-Dash can retain the live buffer."
+  ) {
+    return buildClassification("misconfiguration", message, false, 404);
+  }
+
+  if (message === "Timeshift buffer is still empty") {
+    return buildClassification("playlist-fetch", "Timeshift buffer is still warming up", true, 400);
   }
 
   if (message.startsWith("Synthetic master playlist could not be generated")) {

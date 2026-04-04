@@ -98,6 +98,8 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
         detail: {
           sourceMode: channel.sourceMode,
           playbackMode: channel.playbackMode,
+          timeshiftEnabled: channel.timeshiftEnabled,
+          timeshiftWindowMinutes: channel.timeshiftWindowMinutes,
           manualVariantCount: channel.qualityVariants.length,
           hasEpgSource: Boolean(channel.epgSourceId),
         },
@@ -148,6 +150,8 @@ export const channelRoutes: FastifyPluginAsync = async (fastify) => {
         detail: {
           sourceMode: channel.sourceMode,
           playbackMode: channel.playbackMode,
+          timeshiftEnabled: channel.timeshiftEnabled,
+          timeshiftWindowMinutes: channel.timeshiftWindowMinutes,
           manualVariantCount: channel.qualityVariants.length,
           hasEpgSource: Boolean(channel.epgSourceId),
         },

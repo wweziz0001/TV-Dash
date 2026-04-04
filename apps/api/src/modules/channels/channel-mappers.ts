@@ -11,6 +11,7 @@ export function mapPublicChannel(record: PublicChannelRecord) {
   return {
     ...channel,
     masterHlsUrl: channel.playbackMode === "PROXY" ? null : channel.masterHlsUrl,
+    timeshiftWindowMinutes: channel.timeshiftEnabled ? channel.timeshiftWindowMinutes ?? null : null,
     manualVariantCount: activeVariants.length,
     hasManualPrograms: manualProgramItems.length > 0,
     epgSourceId: source?.id ?? null,

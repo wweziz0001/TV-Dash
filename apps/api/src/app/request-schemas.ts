@@ -10,6 +10,16 @@ export const channelIdParamSchema = z.object({
   channelId: z.string().uuid(),
 });
 
+export const channelTimeshiftVariantParamSchema = z.object({
+  channelId: z.string().uuid(),
+  variantId: z.string().trim().min(1).max(120),
+});
+
+export const channelTimeshiftAssetParamSchema = z.object({
+  channelId: z.string().uuid(),
+  assetId: z.string().trim().min(1).max(200),
+});
+
 export const slugParamSchema = z.object({
   slug: z.string().min(2).max(120),
 });

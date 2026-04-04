@@ -72,6 +72,8 @@ export function summarizeChannelAuditDetail(channel: ChannelInput) {
   return {
     sourceMode: channel.sourceMode,
     playbackMode: channel.playbackMode,
+    timeshiftEnabled: channel.timeshiftEnabled,
+    timeshiftWindowMinutes: channel.timeshiftEnabled ? channel.timeshiftWindowMinutes : null,
     isActive: channel.isActive,
     sortOrder: channel.sortOrder,
     manualVariantCount: channel.sourceMode === "MANUAL_VARIANTS" ? channel.manualVariants.length : 0,

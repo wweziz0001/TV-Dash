@@ -136,6 +136,8 @@ model Channel {
   sourceMode        ChannelSourceMode       @default(MASTER_PLAYLIST)
   masterHlsUrl      String?
   playbackMode      StreamPlaybackMode      @default(DIRECT)
+  timeshiftEnabled  Boolean                 @default(false)
+  timeshiftWindowMinutes Int?
   upstreamUserAgent String?
   upstreamReferrer  String?
   upstreamHeaders   Json?

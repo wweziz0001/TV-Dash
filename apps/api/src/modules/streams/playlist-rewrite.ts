@@ -1,6 +1,6 @@
 const URI_ATTRIBUTE_PATTERN = /URI="([^"]+)"/g;
 
-function resolveUri(uri: string, baseUrl: string) {
+export function resolveUri(uri: string, baseUrl: string) {
   try {
     return new URL(uri, baseUrl).toString();
   } catch {
@@ -8,7 +8,7 @@ function resolveUri(uri: string, baseUrl: string) {
   }
 }
 
-function rewriteAttributeUris(line: string, baseUrl: string, rewriteUri: (absoluteUrl: string) => string) {
+export function rewriteAttributeUris(line: string, baseUrl: string, rewriteUri: (absoluteUrl: string) => string) {
   return line.replace(URI_ATTRIBUTE_PATTERN, (_, uri: string) => {
     const absoluteUrl = resolveUri(uri, baseUrl);
     return absoluteUrl ? `URI="${rewriteUri(absoluteUrl)}"` : `URI="${uri}"`;

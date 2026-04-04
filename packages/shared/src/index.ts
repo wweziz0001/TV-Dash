@@ -35,6 +35,7 @@ export const qualityModeSchema = z.enum(["AUTO", "LOWEST", "HIGHEST", "MANUAL"])
 export const playbackSessionTypeSchema = z.enum(["SINGLE_VIEW", "MULTIVIEW"]);
 export const playbackSessionStateSchema = z.enum(["idle", "loading", "playing", "buffering", "retrying", "error"]);
 export const diagnosticHealthStateSchema = z.enum(["healthy", "degraded", "failing", "unknown"]);
+export const liveTimeshiftBufferStateSchema = z.enum(["DISABLED", "UNSUPPORTED", "STARTING", "WARMING", "READY", "ERROR"]);
 export const recordingModeSchema = z.enum(["IMMEDIATE", "TIMED", "SCHEDULED", "EPG_PROGRAM", "RECURRING_RULE"]);
 export const recordingJobStatusSchema = z.enum(["PENDING", "SCHEDULED", "RECORDING", "COMPLETED", "FAILED", "CANCELED"]);
 export const recordingRunStatusSchema = z.enum(["STARTING", "RECORDING", "COMPLETED", "FAILED", "CANCELED"]);
@@ -139,6 +140,15 @@ const optionalNullablePositiveIntegerSchema = z
   .optional()
   .transform((value) => value ?? null);
 
+const optionalNullableTimeshiftWindowMinutesSchema = z
+  .number()
+  .int()
+  .min(5)
+  .max(360)
+  .nullable()
+  .optional()
+  .transform((value) => value ?? null);
+
 export const upstreamHeadersInputSchema = z
   .record(
     z
@@ -232,6 +242,8 @@ const channelBaseInputSchema = z.object({
   upstreamUserAgent: optionalNullableTrimmedStringSchema,
   upstreamReferrer: optionalNullableUrlSchema,
   upstreamHeaders: upstreamHeadersInputSchema,
+  timeshiftEnabled: z.boolean().default(false),
+  timeshiftWindowMinutes: optionalNullableTimeshiftWindowMinutesSchema,
   epgSourceId: z.string().uuid().nullable().optional(),
   epgChannelId: z
     .string()
@@ -269,6 +281,14 @@ function addDuplicateIssue(
 export const channelInputSchema = z
   .discriminatedUnion("sourceMode", [masterPlaylistChannelInputSchema, manualVariantsChannelInputSchema])
   .superRefine((value, context) => {
+    if (value.timeshiftEnabled && value.playbackMode !== "PROXY") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["playbackMode"],
+        message: "Timeshift requires proxy playback so TV-Dash can retain the live buffer",
+      });
+    }
+
     if (value.sourceMode !== "MANUAL_VARIANTS") {
       return;
     }
@@ -720,6 +740,7 @@ export type QualityMode = z.infer<typeof qualityModeSchema>;
 export type PlaybackSessionType = z.infer<typeof playbackSessionTypeSchema>;
 export type PlaybackSessionState = z.infer<typeof playbackSessionStateSchema>;
 export type DiagnosticHealthState = z.infer<typeof diagnosticHealthStateSchema>;
+export type LiveTimeshiftBufferState = z.infer<typeof liveTimeshiftBufferStateSchema>;
 export type RecordingMode = z.infer<typeof recordingModeSchema>;
 export type RecordingJobStatus = z.infer<typeof recordingJobStatusSchema>;
 export type RecordingRunStatus = z.infer<typeof recordingRunStatusSchema>;
