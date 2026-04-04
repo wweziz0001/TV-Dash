@@ -123,6 +123,7 @@ Repositories must not:
   - channel-level composition of shared relay state plus timeshift state
   - explicit live-edge path vs buffered path exposure through `/api/streams/channels/:id/session/status`
   - honest distinction between relay-only sessions and relay-plus-DVR sessions
+  - explicit viewer-policy metadata describing per-viewer playback-position semantics for shared DVR sessions
   - shared-session-backed acquisition reuse for retained buffers on `SHARED` channels
 - Stream routes must not embed channel query logic inline; they depend on the channel service for stream configuration lookup.
 - Invalid or expired proxy asset tokens should fail with `400`, not a fake upstream error.
@@ -201,8 +202,10 @@ Keep those mappings stable unless the contract explicitly changes.
 - Runtime diagnostics remain cross-cutting and live inside the `diagnostics` module.
 - Playback session tracking is now a real persisted foundation:
   - player surfaces send authenticated heartbeat updates
+  - every heartbeat now carries a stable per-page `surfaceId` plus explicit per-viewer playback-position state
   - session cleanup expires stale sessions
   - admin monitoring reads live sessions and per-channel viewer counts from real session rows
+  - shared relay state and retained DVR state remain channel-scoped, while live-edge vs behind-live position remains viewer-scoped
 - Structured admin log viewing is currently process-local and in-memory:
   - logs are retained from real structured events emitted by the running API process
   - process restart still clears the retained log history

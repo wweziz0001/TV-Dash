@@ -216,6 +216,11 @@ Recording additions:
   - live-edge relay path
   - buffered DVR path
   - whether the current channel session is relay-only or relay-plus-DVR
+- Multi-user timeshift policy must stay explicit:
+  - shared acquisition, cache state, retained-buffer readiness, and session lifecycle are channel-level concerns
+  - playback position, live-edge vs behind-live state, paused-in-buffer state, and `Go live` are per-viewer concerns
+  - one viewer moving behind live must not mutate another viewer's playback state
+  - reconnect behavior should be documented instead of inferred; the current first version resets new viewer surfaces to the live edge
 - Channel-level timeshift enablement must stay explicit in the channel contract and must reject unsupported combinations such as direct-playback-only live rewind.
 - Timeshift env/config must stay explicit and centralized in `config/env.ts`, including:
   - global enable/disable
@@ -247,6 +252,10 @@ Recording additions:
 - Prefer structured logs with stable `event` names and typed detail fields over ad-hoc string logs.
 - Do not log raw bearer tokens, upstream header values, or full query-string URLs.
 - Playback session heartbeats must represent real active player surfaces, not synthetic counters or decorative analytics.
+- Heartbeats for multi-user DVR surfaces must include enough truth to distinguish:
+  - which viewer surface is reporting
+  - whether that surface is at the live edge, behind live, or paused in the retained window
+  - approximate offset from live where practical
 - High-volume heartbeat updates should update session state without emitting a new structured log on every refresh.
 - Session lifecycle logs should stay focused on useful state changes such as started, failed, recovered, and ended.
 - For upstream failures, classify the failure before logging or returning it when practical.

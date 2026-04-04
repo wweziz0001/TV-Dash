@@ -35,7 +35,7 @@ The current operator milestone also adds:
 - Backend stream handling now also includes a real first-version live-timeshift path that retains rolling HLS buffers on disk for eligible proxy channels and serves DVR manifests from the `streams` module
 - Backend stream handling now also includes a real first-version shared local-delivery path that keeps channel-local shared sessions plus manifest/segment edge caching in the `streams` module
 - Backend stream handling now also includes an integrated channel-session status layer that composes shared relay state with live-DVR state instead of treating them as unrelated operator concepts
-- Playback session tracking now persists real active player heartbeats in PostgreSQL so admin monitoring pages can show who is watching what now
+- Playback session tracking now persists real active player heartbeats in PostgreSQL so admin monitoring pages can show who is watching what now, including explicit per-viewer live-edge vs behind-live state for shared DVR sessions
 - Guide source imports, source-channel discovery, channel mappings, and persisted programme rows now also live in PostgreSQL
 - Frontend keeps app bootstrap in `app`, route screens in `pages`, shared UI in `components`, auth in `features`, request logic in `services`, and player-specific code in `player`
 - Shared API validation contracts live in `packages/shared`
@@ -238,14 +238,22 @@ Key relationship rules:
   - channels with timeshift configured but not yet populated surface `DVR warming`
   - channels with retained media expose live-edge vs behind-live state and `Go live`
 - Current integrated viewer model:
+  - shared channel session state owns upstream acquisition, shared relay/cache lifecycle, and the retained rolling DVR window
+  - viewer session state owns playback position, live-edge vs behind-live state, paused-in-buffer state, and `Go live`
+  - each watch page or multiview wall now gets its own stable `surfaceId`, so multiple surfaces from the same user remain distinct in admin monitoring
   - live-edge viewers stay at the live edge of the current channel session
-  - buffered viewers use the retained timeshift manifest and can move behind live within the available window
-  - `Go live` returns the viewer to the current edge without pretending the stream is VOD
+  - buffered viewers use the retained timeshift manifest and can move behind live within the available window without dragging other viewers behind live
+  - `Go live` returns only that viewer surface to the current edge without pretending the stream is VOD or forcing other viewers to live
+  - reconnect/resume policy is intentionally simple in this first version:
+    - per-viewer playback position is ephemeral
+    - a newly attached surface starts at the live edge again, even if another surface from the same user or another viewer is currently behind live
+    - stale viewer state is dropped after the playback-session heartbeat TTL expires
 - Current first-version limitations:
   - timeshift retention is disk-backed, but the in-memory manifest index is rebuilt per process and does not survive restart
   - polling/retention is started lazily when a timeshift channel is requested, not pre-warmed for every enabled channel
   - this is a rolling pause/rewind window, not yet a full long-horizon DVR library or scheduled catch-up system
-  - per-viewer live-edge vs behind-live state is still owned by the player/browser surface; admin monitoring currently exposes channel/session-level DVR readiness and viewer counts, not durable per-viewer timeline positions
+  - per-viewer playback position is only retained for active heartbeat-backed viewer sessions; there is no long-term resume bookmark yet across fresh reconnects
+  - the shared-timeshift model is still single-process; API restart clears hot shared-session and retained-buffer state until viewers attach again
 
 ## Shared Channel Restream And Edge Cache Foundation
 
@@ -497,7 +505,7 @@ Optional but recommended for risky changes:
 
 ## Recommended Next Task
 
-Add durable multi-process coordination for live timeshift so retained DVR windows can survive API restarts cleanly and scale beyond one process without duplicate upstream polling.
+Add an authenticated-user resume/bookmark policy for live DVR so TV-Dash can optionally restore a viewer to a recent buffered position on reconnect without weakening the new per-viewer isolation model.
 
 ## Observability Milestone Summary
 

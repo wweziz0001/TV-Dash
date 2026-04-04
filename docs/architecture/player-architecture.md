@@ -189,6 +189,11 @@ Do not add silent infinite retry loops. Any retry policy change must consider mu
   - buffered live behind the edge
   - DVR warming
   - live-only with no DVR support
+- Multi-user DVR semantics now stay explicit:
+  - upstream acquisition, shared relay/cache state, and the retained DVR window stay channel-scoped
+  - playback position, live-edge vs behind-live state, paused-in-buffer state, and `Go live` behavior stay per viewer surface
+  - the player heartbeat now reports a per-surface `surfaceId` plus explicit `LIVE_EDGE`, `BEHIND_LIVE`, or `PAUSED` position state for admin monitoring
+  - reconnects start a new surface at the live edge again; TV-Dash does not silently restore another viewer's old buffered position
 - Player pages may query backend timeshift status and pass that snapshot into `HlsPlayer`, but buffer retention, eviction, and manifest generation stay outside the player boundary.
 - The player may still clamp local seek actions against the browser-reported range, but it must not invent DVR controls when the backend says timeshift is unavailable.
 

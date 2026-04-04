@@ -156,6 +156,10 @@ These areas are release-critical and should gain or maintain automated coverage 
 - channel and EPG diagnostics response behavior for changed admin inspection endpoints
 - failure classification helpers for stream and XMLTV errors
 - playback session tracking, stale-session cleanup, and per-channel viewer-count aggregation when monitoring behavior changes
+- multi-user timeshift semantics when heartbeat or monitoring contracts change:
+  - one viewer behind live does not drag another viewer behind live
+  - one viewer returning to live does not force another viewer to live
+  - same-user concurrent viewer surfaces stay distinct when they represent different pages or walls
 - structured-log filtering behavior when the admin logs viewer contract changes
 
 ### EPG And Guide Management

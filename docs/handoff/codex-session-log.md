@@ -1,5 +1,62 @@
 # Codex Session Log
 
+## `2026-04-05T02:10:00+03:00`
+
+### Objective
+
+Define explicit multi-user timeshift policy and playback semantics so shared live channel sessions can reuse one relay/DVR buffer without one viewer's playback position affecting another viewer.
+
+### Work Completed
+
+- created the requested branch `023-multi-user-timeshift-policy-and-access-semantics`
+- extended playback-session contracts and persistence with explicit per-viewer playback semantics:
+  - added `surfaceId` so one authenticated user can have multiple distinct watch surfaces or multiview walls at the same time
+  - added explicit per-viewer playback-position state:
+    - `LIVE_EDGE`
+    - `BEHIND_LIVE`
+    - `PAUSED`
+  - added approximate `liveOffsetSeconds` so admin diagnostics can report how far behind live each viewer surface is
+  - extended playback session state with `paused` so DVR pause is not flattened into generic `playing`
+- kept the shared-vs-viewer boundary explicit:
+  - shared channel session still owns upstream acquisition, shared relay/cache state, retained DVR window, and channel-local lifecycle
+  - viewer sessions now own playback position, live-edge vs behind-live state, paused-in-buffer state, and `Go live`
+- defined and implemented the first reconnect/resume policy:
+  - per-viewer playback position is ephemeral
+  - a new or reattached viewer surface starts at the live edge again
+  - stale viewer state is dropped when the playback-session heartbeat expires
+- improved diagnostics/admin visibility:
+  - monitoring summary now reports live-edge, behind-live, and paused viewer-session counts
+  - per-channel monitoring now shows who is live, who is behind live, and approximate offset from live
+  - active-surface grouping now uses `surfaceId` instead of incorrectly merging all multiview walls from the same user together
+  - session/status now documents the viewer policy directly through:
+    - per-viewer playback-position scope
+    - ephemeral persistence
+    - reset-to-live reconnect behavior
+    - stale viewer-state TTL
+- updated the watch page and multiview page heartbeat flow so each player surface reports explicit playback-position semantics instead of only coarse player status
+- added targeted tests for:
+  - playback-session lifecycle and position-change logging
+  - monitoring aggregation of independent live-edge vs behind-live viewers on the same channel
+  - stream session status viewer-policy metadata
+  - frontend heartbeat payload generation for explicit playback-position state
+  - frontend helper mapping for `LIVE_EDGE`, `BEHIND_LIVE`, and `PAUSED`
+
+### Verification Run
+
+- `npm run db:generate -w apps/api`
+- `npm run test -w apps/api -- src/modules/diagnostics/playback-session.service.test.ts src/modules/diagnostics/monitoring.service.test.ts src/modules/diagnostics/diagnostic.routes.test.ts src/modules/streams/stream.routes.test.ts`
+- `npm run test -w apps/web -- src/features/observability/playback-session-semantics.test.ts src/features/observability/use-playback-session-heartbeat.test.tsx`
+
+### Remaining Risk
+
+- Per-viewer playback position is intentionally ephemeral. A fresh reconnect or page reload does not yet resume a prior buffered position; it starts a new viewer surface at the live edge.
+- Viewer playback semantics are now durable enough for active-session admin visibility, but there is still no operator-facing timeline history after the viewer session ends.
+- Shared relay/timeshift orchestration remains process-local, so multi-node coordination and cross-process resume are still future work.
+
+### Exact Suggested Next Task
+
+Add an explicit optional viewer resume/bookmark policy for authenticated users, including safe server-side restoration rules for reconnecting to a retained DVR window without violating the new per-viewer isolation model.
+
 ## `2026-04-05T00:55:00+03:00`
 
 ### Objective
