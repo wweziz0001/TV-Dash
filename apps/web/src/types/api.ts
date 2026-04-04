@@ -445,6 +445,7 @@ export interface LiveTimeshiftStatus {
   configured: boolean;
   supported: boolean;
   available: boolean;
+  acquisitionMode: "NONE" | "DIRECT_UPSTREAM" | "SHARED_SESSION";
   bufferState: LiveTimeshiftBufferState;
   message: string;
   windowSeconds: number;
@@ -453,6 +454,53 @@ export interface LiveTimeshiftStatus {
   bufferedSegmentCount: number;
   lastUpdatedAt: string | null;
   lastError: string | null;
+}
+
+export interface ChannelStreamSessionStatus {
+  channelId: string;
+  channelSlug: string;
+  playbackMode: StreamPlaybackMode;
+  sourceMode: ChannelSourceMode;
+  sessionMode: "DIRECT" | "PROXY_RELAY" | "PROXY_DVR" | "SHARED_RELAY" | "SHARED_DVR";
+  livePlaybackUrl: string | null;
+  bufferedPlaybackUrl: string | null;
+  defaultPlaybackUrl: string | null;
+  viewerModel: {
+    liveEdgeAvailable: boolean;
+    bufferedPlaybackSupported: boolean;
+    bufferedPlaybackAvailable: boolean;
+    defaultPlayback: "LIVE_EDGE" | "BUFFERED";
+    returnToLiveSupported: boolean;
+  };
+  sharedSession: {
+    channelId: string;
+    configured: boolean;
+    enabled: boolean;
+    active: boolean;
+    upstreamState: "DISABLED" | "IDLE" | "STARTING" | "ACTIVE" | "ERROR";
+    message: string;
+    lastAccessAt: string | null;
+    expiresAt: string | null;
+    lastUpstreamRequestAt: string | null;
+    lastError: string | null;
+    lastErrorAt: string | null;
+    mappedAssetCount: number;
+    cache: {
+      entryCount: number;
+      manifestEntryCount: number;
+      segmentEntryCount: number;
+      bytesUsed: number;
+      manifestHitCount: number;
+      manifestMissCount: number;
+      segmentHitCount: number;
+      segmentMissCount: number;
+      inflightReuseCount: number;
+      upstreamRequestCount: number;
+      evictedEntryCount?: number;
+    } | null;
+  } | null;
+  timeshift: LiveTimeshiftStatus;
+  message: string;
 }
 
 export interface QualityOption {
@@ -550,6 +598,7 @@ export interface ChannelViewerCount {
     tileIndex: number | null;
     lastSeenAt: string;
   }>;
+  sessionMode: "DIRECT" | "PROXY_RELAY" | "PROXY_DVR" | "SHARED_RELAY" | "SHARED_DVR";
   sharedSession: {
     upstreamState: "STARTING" | "ACTIVE" | "ERROR";
     viewerCount: number;
@@ -573,6 +622,18 @@ export interface ChannelViewerCount {
       upstreamRequestCount: number;
     };
   } | null;
+  timeshiftSession: {
+    configured: boolean;
+    supported: boolean;
+    available: boolean;
+    acquisitionMode: "NONE" | "DIRECT_UPSTREAM" | "SHARED_SESSION";
+    bufferState: LiveTimeshiftBufferState;
+    windowSeconds: number;
+    availableWindowSeconds: number;
+    bufferedSegmentCount: number;
+    lastUpdatedAt: string | null;
+    lastError: string | null;
+  } | null;
 }
 
 export interface AdminMonitoringSnapshot {
@@ -583,6 +644,8 @@ export interface AdminMonitoringSnapshot {
     activeSharedSessionCount: number;
     activeSharedViewerCount: number;
     sharedCacheHitRate: number | null;
+    activeTimeshiftSessionCount: number;
+    readyTimeshiftSessionCount: number;
     warningLogCount: number;
     errorLogCount: number;
     staleAfterSeconds: number;

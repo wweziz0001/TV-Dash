@@ -150,6 +150,12 @@ export function AdminObservabilityPage() {
             meta="Manifest and segment hit rate across active shared sessions"
           />
           <SummaryCard
+            icon={Activity}
+            label="Timeshift"
+            value={String(monitoring?.summary.activeTimeshiftSessionCount ?? 0)}
+            meta={`${monitoring?.summary.readyTimeshiftSessionCount ?? 0} retained DVR window(s) currently ready`}
+          />
+          <SummaryCard
             icon={ScrollText}
             label="Errors"
             value={String(monitoring?.summary.errorLogCount ?? 0)}
@@ -641,10 +647,31 @@ function ChannelViewerRow({ entry }: { entry: ChannelViewerCount }) {
                 Shared session
               </Badge>
             ) : null}
+            {entry.timeshiftSession ? (
+              <Badge
+                className={
+                  entry.timeshiftSession.available
+                    ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
+                    : "border-amber-400/30 bg-amber-500/10 text-amber-100"
+                }
+                size="sm"
+              >
+                {entry.timeshiftSession.available ? "DVR ready" : entry.timeshiftSession.configured ? "DVR warming" : "DVR inactive"}
+              </Badge>
+            ) : null}
           </div>
           <p className="mt-1 text-[11px] text-slate-500">
             {entry.channel.slug} · {getPlaybackModeLabel(entry.channel.playbackMode)} ·{" "}
-            {entry.channel.sourceMode === "MANUAL_VARIANTS" ? "Manual variants" : "Master playlist"}
+            {entry.channel.sourceMode === "MANUAL_VARIANTS" ? "Manual variants" : "Master playlist"} ·{" "}
+            {entry.sessionMode === "SHARED_DVR"
+              ? "shared relay + DVR"
+              : entry.sessionMode === "SHARED_RELAY"
+                ? "shared relay only"
+                : entry.sessionMode === "PROXY_DVR"
+                  ? "proxy relay + DVR"
+                  : entry.sessionMode === "PROXY_RELAY"
+                    ? "proxy relay only"
+                    : "direct playback"}
           </p>
         </div>
         <Badge className={entry.viewerCount > 0 ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : undefined} size="sm">
@@ -671,6 +698,33 @@ function ChannelViewerRow({ entry }: { entry: ChannelViewerCount }) {
           {entry.sharedSession.lastError ? (
             <p className="mt-2 text-[11px] text-rose-200">
               Last shared-session failure: {entry.sharedSession.lastError}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {entry.timeshiftSession ? (
+        <div className="mt-3 rounded-2xl border border-emerald-400/15 bg-emerald-500/5 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge size="sm">{entry.timeshiftSession.bufferState}</Badge>
+            <Badge size="sm">{Math.floor(entry.timeshiftSession.availableWindowSeconds)}s retained</Badge>
+            <Badge size="sm">{entry.timeshiftSession.bufferedSegmentCount} buffered segment(s)</Badge>
+            <Badge size="sm">
+              {entry.timeshiftSession.acquisitionMode === "SHARED_SESSION" ? "Shared-backed acquisition" : "Direct TV-Dash acquisition"}
+            </Badge>
+          </div>
+          <p className="mt-2 text-[11px] text-slate-300">
+            DVR window target {Math.floor(entry.timeshiftSession.windowSeconds)}s · last refresh{" "}
+            {entry.timeshiftSession.lastUpdatedAt ? formatTimestamp(entry.timeshiftSession.lastUpdatedAt) : "not yet populated"}
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            {entry.timeshiftSession.available
+              ? "Buffered viewers can move behind live and still return to the current edge."
+              : "The retained live buffer is configured but not yet ready for buffered playback."}
+          </p>
+          {entry.timeshiftSession.lastError ? (
+            <p className="mt-2 text-[11px] text-rose-200">
+              Last timeshift-session failure: {entry.timeshiftSession.lastError}
             </p>
           ) : null}
         </div>

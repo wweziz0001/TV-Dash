@@ -17,7 +17,7 @@ import { getPlaybackModeLabel } from "@/lib/playback-mode";
 import { HlsPlayer, type PlayerDiagnostics } from "@/player/hls-player";
 import { buildPlayerDiagnostics } from "@/player/playback-diagnostics";
 import { defaultQualityOptions } from "@/player/quality-options";
-import { api, getChannelPlaybackUrl } from "@/services/api";
+import { api, getChannelPlaybackTargets, resolveApiUrl } from "@/services/api";
 import type { LiveTimeshiftStatus, QualityOption, RecordingJob } from "@/types/api";
 
 export function ChannelWatchPage() {
@@ -71,14 +71,14 @@ export function ChannelWatchPage() {
     enabled: Boolean(token && channelQuery.data?.id),
   });
 
-  const timeshiftStatusQuery = useQuery({
-    queryKey: ["channel-timeshift", channelQuery.data?.id, token],
+  const streamSessionQuery = useQuery({
+    queryKey: ["channel-stream-session", channelQuery.data?.id, token],
     queryFn: async () => {
       if (!channelQuery.data) {
         throw new Error("Missing channel context");
       }
 
-      return (await api.getChannelTimeshiftStatus(channelQuery.data.id, token)).status;
+      return (await api.getChannelStreamSessionStatus(channelQuery.data.id, token)).status;
     },
     enabled: Boolean(token && channelQuery.data?.id),
     refetchInterval: 10000,
@@ -321,10 +321,13 @@ export function ChannelWatchPage() {
   }
 
   const channel = channelQuery.data;
-  const timeshiftStatus: LiveTimeshiftStatus | null = timeshiftStatusQuery.data ?? null;
-  const playbackUrl = getChannelPlaybackUrl(channel, {
+  const streamSessionStatus = streamSessionQuery.data ?? null;
+  const timeshiftStatus: LiveTimeshiftStatus | null = streamSessionStatus?.timeshift ?? null;
+  const playbackTargets = getChannelPlaybackTargets(channel, {
+    sessionStatus: streamSessionStatus,
     timeshiftStatus,
   });
+  const playbackUrl = playbackTargets.defaultPlaybackUrl ? resolveApiUrl(playbackTargets.defaultPlaybackUrl) : null;
   const nowNext = nowNextQuery.data;
   const guideProgrammes = (guideWindowQuery.data?.programmes ?? []).filter((programme) => {
     return !nowNext?.now || programme.id !== nowNext.now.id;
@@ -467,11 +470,12 @@ export function ChannelWatchPage() {
                   </p>
                 ) : null}
                 <p className="mt-1.5 text-[11px] text-slate-500">
-                  {channel.playbackMode === "SHARED"
-                    ? "Playback is routed through TV-Dash shared local delivery with per-channel edge caching."
-                    : channel.playbackMode === "PROXY"
-                      ? "Playback is routed through the TV-Dash stream gateway."
-                      : "Playback uses the channel's direct upstream HLS URL."}
+                  {streamSessionStatus?.message ??
+                    (channel.playbackMode === "SHARED"
+                      ? "Playback is routed through TV-Dash shared local delivery with per-channel edge caching."
+                      : channel.playbackMode === "PROXY"
+                        ? "Playback is routed through the TV-Dash stream gateway."
+                        : "Playback uses the channel's direct upstream HLS URL.")}
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">
                   Audio: {playerDiagnostics.isMuted ? "Muted by player" : `Live audio enabled at ${Math.round(playerDiagnostics.volume * 100)}%`}
@@ -496,6 +500,23 @@ export function ChannelWatchPage() {
                         : "DVR is enabled but the player has not exposed a seekable window yet"
                     : "this channel is live-only and TV-Dash does not expose pause or rewind controls"}
                 </p>
+                {streamSessionStatus ? (
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Session model:{" "}
+                    {streamSessionStatus.sessionMode === "SHARED_DVR"
+                      ? "shared relay + retained DVR window"
+                      : streamSessionStatus.sessionMode === "SHARED_RELAY"
+                        ? "shared relay only"
+                        : streamSessionStatus.sessionMode === "PROXY_DVR"
+                          ? "proxy relay + retained DVR window"
+                          : streamSessionStatus.sessionMode === "PROXY_RELAY"
+                            ? "proxy relay only"
+                            : "direct upstream playback"}
+                    {timeshiftStatus?.supported
+                      ? ` · buffer acquisition ${timeshiftStatus.acquisitionMode === "SHARED_SESSION" ? "reuses the shared channel session" : "runs through TV-Dash-managed upstream polling"}`
+                      : ""}
+                  </p>
+                ) : null}
                 <p className="mt-1 text-[11px] text-slate-500">
                   {isPlayerFullscreen || playerDiagnostics.isFullscreenActive
                     ? "Fullscreen keeps the operator overlays visible and returns to the same state when you exit."
@@ -614,6 +635,11 @@ export function ChannelWatchPage() {
               <p className="rounded-xl bg-slate-950/80 p-2.5 font-mono text-[11px] text-slate-300">
                 {channel.playbackMode === "DIRECT" ? channel.masterHlsUrl : playbackUrl}
               </p>
+              {streamSessionStatus?.bufferedPlaybackUrl ? (
+                <p className="rounded-xl bg-slate-950/50 p-2.5 font-mono text-[11px] text-slate-500">
+                  Buffered path · {resolveApiUrl(streamSessionStatus.bufferedPlaybackUrl)}
+                </p>
+              ) : null}
               <p>
                 Guide link:{" "}
                 {channel.epgSource

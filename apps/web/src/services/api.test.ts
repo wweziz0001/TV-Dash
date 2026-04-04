@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getChannelPlaybackUrl, resolveApiUrl } from "./api";
+import { getChannelPlaybackTargets, getChannelPlaybackUrl, resolveApiUrl } from "./api";
 
 describe("getChannelPlaybackUrl", () => {
   it("returns the direct upstream URL for direct channels", () => {
@@ -93,5 +93,47 @@ describe("getChannelPlaybackUrl", () => {
 
   it("resolves relative API paths against the configured API origin", () => {
     expect(resolveApiUrl("/api/recordings/job-1/media?token=abc")).toContain("/api/recordings/job-1/media?token=abc");
+  });
+});
+
+describe("getChannelPlaybackTargets", () => {
+  it("exposes both live-edge and buffered playback paths for shared DVR sessions", () => {
+    expect(
+      getChannelPlaybackTargets(
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          sourceMode: "MASTER_PLAYLIST",
+          masterHlsUrl: null,
+          playbackMode: "SHARED",
+          timeshiftEnabled: true,
+        },
+        {
+          sessionStatus: {
+            livePlaybackUrl: "/api/streams/channels/11111111-1111-1111-1111-111111111111/shared/master",
+            bufferedPlaybackUrl: "/api/streams/channels/11111111-1111-1111-1111-111111111111/timeshift/master",
+            defaultPlaybackUrl: "/api/streams/channels/11111111-1111-1111-1111-111111111111/timeshift/master",
+            timeshift: {
+              channelId: "11111111-1111-1111-1111-111111111111",
+              configured: true,
+              supported: true,
+              available: true,
+              acquisitionMode: "SHARED_SESSION",
+              bufferState: "READY",
+              message: "Live DVR window is ready.",
+              windowSeconds: 1800,
+              minimumReadyWindowSeconds: 30,
+              availableWindowSeconds: 60,
+              bufferedSegmentCount: 10,
+              lastUpdatedAt: "2026-04-04T00:00:00.000Z",
+              lastError: null,
+            },
+          },
+        },
+      ),
+    ).toEqual({
+      livePlaybackUrl: "/api/streams/channels/11111111-1111-1111-1111-111111111111/shared/master",
+      bufferedPlaybackUrl: "/api/streams/channels/11111111-1111-1111-1111-111111111111/timeshift/master",
+      defaultPlaybackUrl: "/api/streams/channels/11111111-1111-1111-1111-111111111111/timeshift/master",
+    });
   });
 });

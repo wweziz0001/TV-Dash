@@ -26,6 +26,7 @@ import type {
   ChannelGroup,
   ChannelNowNext,
   ChannelGuideWindow,
+  ChannelStreamSessionStatus,
   EpgSourceChannel,
   EpgSource,
   EpgSourceDiagnostics,
@@ -124,6 +125,8 @@ export const api = {
     request<{ channel: ChannelConfig }>(`/channels/${id}/config`, {}, token),
   getChannelTimeshiftStatus: (id: string, token: string | null) =>
     request<{ status: LiveTimeshiftStatus }>(`/streams/channels/${id}/timeshift/status`, {}, token),
+  getChannelStreamSessionStatus: (id: string, token: string | null) =>
+    request<{ status: ChannelStreamSessionStatus }>(`/streams/channels/${id}/session/status`, {}, token),
   getChannelDiagnostics: (id: string, token: string) =>
     request<{ diagnostics: ChannelDiagnostics }>(`/diagnostics/channels/${id}`, {}, token),
   getAdminMonitoring: (token: string) =>
@@ -259,30 +262,83 @@ export const api = {
 interface ChannelPlaybackUrlOptions {
   preferProxy?: boolean;
   preferTimeshift?: boolean;
+  sessionStatus?: Pick<
+    ChannelStreamSessionStatus,
+    "defaultPlaybackUrl" | "livePlaybackUrl" | "bufferedPlaybackUrl" | "timeshift"
+  > | null;
   timeshiftStatus?: Pick<LiveTimeshiftStatus, "available"> | null;
+}
+
+export interface ChannelPlaybackTargets {
+  livePlaybackUrl: string | null;
+  bufferedPlaybackUrl: string | null;
+  defaultPlaybackUrl: string | null;
+}
+
+export function getChannelPlaybackTargets(
+  channel: Pick<Channel, "id" | "masterHlsUrl" | "playbackMode" | "sourceMode" | "timeshiftEnabled">,
+  options: ChannelPlaybackUrlOptions = {},
+) : ChannelPlaybackTargets {
+  if (options.sessionStatus) {
+    return {
+      livePlaybackUrl: options.sessionStatus.livePlaybackUrl,
+      bufferedPlaybackUrl: options.sessionStatus.bufferedPlaybackUrl,
+      defaultPlaybackUrl: options.sessionStatus.defaultPlaybackUrl,
+    };
+  }
+
+  if (options.preferTimeshift) {
+    const bufferedPlaybackUrl = `${API_BASE_URL}/streams/channels/${channel.id}/timeshift/master`;
+    return {
+      livePlaybackUrl: null,
+      bufferedPlaybackUrl,
+      defaultPlaybackUrl: bufferedPlaybackUrl,
+    };
+  }
+
+  if (channel.timeshiftEnabled === true && options.timeshiftStatus?.available === true) {
+    const livePlaybackUrl = isSharedPlaybackMode(channel.playbackMode)
+      ? `${API_BASE_URL}/streams/channels/${channel.id}/shared/master`
+      : `${API_BASE_URL}/streams/channels/${channel.id}/master`;
+    const bufferedPlaybackUrl = `${API_BASE_URL}/streams/channels/${channel.id}/timeshift/master`;
+
+    return {
+      livePlaybackUrl,
+      bufferedPlaybackUrl,
+      defaultPlaybackUrl: bufferedPlaybackUrl,
+    };
+  }
+
+  if (isSharedPlaybackMode(channel.playbackMode)) {
+    const livePlaybackUrl = `${API_BASE_URL}/streams/channels/${channel.id}/shared/master`;
+    return {
+      livePlaybackUrl,
+      bufferedPlaybackUrl: channel.timeshiftEnabled ? `${API_BASE_URL}/streams/channels/${channel.id}/timeshift/master` : null,
+      defaultPlaybackUrl: livePlaybackUrl,
+    };
+  }
+
+  if (options.preferProxy || channel.playbackMode === "PROXY" || channel.sourceMode === "MANUAL_VARIANTS") {
+    const livePlaybackUrl = `${API_BASE_URL}/streams/channels/${channel.id}/master`;
+    return {
+      livePlaybackUrl,
+      bufferedPlaybackUrl: channel.timeshiftEnabled ? `${API_BASE_URL}/streams/channels/${channel.id}/timeshift/master` : null,
+      defaultPlaybackUrl: livePlaybackUrl,
+    };
+  }
+
+  return {
+    livePlaybackUrl: channel.masterHlsUrl,
+    bufferedPlaybackUrl: null,
+    defaultPlaybackUrl: channel.masterHlsUrl,
+  };
 }
 
 export function getChannelPlaybackUrl(
   channel: Pick<Channel, "id" | "masterHlsUrl" | "playbackMode" | "sourceMode" | "timeshiftEnabled">,
   options: ChannelPlaybackUrlOptions = {},
 ) {
-  if (options.preferTimeshift) {
-    return `${API_BASE_URL}/streams/channels/${channel.id}/timeshift/master`;
-  }
-
-  if (channel.timeshiftEnabled === true && options.timeshiftStatus?.available === true) {
-    return `${API_BASE_URL}/streams/channels/${channel.id}/timeshift/master`;
-  }
-
-  if (isSharedPlaybackMode(channel.playbackMode)) {
-    return `${API_BASE_URL}/streams/channels/${channel.id}/shared/master`;
-  }
-
-  if (options.preferProxy || channel.playbackMode === "PROXY" || channel.sourceMode === "MANUAL_VARIANTS") {
-    return `${API_BASE_URL}/streams/channels/${channel.id}/master`;
-  }
-
-  return channel.masterHlsUrl;
+  return getChannelPlaybackTargets(channel, options).defaultPlaybackUrl;
 }
 
 export function resolveApiUrl(path: string) {

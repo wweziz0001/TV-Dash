@@ -39,7 +39,7 @@ import {
   getSuggestedMultiviewLayoutType,
 } from "@/player/multiview-viewport";
 import { defaultQualityOptions } from "@/player/quality-options";
-import { api, getChannelPlaybackUrl } from "@/services/api";
+import { api, getChannelPlaybackTargets, resolveApiUrl } from "@/services/api";
 import type { LiveTimeshiftStatus, QualityOption, RecordingJob } from "@/types/api";
 
 export function MultiViewPage() {
@@ -97,8 +97,8 @@ export function MultiViewPage() {
     enabled: Boolean(token && tileChannelIds.length),
   });
 
-  const timeshiftStatusQuery = useQuery({
-    queryKey: ["multiview-timeshift", token, tileChannelIds],
+  const streamSessionQuery = useQuery({
+    queryKey: ["multiview-stream-session", token, tileChannelIds],
     queryFn: async () => {
       if (!token || !tileChannelIds.length) {
         return {};
@@ -107,11 +107,11 @@ export function MultiViewPage() {
       const statuses = await Promise.all(
         tileChannelIds.map(async (channelId) => [
           channelId,
-          (await api.getChannelTimeshiftStatus(channelId, token)).status,
+          (await api.getChannelStreamSessionStatus(channelId, token)).status,
         ] as const),
       );
 
-      return Object.fromEntries(statuses) as Record<string, LiveTimeshiftStatus>;
+      return Object.fromEntries(statuses);
     },
     enabled: Boolean(token && tileChannelIds.length),
     refetchInterval: 10000,
@@ -314,7 +314,11 @@ export function MultiViewPage() {
   const focusedTile = tiles[focusedTileIndex] ?? tiles[0];
   const focusedChannel = focusedTile?.channelId ? channelMap.get(focusedTile.channelId) ?? null : null;
   const focusedGuide = focusedChannel ? nowNextByChannelId.get(focusedChannel.id) : null;
-  const timeshiftStatusByChannelId = timeshiftStatusQuery.data ?? {};
+  const streamSessionByChannelId = streamSessionQuery.data ?? {};
+  const timeshiftStatusByChannelId = Object.fromEntries(
+    Object.entries(streamSessionByChannelId).map(([channelId, status]) => [channelId, status.timeshift]),
+  ) as Record<string, LiveTimeshiftStatus>;
+  const focusedStreamSession = focusedChannel ? streamSessionByChannelId[focusedChannel.id] ?? null : null;
   const focusedTimeshiftStatus = focusedChannel ? timeshiftStatusByChannelId[focusedChannel.id] ?? null : null;
   const focusedPlayerDiagnostics =
     playerDiagnosticsByTile[focusedTileIndex] ??
@@ -549,6 +553,7 @@ export function MultiViewPage() {
             {tiles.map((tile, index) => {
               const channel = tile.channelId ? channelMap.get(tile.channelId) ?? null : null;
               const recordingJob = channel ? activeRecordingByChannelId.get(channel.id) ?? null : null;
+              const streamSession = channel ? streamSessionByChannelId[channel.id] ?? null : null;
               const timeshiftStatus = channel ? timeshiftStatusByChannelId[channel.id] ?? null : null;
               const qualityOptions = qualityOptionsByTile[index] ?? [...defaultQualityOptions];
               const playerStatus = playerStatusByTile[index] ?? (channel ? "loading" : "idle");
@@ -667,12 +672,19 @@ export function MultiViewPage() {
                     qualityOptions={qualityOptions}
                     recordingJob={recordingJob}
                     src={
-                      channel
-                        ? getChannelPlaybackUrl(channel, {
-                            preferProxy: true,
-                            timeshiftStatus,
-                          })
-                        : null
+                      (() => {
+                        if (!channel) {
+                          return null;
+                        }
+
+                        const playbackUrl = getChannelPlaybackTargets(channel, {
+                          preferProxy: true,
+                          sessionStatus: streamSession,
+                          timeshiftStatus,
+                        }).defaultPlaybackUrl;
+
+                        return playbackUrl ? resolveApiUrl(playbackUrl) : null;
+                      })()
                     }
                     timeshiftStatus={timeshiftStatus}
                     tile={tile}
@@ -746,9 +758,22 @@ export function MultiViewPage() {
                   ) : null}
                 </div>
                 <p className="mt-2 text-[12px] text-slate-400">
+                  {focusedStreamSession?.sessionMode === "SHARED_DVR"
+                    ? "Focused feed is using one shared local channel session for live relay plus a retained DVR window."
+                    : focusedStreamSession?.sessionMode === "SHARED_RELAY"
+                      ? "Focused feed is using shared live relay/cache only."
+                      : focusedStreamSession?.sessionMode === "PROXY_DVR"
+                        ? "Focused feed is using proxy-managed live delivery with a retained DVR window."
+                        : focusedStreamSession?.sessionMode === "PROXY_RELAY"
+                          ? "Focused feed is using proxy-managed live relay only."
+                          : canDragSwap
+                            ? "Drag tiles to swap positions, replace the focused source quickly, and keep most of the screen on the live wall."
+                            : "Touch mode keeps swapping off so the wall stays stable while you replace feeds and move through focused monitoring."}
+                </p>
+                <p className="mt-1 text-[12px] text-slate-500">
                   {canDragSwap
-                    ? "Drag tiles to swap positions, replace the focused source quickly, and keep most of the screen on the live wall."
-                    : "Touch mode keeps swapping off so the wall stays stable while you replace feeds and move through focused monitoring."}
+                    ? "Live-edge viewers can stay current while buffered viewers move behind live inside the same retained channel window when DVR is ready."
+                    : "Touch mode keeps the wall stable while the player still distinguishes live edge from behind-live playback."}
                 </p>
               </div>
 
