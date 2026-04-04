@@ -211,6 +211,11 @@ Recording additions:
 - Shared local delivery also counts as TV-Dash-managed delivery, but only when the backend really owns the retained buffer and serving path.
 - Live pause, rewind, timeline seek, and jump-to-live behavior must only be exposed when the backend owns a real retained live buffer.
 - Timeshift retention, eviction, manifest generation, and asset storage belong in the `streams` module, not in pages or generic helpers.
+- Shared-delivery channels with DVR should reuse the channel-local shared-session acquisition/cache seam where practical instead of maintaining a second unrelated upstream pull path.
+- Stream APIs should expose the combined session model explicitly:
+  - live-edge relay path
+  - buffered DVR path
+  - whether the current channel session is relay-only or relay-plus-DVR
 - Channel-level timeshift enablement must stay explicit in the channel contract and must reject unsupported combinations such as direct-playback-only live rewind.
 - Timeshift env/config must stay explicit and centralized in `config/env.ts`, including:
   - global enable/disable

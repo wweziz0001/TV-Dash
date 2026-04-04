@@ -189,6 +189,8 @@ These areas are release-critical and should gain or maintain automated coverage 
 - shared-session lifecycle start/expire behavior
 - shared manifest/segment cache hit, miss, and expiry behavior
 - shared local-origin route behavior for master playlists and cached assets
+- integrated session-status behavior so the API reports relay-only vs relay-plus-DVR honestly
+- shared-timeshift acquisition reuse for `SHARED` channels where DVR refresh should benefit from the shared session/cache path
 - upstream failure handling for shared-delivery sessions so operator visibility reflects real restream trouble
 
 ### Auth And Governance

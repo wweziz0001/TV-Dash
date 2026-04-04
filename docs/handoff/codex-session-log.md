@@ -1,5 +1,64 @@
 # Codex Session Log
 
+## `2026-04-05T00:55:00+03:00`
+
+### Objective
+
+Integrate the existing live-timeshift/DVR foundation with the shared restream / edge-cache foundation so one local shared channel session can also back a retained live buffer where appropriate.
+
+### Work Completed
+
+- created the requested branch `022-integrate-timeshift-with-shared-restream-and-edge-cache`
+- added a new integrated stream-session status layer in `apps/api/src/modules/streams/channel-stream-session.ts`
+  - composes live relay status, shared-session status, and retained-timeshift status into one backend view
+  - exposes `/api/streams/channels/:channelId/session/status`
+  - makes the distinction explicit between:
+    - `DIRECT`
+    - `PROXY_RELAY`
+    - `PROXY_DVR`
+    - `SHARED_RELAY`
+    - `SHARED_DVR`
+- aligned shared restream and timeshift acquisition for `SHARED` channels:
+  - timeshift refresh now reuses the shared-session cache/in-flight dedupe seam instead of always performing a separate upstream pull
+  - this makes the retained live buffer genuinely attach to the shared channel session model for shared-delivery channels
+- tightened lifecycle cleanup for the combined model:
+  - stale timeshift states now expire after `TIMESHIFT_IDLE_TTL_MS`
+  - idle expiry deletes retained DVR assets for that channel from disk and clears the in-memory state map
+  - structured logs now record shared-timeshift session expiry events
+- expanded admin monitoring visibility:
+  - per-channel rows now expose the integrated session mode
+  - active timeshift session count and ready-DVR count now appear in the summary
+  - per-channel monitoring now includes DVR buffer state, available window size, buffered segment count, acquisition mode, and latest timeshift failure
+- updated the watch page and multiview page to consume the integrated session status instead of only the old standalone timeshift status
+  - the UI now distinguishes relay-only vs relay-plus-DVR more clearly
+  - pages can now show both the live-edge path and the retained buffered path honestly
+- kept current first-version semantics technically honest:
+  - the player still defaults to the buffered manifest once the retained window is ready so pause/rewind controls are backed by a real seekable source
+  - live-edge vs behind-live remains a player/runtime state, not a fake admin aggregate
+  - multi-process/shared-cluster coordination still does not exist
+- added targeted tests for:
+  - integrated session status route behavior
+  - shared-timeshift cache reuse for `SHARED` channels
+  - admin monitoring aggregation with integrated DVR session data
+  - frontend playback target resolution for integrated shared+DVR sessions
+
+### Verification Run
+
+- `npm run test -w apps/api -- src/modules/streams/stream.routes.test.ts src/modules/diagnostics/monitoring.service.test.ts src/modules/streams/shared-stream-session.test.ts`
+- `npm run lint -w apps/api`
+- `npm run test -w apps/web -- src/services/api.test.ts src/player/hls-player.test.tsx`
+- `npm run lint -w apps/web`
+
+### Remaining Risk
+
+- `session/status` is now the honest integrated control/status contract, but the player still relies on the timeshift manifest itself to represent live-edge vs behind-live playback; per-viewer timeline position is not yet persisted server-side for admin inspection.
+- Shared-session-backed timeshift reuse is still process-local. API restart clears both the shared cache/session state and the active retained-buffer index until viewers request playback again.
+- The integrated model now cleans up idle timeshift assets, but it still does not proactively prewarm hot channels before the first viewer arrives.
+
+### Exact Suggested Next Task
+
+Add explicit per-viewer attachment telemetry for live-edge vs behind-live playback and a deliberate operator control for switching between live relay and buffered DVR paths without relying solely on the retained manifest default.
+
 ## `2026-04-05T00:25:00+03:00`
 
 ### Objective

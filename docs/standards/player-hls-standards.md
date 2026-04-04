@@ -127,9 +127,13 @@ Any change to retry timing or retry count must consider multi-view bandwidth pre
 - Seek controls are only valid when TV-Dash has both:
   - a real backend-retained live buffer / DVR window
   - a current media-element seekable range that matches that retained window
+- When TV-Dash exposes both a live-edge relay path and a buffered DVR path for the same channel session, the page must stay explicit about which path is being chosen for the viewer instead of pretending they are interchangeable.
 - Live-only streams without DVR must not show fake seek buttons or pause controls.
 - Channels with timeshift configured but not yet buffered must expose a `DVR warming` state instead of pretending the window already exists.
 - When a seekable live window exists, seek actions should clamp within the available range and preserve the live-edge concept for the operator.
+- Shared-delivery channels with DVR should still describe the session honestly:
+  - shared relay only
+  - shared relay + retained DVR window
 - Player UI should make it clear whether the viewer is:
   - at the live edge
   - behind live inside the retained buffer
@@ -167,6 +171,7 @@ Higher-risk player changes should add component or integration coverage for:
 - autoplay and mute transitions
 - explicit player controls, PiP support, and disabled-browser fallbacks
 - Media Session handler wiring when browser/system playback integration changes
+- integrated live-edge vs buffered-path selection when the backend stream-session contract changes
 
 ## Review Checklist
 

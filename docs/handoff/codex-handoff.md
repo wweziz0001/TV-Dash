@@ -22,6 +22,7 @@ The current operator milestone also adds:
 - a stronger cross-browser player UX pass with explicit in-player controls, PiP handling, Media Session integration, and honest live-DVR behavior
 - a first real live-timeshift foundation with retained proxy-backed HLS buffers, rolling DVR windows, honest live-vs-buffered state, and per-channel timeshift enablement
 - a first shared channel restream / edge-cache foundation with channel-local shared sessions, local-origin playlist/segment serving, and cache reuse for repeated local viewers
+- a first integrated shared-session + live-DVR model where one shared local channel session can also back a retained rolling live buffer when DVR is enabled
 
 ## Current Architecture Summary
 
@@ -33,6 +34,7 @@ The current operator milestone also adds:
 - Backend now also includes a `recordings` module for real ffmpeg-backed capture, guide/recurrence-aware scheduling, storage-backed media assets, and playback access tokens
 - Backend stream handling now also includes a real first-version live-timeshift path that retains rolling HLS buffers on disk for eligible proxy channels and serves DVR manifests from the `streams` module
 - Backend stream handling now also includes a real first-version shared local-delivery path that keeps channel-local shared sessions plus manifest/segment edge caching in the `streams` module
+- Backend stream handling now also includes an integrated channel-session status layer that composes shared relay state with live-DVR state instead of treating them as unrelated operator concepts
 - Playback session tracking now persists real active player heartbeats in PostgreSQL so admin monitoring pages can show who is watching what now
 - Guide source imports, source-channel discovery, channel mappings, and persisted programme rows now also live in PostgreSQL
 - Frontend keeps app bootstrap in `app`, route screens in `pages`, shared UI in `components`, auth in `features`, request logic in `services`, and player-specific code in `player`
@@ -161,8 +163,13 @@ Key relationship rules:
 - `player/playback-diagnostics.ts` maps raw lifecycle state into operator-facing labels, summaries, recovery state, failure-class hints, and browser-control state such as paused/PiP/fullscreen/live-edge
 - quality options and preference resolution live in `player/quality-options.ts`
 - manual-variant channels reach the player through a backend-generated synthetic master playlist, not duplicated channel rows
-- shared-delivery channels reach the player through `/api/streams/channels/:id/shared/master`, where TV-Dash behaves like a small local origin with channel-local cache/session reuse
-- timeshift-enabled TV-Dash-managed channels reach the player through `/api/streams/channels/:id/timeshift/master`, with player controls gated by backend-reported timeshift availability
+- shared-delivery channels still reach the player through `/api/streams/channels/:id/shared/master`, where TV-Dash behaves like a small local origin with channel-local cache/session reuse
+- timeshift-enabled TV-Dash-managed channels still reach the player through `/api/streams/channels/:id/timeshift/master`, with player controls gated by backend-reported timeshift availability
+- pages now also consume `/api/streams/channels/:id/session/status` so the UI can distinguish:
+  - live relay only
+  - shared relay only
+  - proxy relay + DVR
+  - shared relay + DVR
 - supported multi-view layouts live in `player/layouts.ts`
 - tile defaults and one-active-audio rules live in `player/multiview-layout.ts`
 - saved multi-view serialization/hydration helpers live in `player/multiview-state.ts`
@@ -217,22 +224,28 @@ Key relationship rules:
   - `timeshiftEnabled`
   - `timeshiftWindowMinutes`
 - Current first-version enablement rule:
-  - retained timeshift is only allowed for `PROXY` playback channels
+  - retained timeshift is only allowed for TV-Dash-managed playback channels, meaning `PROXY` or `SHARED`
 - Backend timeshift flow:
-  - the `streams` module polls the upstream live playlists for enabled channels on demand
+  - the `streams` module polls the live playlists for enabled channels on demand
   - newly observed segments are stored under `TIMESHIFT_STORAGE_DIR`
   - retained manifests are rebuilt from locally retained segments
   - old segments are evicted once they fall outside the configured rolling window
+  - shared-delivery channels now reuse the shared session acquisition/cache path while the DVR window is being refreshed, so the retained buffer is attached to the same channel-local session model instead of duplicating upstream fetches
 - Frontend/player contract:
-  - pages fetch `/api/streams/channels/:id/timeshift/status`
+  - pages now fetch `/api/streams/channels/:id/session/status` and use its nested timeshift status plus live/buffered playback paths
   - the player uses that status to decide whether pause, seek, jump-to-live, and Media Session seek actions should exist
   - live channels without retained buffer stay honest and surface `No DVR`
   - channels with timeshift configured but not yet populated surface `DVR warming`
   - channels with retained media expose live-edge vs behind-live state and `Go live`
+- Current integrated viewer model:
+  - live-edge viewers stay at the live edge of the current channel session
+  - buffered viewers use the retained timeshift manifest and can move behind live within the available window
+  - `Go live` returns the viewer to the current edge without pretending the stream is VOD
 - Current first-version limitations:
   - timeshift retention is disk-backed, but the in-memory manifest index is rebuilt per process and does not survive restart
   - polling/retention is started lazily when a timeshift channel is requested, not pre-warmed for every enabled channel
   - this is a rolling pause/rewind window, not yet a full long-horizon DVR library or scheduled catch-up system
+  - per-viewer live-edge vs behind-live state is still owned by the player/browser surface; admin monitoring currently exposes channel/session-level DVR readiness and viewer counts, not durable per-viewer timeline positions
 
 ## Shared Channel Restream And Edge Cache Foundation
 
@@ -243,10 +256,14 @@ Key relationship rules:
   - shared asset paths at `/api/streams/channels/:id/shared/assets/:assetId`
   - short-lived channel-local manifest and segment caching
   - in-flight upstream request deduping for concurrent local viewers on the same channel
+- Shared-session integration with DVR now exists through:
+  - `/api/streams/channels/:id/session/status`
+  - shared-session-backed timeshift acquisition for `SHARED` channels
+  - idle cleanup for both shared-session cache state and retained per-channel DVR state
 - What local viewers benefit from now:
   - repeated local requests for the same manifests/segments can hit TV-Dash's channel-local cache instead of fetching upstream again
   - concurrent local viewers requesting the same upstream asset can share one in-flight upstream fetch
-  - admin observability now shows whether a shared session is active, how many current viewers are attached to that channel, cache hit rate, cache size, and the latest shared-session failure state
+  - admin observability now shows whether a shared session is active, how many current viewers are attached to that channel, cache hit rate, cache size, DVR readiness/window size, acquisition mode, and the latest shared-session or timeshift-session failure state
 - What is reduced now:
   - redundant upstream manifest fetches for the same shared channel
   - redundant segment fetches for repeated/concurrent local viewers where the cache window still covers the requested asset
@@ -257,8 +274,10 @@ Key relationship rules:
 - Lifecycle behavior now:
   - first local shared-view request starts the session
   - later local viewers reuse the same session/cache
+  - if DVR is also enabled, the same channel session can back the retained rolling window instead of building a second unrelated acquisition model
   - session state expires after `SHARED_STREAM_IDLE_TTL_MS` of inactivity
   - idle expiry clears the per-channel asset map and cache entries
+  - idle timeshift expiry now also removes retained per-channel DVR assets from disk and clears the in-memory state map
   - upstream failures keep the session visible in an `ERROR` state until it recovers or expires
 - Current first-version limitations:
   - shared sessions are process-local and in-memory, so restart clears hot cache/session state
@@ -301,7 +320,10 @@ Key relationship rules:
 - Saved layout config is now modeled as real JSON in shared contracts, not as an unbounded `any` record.
 - Proxy playback URL selection happens in frontend service helpers, not inside the player lifecycle code.
 - Manual-variant channels must resolve through the backend stream master path so HLS.js receives one logical manifest.
-- Timeshift-enabled proxy channels must resolve through the backend timeshift master path so DVR controls are backed by retained buffer behavior instead of plain live proxying.
+- TV-Dash-managed channels with timeshift enabled must resolve through the integrated stream-session status so pages can tell the difference between:
+  - the live-edge relay path
+  - the buffered DVR path
+  - the default playback path currently chosen for the viewer
 - Public channel responses may intentionally hide raw upstream stream URLs when proxy mode is enabled.
 - Guide mapping and manual programme management belong to the `epg` module and admin EPG screen, not to channel CRUD routes.
 - Guide resolution follows one practical precedence rule:

@@ -81,7 +81,11 @@ That does not belong in:
 - Manual-variant channels should resolve playback through the backend stream path so HLS.js receives the generated synthetic master playlist.
 - Shared-delivery channels should resolve playback through the backend shared master path so multiple local viewers can reuse one channel-local cache/session where possible.
 - Page code should resolve playback URLs through a small service/helper seam rather than hard-coding `/api/streams/...` paths inline.
-- Timeshift-enabled TV-Dash-managed channels should resolve playback through the backend timeshift master path so the player is attached to the retained DVR manifest instead of the upstream live edge.
+- Pages should prefer `/api/streams/channels/:id/session/status` as the owning backend contract for integrated live-edge vs buffered playback decisions.
+- Timeshift-enabled TV-Dash-managed channels should keep both concepts explicit:
+  - live-edge path: shared master or proxy master, depending on delivery mode
+  - buffered path: timeshift master, when the retained DVR window is supported
+- The default playback path may still point at the timeshift master once the retained window is ready so the player has one honest seekable source for pause/rewind behavior.
 - The player should receive a final URL or `null`; it should not know how channel proxy mode is decided.
 - The player should receive a final URL or `null`; it should not know how channel delivery mode is decided.
 - Admin-only flows may still use the raw upstream URL for diagnostics and preview/testing.
@@ -179,6 +183,7 @@ Do not add silent infinite retry loops. Any retry policy change must consider mu
 
 - Real live timeshift now depends on a backend-retained HLS buffer, not browser seekability alone.
 - The player consumes a proxy-served timeshift master playlist when a channel is configured for retained DVR.
+- Shared-delivery channels with retained DVR now attach that retained buffer to the same underlying channel-local shared session model. The player still sees explicit live-edge vs buffered paths, but backend acquisition/cache reuse now comes from one shared session for that channel.
 - Live playback states now separate:
   - live edge
   - buffered live behind the edge

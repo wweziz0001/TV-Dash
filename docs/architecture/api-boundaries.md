@@ -119,11 +119,17 @@ Repositories must not:
   - per-channel rolling DVR window retention and eviction
   - synthetic timeshift master and variant-manifest delivery
   - timeshift capability/status reporting for the frontend
+- The integrated stream-session layer now also owns:
+  - channel-level composition of shared relay state plus timeshift state
+  - explicit live-edge path vs buffered path exposure through `/api/streams/channels/:id/session/status`
+  - honest distinction between relay-only sessions and relay-plus-DVR sessions
+  - shared-session-backed acquisition reuse for retained buffers on `SHARED` channels
 - Stream routes must not embed channel query logic inline; they depend on the channel service for stream configuration lookup.
 - Invalid or expired proxy asset tokens should fail with `400`, not a fake upstream error.
 - This milestone uses buffered upstream responses as a practical foundation. If future work adds streaming passthrough, that belongs inside the `streams` module rather than pages or generic app utilities.
 - First-version timeshift state is process-local orchestration backed by disk-retained HLS assets under the configured storage root. If future work adds multi-process leasing or durable manifest indexes, that still belongs inside `streams`.
 - First-version shared delivery is also process-local orchestration. It reduces redundant upstream fetches for local viewers through shared channel sessions plus short-lived edge caching, but it does not yet guarantee exactly one upstream request per asset across process restarts or multi-node deployments.
+- The integrated shared-timeshift model is still process-local too. One channel session can back both relay/cache reuse and a retained DVR window, but that guarantee only holds inside the active API process.
 
 ## EPG Foundation Rules
 
