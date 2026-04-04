@@ -14,6 +14,8 @@ describe("channelInputSchema", () => {
         isActive: true,
         sortOrder: 1,
         playbackMode: "DIRECT",
+        timeshiftEnabled: false,
+        timeshiftWindowMinutes: null,
         upstreamUserAgent: "",
         upstreamReferrer: "",
         upstreamHeaders: {},
@@ -57,6 +59,8 @@ describe("channelInputSchema", () => {
         isActive: true,
         sortOrder: 2,
         playbackMode: "PROXY",
+        timeshiftEnabled: true,
+        timeshiftWindowMinutes: 30,
         upstreamUserAgent: "",
         upstreamReferrer: "",
         upstreamHeaders: {},
@@ -89,6 +93,8 @@ describe("channelInputSchema", () => {
       isActive: true,
       sortOrder: 0,
       playbackMode: "DIRECT",
+      timeshiftEnabled: false,
+      timeshiftWindowMinutes: null,
       upstreamUserAgent: "",
       upstreamReferrer: "",
       upstreamHeaders: {},
@@ -128,6 +134,8 @@ describe("channelInputSchema", () => {
       isActive: true,
       sortOrder: 0,
       playbackMode: "DIRECT",
+      timeshiftEnabled: false,
+      timeshiftWindowMinutes: null,
       upstreamUserAgent: "",
       upstreamReferrer: "",
       upstreamHeaders: {},
@@ -142,5 +150,29 @@ describe("channelInputSchema", () => {
     expect(duplicateVariantResult.error?.issues.map((issue) => issue.path.join("."))).toEqual(
       expect.arrayContaining(["manualVariants.1.label", "manualVariants.1.sortOrder", "manualVariants.1.playlistUrl"]),
     );
+  });
+
+  it("rejects timeshift on direct playback because TV-Dash cannot retain the live buffer", () => {
+    const result = channelInputSchema.safeParse({
+      name: "Direct DVR",
+      slug: "direct-dvr",
+      logoUrl: "",
+      sourceMode: "MASTER_PLAYLIST",
+      masterHlsUrl: "https://example.com/live/master.m3u8",
+      groupId: null,
+      isActive: true,
+      sortOrder: 0,
+      playbackMode: "DIRECT",
+      timeshiftEnabled: true,
+      timeshiftWindowMinutes: 30,
+      upstreamUserAgent: "",
+      upstreamReferrer: "",
+      upstreamHeaders: {},
+      epgSourceId: null,
+      epgChannelId: null,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.path.join("."))).toContain("playbackMode");
   });
 });

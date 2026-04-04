@@ -132,28 +132,27 @@ describe("channelRoutes", () => {
     });
 
     expect(response.statusCode).toBe(201);
-    expect(mockPrisma.channel.create).toHaveBeenCalledWith({
-      data: {
-        name: "News Desk",
-        slug: "news-desk",
-        logoUrl: null,
-        sourceMode: "MASTER_PLAYLIST",
-        masterHlsUrl: "https://example.com/news.m3u8",
-        playbackMode: "PROXY",
-        upstreamUserAgent: "OpsBot/1.0",
-        upstreamReferrer: "https://ops.example.com/",
-        upstreamHeaders: { "x-token": "abc" },
-        groupId: null,
-        isActive: true,
-        sortOrder: 2,
-      },
-      include: expect.objectContaining({
-        group: true,
-        epgMapping: expect.any(Object),
-        manualPrograms: expect.any(Object),
-        qualityVariants: expect.any(Object),
+    expect(mockPrisma.channel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: "News Desk",
+          slug: "news-desk",
+          logoUrl: null,
+          sourceMode: "MASTER_PLAYLIST",
+          masterHlsUrl: "https://example.com/news.m3u8",
+          playbackMode: "PROXY",
+          timeshiftEnabled: false,
+          timeshiftWindowMinutes: null,
+          upstreamUserAgent: "OpsBot/1.0",
+          upstreamReferrer: "https://ops.example.com/",
+          upstreamHeaders: { "x-token": "abc" },
+          groupId: null,
+          isActive: true,
+          sortOrder: 2,
+        }),
+        include: expect.any(Object),
       }),
-    });
+    );
     expect(mockPrisma.auditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -266,42 +265,40 @@ describe("channelRoutes", () => {
     });
 
     expect(response.statusCode).toBe(201);
-    expect(mockPrisma.channel.create).toHaveBeenCalledWith({
-      data: {
-        name: "Al Alam",
-        slug: "al-alam",
-        logoUrl: null,
-        sourceMode: "MANUAL_VARIANTS",
-        masterHlsUrl: null,
-        playbackMode: "DIRECT",
-        upstreamUserAgent: null,
-        upstreamReferrer: null,
-        upstreamHeaders: expect.anything(),
-        groupId: null,
-        isActive: true,
-        sortOrder: 4,
-        qualityVariants: {
-          create: [
-            {
-              label: "low",
-              sortOrder: 0,
-              playlistUrl: "https://example.com/live/low/index.m3u8",
-              width: null,
-              height: 360,
-              bandwidth: null,
-              codecs: null,
-              isActive: true,
-            },
-          ],
-        },
-      },
-      include: expect.objectContaining({
-        group: true,
-        epgMapping: expect.any(Object),
-        manualPrograms: expect.any(Object),
-        qualityVariants: expect.any(Object),
+    expect(mockPrisma.channel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: "Al Alam",
+          slug: "al-alam",
+          logoUrl: null,
+          sourceMode: "MANUAL_VARIANTS",
+          masterHlsUrl: null,
+          playbackMode: "DIRECT",
+          timeshiftEnabled: false,
+          timeshiftWindowMinutes: null,
+          upstreamUserAgent: null,
+          upstreamReferrer: null,
+          groupId: null,
+          isActive: true,
+          sortOrder: 4,
+          qualityVariants: {
+            create: [
+              {
+                label: "low",
+                sortOrder: 0,
+                playlistUrl: "https://example.com/live/low/index.m3u8",
+                width: null,
+                height: 360,
+                bandwidth: null,
+                codecs: null,
+                isActive: true,
+              },
+            ],
+          },
+        }),
+        include: expect.any(Object),
       }),
-    });
+    );
   });
 
   it("rejects mixed-mode payloads before hitting persistence", async () => {

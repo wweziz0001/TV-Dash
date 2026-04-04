@@ -12,6 +12,8 @@ function buildChannel(overrides: Partial<StreamChannelRecord> = {}): StreamChann
     sourceMode: "MASTER_PLAYLIST",
     masterHlsUrl: "https://example.com/live/master.m3u8",
     playbackMode: "DIRECT",
+    timeshiftEnabled: false,
+    timeshiftWindowMinutes: null,
     upstreamUserAgent: null,
     upstreamReferrer: null,
     upstreamHeaders: null,

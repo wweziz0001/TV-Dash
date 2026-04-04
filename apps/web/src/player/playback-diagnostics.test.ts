@@ -45,7 +45,7 @@ describe("playback-diagnostics", () => {
 
     expect(diagnostics).toMatchObject({
       label: "Paused",
-      summary: "Playback is paused. Resume when you want to return to the live edge.",
+      summary: "Playback is paused inside the live DVR window.",
       isPaused: true,
       canSeek: true,
     });

@@ -298,8 +298,8 @@ describe("recordingRoutes", () => {
       description: null,
       category: "News",
       imageUrl: null,
-      startAt: new Date("2026-04-04T12:00:00.000Z"),
-      endAt: new Date("2026-04-04T13:00:00.000Z"),
+      startAt: new Date("2026-04-05T12:00:00.000Z"),
+      endAt: new Date("2026-04-05T13:00:00.000Z"),
       channel: null,
       sourceChannel: {
         id: "source-channel-1",
@@ -320,12 +320,12 @@ describe("recordingRoutes", () => {
         status: "SCHEDULED",
         programEntryId: "44444444-4444-4444-4444-444444444444",
         programTitleSnapshot: "Morning News",
-        programStartAt: new Date("2026-04-04T12:00:00.000Z"),
-        programEndAt: new Date("2026-04-04T13:00:00.000Z"),
+        programStartAt: new Date("2026-04-05T12:00:00.000Z"),
+        programEndAt: new Date("2026-04-05T13:00:00.000Z"),
         paddingBeforeMinutes: 2,
         paddingAfterMinutes: 5,
-        startAt: new Date("2026-04-04T11:58:00.000Z"),
-        endAt: new Date("2026-04-04T13:05:00.000Z"),
+        startAt: new Date("2026-04-05T11:58:00.000Z"),
+        endAt: new Date("2026-04-05T13:05:00.000Z"),
       }),
     );
 

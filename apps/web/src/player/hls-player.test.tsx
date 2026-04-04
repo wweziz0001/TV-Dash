@@ -323,6 +323,19 @@ describe("HlsPlayer", () => {
         onDiagnosticsChange={handleDiagnosticsChange}
         onMutedChange={handleMutedChange}
         src="https://example.com/a.m3u8"
+        timeshiftStatus={{
+          channelId: "channel-a",
+          configured: true,
+          supported: true,
+          available: true,
+          bufferState: "READY",
+          message: "Live DVR window is ready.",
+          windowSeconds: 1800,
+          availableWindowSeconds: 60,
+          bufferedSegmentCount: 10,
+          lastUpdatedAt: "2026-04-04T00:00:00.000Z",
+          lastError: null,
+        }}
         title="Channel A"
       />,
     );
@@ -441,5 +454,42 @@ describe("HlsPlayer", () => {
 
     expect(HTMLVideoElement.prototype.requestPictureInPicture).toHaveBeenCalledTimes(1);
     expect(document.pictureInPictureElement).toBeTruthy();
+  });
+
+  it("keeps pause and DVR seek controls hidden for live-only channels without a real retained buffer", () => {
+    const { container } = render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
+
+    act(() => {
+      MockHls.instances[0].emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 1080 }, { height: 720 }],
+      });
+    });
+
+    const video = container.querySelector("video") as HTMLVideoElement;
+
+    Object.defineProperty(video, "seekable", {
+      configurable: true,
+      value: {
+        length: 1,
+        start: () => 100,
+        end: () => 160,
+      },
+    });
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      value: 120,
+      writable: true,
+    });
+
+    fireEvent(video, new Event("loadedmetadata"));
+    fireEvent(video, new Event("timeupdate"));
+    const playerRoot = screen.getByTestId("player-surface");
+    fireEvent.mouseOver(playerRoot);
+    fireEvent.mouseMove(playerRoot);
+
+    expect(screen.queryByRole("button", { name: "Pause playback" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Jump to live" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("slider", { name: "Player timeline" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("No DVR").length).toBeGreaterThan(0);
   });
 });

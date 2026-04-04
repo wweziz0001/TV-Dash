@@ -45,6 +45,7 @@ vi.mock("../../db/prisma.js", () => ({
 const { buildServer } = await import("../../app/build-server.js");
 const { createAuthHeaders } = await import("../../app/test-support.js");
 const { readProxyToken } = await import("./proxy-token.js");
+const { clearTimeshiftBufferStateForTests } = await import("./timeshift-buffer.js");
 
 describe("streamRoutes", () => {
   let server: Awaited<ReturnType<typeof buildServer>>;
@@ -78,6 +79,7 @@ describe("streamRoutes", () => {
   });
 
   afterEach(async () => {
+    clearTimeshiftBufferStateForTests();
     await server.close();
     vi.unstubAllGlobals();
   });
@@ -336,6 +338,140 @@ describe("streamRoutes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain("/api/streams/channels/33333333-3333-3333-3333-333333333333/asset?token=");
+  });
+
+  it("reports real timeshift capability status for retained proxy-backed buffers", async () => {
+    mockPrisma.channel.findUnique.mockResolvedValue({
+      id: "44444444-4444-4444-4444-444444444444",
+      name: "Buffered News",
+      slug: "buffered-news",
+      isActive: true,
+      sourceMode: "MASTER_PLAYLIST",
+      masterHlsUrl: "https://origin.example.com/live/index.m3u8",
+      playbackMode: "PROXY",
+      timeshiftEnabled: true,
+      timeshiftWindowMinutes: 30,
+      upstreamUserAgent: null,
+      upstreamReferrer: null,
+      upstreamHeaders: null,
+      qualityVariants: [],
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+
+        if (url === "https://origin.example.com/live/index.m3u8") {
+          return Promise.resolve({
+            ok: true,
+            text: vi.fn().mockResolvedValue(`#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:6
+#EXT-X-MEDIA-SEQUENCE:10
+#EXTINF:6.0,
+segment10.ts
+#EXTINF:6.0,
+segment11.ts
+#EXTINF:6.0,
+segment12.ts`),
+            headers: {
+              get: vi.fn().mockReturnValue("application/vnd.apple.mpegurl"),
+            },
+          });
+        }
+
+        return Promise.resolve({
+          ok: true,
+          arrayBuffer: vi.fn().mockResolvedValue(Uint8Array.from([1, 2, 3]).buffer),
+          headers: {
+            get: vi.fn().mockReturnValue("video/mp2t"),
+          },
+        });
+      }),
+    );
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/streams/channels/44444444-4444-4444-4444-444444444444/timeshift/status",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      status: expect.objectContaining({
+        configured: true,
+        supported: true,
+        available: false,
+        bufferState: "WARMING",
+        availableWindowSeconds: 18,
+        bufferedSegmentCount: 3,
+      }),
+    });
+  });
+
+  it("serves a timeshift master playlist for proxy-backed channels with DVR enabled", async () => {
+    mockPrisma.channel.findUnique.mockResolvedValue({
+      id: "55555555-5555-5555-5555-555555555555",
+      name: "Buffered News",
+      slug: "buffered-news",
+      isActive: true,
+      sourceMode: "MASTER_PLAYLIST",
+      masterHlsUrl: "https://origin.example.com/live/index.m3u8",
+      playbackMode: "PROXY",
+      timeshiftEnabled: true,
+      timeshiftWindowMinutes: 30,
+      upstreamUserAgent: null,
+      upstreamReferrer: null,
+      upstreamHeaders: null,
+      qualityVariants: [],
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+
+        if (url === "https://origin.example.com/live/index.m3u8") {
+          return Promise.resolve({
+            ok: true,
+            text: vi.fn().mockResolvedValue(`#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:6
+#EXT-X-MEDIA-SEQUENCE:20
+#EXTINF:6.0,
+segment20.ts
+#EXTINF:6.0,
+segment21.ts
+#EXTINF:6.0,
+segment22.ts
+#EXTINF:6.0,
+segment23.ts
+#EXTINF:6.0,
+segment24.ts`),
+            headers: {
+              get: vi.fn().mockReturnValue("application/vnd.apple.mpegurl"),
+            },
+          });
+        }
+
+        return Promise.resolve({
+          ok: true,
+          arrayBuffer: vi.fn().mockResolvedValue(Uint8Array.from([1, 2, 3]).buffer),
+          headers: {
+            get: vi.fn().mockReturnValue("video/mp2t"),
+          },
+        });
+      }),
+    );
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/streams/channels/55555555-5555-5555-5555-555555555555/timeshift/master",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("application/vnd.apple.mpegurl");
+    expect(response.body).toContain("/api/streams/channels/55555555-5555-5555-5555-555555555555/timeshift/variants/live/index.m3u8");
   });
 
   it("rejects invalid proxy asset tokens at the route edge", async () => {

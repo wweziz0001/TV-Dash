@@ -49,6 +49,18 @@ describe("getChannelPlaybackUrl", () => {
     ).toContain("/streams/channels/11111111-1111-1111-1111-111111111111/master");
   });
 
+  it("prefers the timeshift master path when the channel has real DVR support configured", () => {
+    expect(
+      getChannelPlaybackUrl({
+        id: "11111111-1111-1111-1111-111111111111",
+        sourceMode: "MASTER_PLAYLIST",
+        masterHlsUrl: null,
+        playbackMode: "PROXY",
+        timeshiftEnabled: true,
+      }),
+    ).toContain("/streams/channels/11111111-1111-1111-1111-111111111111/timeshift/master");
+  });
+
   it("resolves relative API paths against the configured API origin", () => {
     expect(resolveApiUrl("/api/recordings/job-1/media?token=abc")).toContain("/api/recordings/job-1/media?token=abc");
   });

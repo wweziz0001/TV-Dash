@@ -11,6 +11,8 @@ function buildChannel(overrides: Partial<StreamChannelRecord> = {}): StreamChann
     sourceMode: "MANUAL_VARIANTS",
     masterHlsUrl: null,
     playbackMode: "PROXY",
+    timeshiftEnabled: false,
+    timeshiftWindowMinutes: null,
     upstreamUserAgent: null,
     upstreamReferrer: null,
     upstreamHeaders: null,
