@@ -190,6 +190,7 @@ Key relationship rules:
   - play, pause, and stop route back into the same player-owned actions
   - seekbackward/seekforward are only registered when the active stream exposes a real DVR window
 - Floating playback is now TV-Dash-managed first rather than browser-PiP-first:
+  - Chromium-class browsers that expose `Document Picture-in-Picture` now open a compact TV-Dash floating window without the normal address bar chrome
   - the primary in-player action opens a detached TV-Dash floating window when popup launch succeeds
   - popup-blocked or popup-unavailable environments fall back to the in-page floating mini-player
   - in-page floating players remain draggable, resizable, and able to coexist more than once

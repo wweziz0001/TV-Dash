@@ -488,6 +488,47 @@ describe("HlsPlayer", () => {
     });
   });
 
+  it("prefers a compact document picture-in-picture window when the browser supports it", async () => {
+    const pictureInPictureDocument = document.implementation.createHTMLDocument("Floating");
+    const addEventListener = vi.fn();
+    const requestWindow = vi.fn(async () => ({
+      document: pictureInPictureDocument,
+      addEventListener,
+      close: vi.fn(),
+      focus: vi.fn(),
+    }));
+
+    Object.defineProperty(window, "documentPictureInPicture", {
+      configurable: true,
+      value: {
+        requestWindow,
+      },
+      writable: true,
+    });
+
+    render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
+
+    act(() => {
+      MockHls.instances[0].emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 1080 }, { height: 720 }],
+      });
+    });
+
+    const playerRoot = screen.getByTestId("player-surface");
+    fireEvent.mouseOver(playerRoot);
+    fireEvent.mouseMove(playerRoot);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Open floating player" }));
+      await Promise.resolve();
+    });
+
+    expect(requestWindow).toHaveBeenCalledTimes(1);
+    expect(window.open).not.toHaveBeenCalled();
+    expect(screen.getByTestId("document-picture-in-picture-placeholder")).toBeInTheDocument();
+    expect(addEventListener).toHaveBeenCalledWith("pagehide", expect.any(Function), { once: true });
+  });
+
   it("falls back to an in-page floating player when popup launch is blocked", async () => {
     vi.mocked(window.open).mockReturnValue(null);
 

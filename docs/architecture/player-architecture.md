@@ -162,7 +162,8 @@ Do not add silent infinite retry loops. Any retry policy change must consider mu
 
 - PiP must be triggered from an explicit TV-Dash control when the browser exposes the API
 - TV-Dash-managed floating playback is the primary path:
-  - first preference is a detached popup window routed back through the TV-Dash app
+  - first preference on supported Chromium browsers is a `Document Picture-in-Picture` window because it preserves TV-Dash HTML controls without the normal address bar chrome
+  - next preference is a detached popup window routed back through the TV-Dash app
   - popup-blocked or popup-unavailable environments may fall back to an in-page floating player without tearing down the live video element
 - multiple TV-Dash floating players may coexist because they are managed by the app rather than by the browser PiP window manager
 - browser-native PiP remains optional secondary behavior when the current browser exposes it

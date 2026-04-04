@@ -37,6 +37,9 @@ describe("browser-media", () => {
         doc,
         nav,
         {
+          documentPictureInPicture: {
+            requestWindow: vi.fn(),
+          },
           open: vi.fn(),
         } as unknown as Window,
       ),
@@ -46,7 +49,7 @@ describe("browser-media", () => {
       canNativePictureInPicture: true,
       canFloatingPlayback: true,
       canDetachedFloatingPlayback: true,
-      canDocumentPictureInPicture: false,
+      canDocumentPictureInPicture: true,
       canUseMediaSession: true,
       pictureInPictureUnavailableReason: null,
       floatingPlaybackUnavailableReason: null,
@@ -68,6 +71,9 @@ describe("browser-media", () => {
         } as unknown as Document,
         {} as Navigator,
         {
+          documentPictureInPicture: {
+            requestWindow: vi.fn(),
+          },
           open: vi.fn(),
         } as unknown as Window,
       ),
@@ -76,7 +82,7 @@ describe("browser-media", () => {
       canNativePictureInPicture: false,
       canFloatingPlayback: true,
       canDetachedFloatingPlayback: true,
-      canDocumentPictureInPicture: false,
+      canDocumentPictureInPicture: true,
       pictureInPictureUnavailableReason:
         "Native Picture-in-Picture is not supported in this browser. TV-Dash can use a floating player instead.",
       floatingPlaybackUnavailableReason: null,

@@ -48,11 +48,15 @@ export function getPlayerBrowserCapabilities(
   fullscreenTarget: Element | null = null,
   doc: PictureInPictureDocument & FullscreenDocument = document,
   nav: Navigator = navigator,
-  win: Pick<Window, "open"> = window,
+  win: Pick<Window, "open"> & {
+    documentPictureInPicture?: {
+      requestWindow?: (options?: { width?: number; height?: number }) => Promise<Window>;
+    };
+  } = window,
 ): PlayerBrowserCapabilities {
   const canUseMediaSession = "mediaSession" in nav && typeof nav.mediaSession !== "undefined";
   const canFullscreen = Boolean(fullscreenTarget?.requestFullscreen) && doc.fullscreenEnabled !== false;
-  const canDocumentPictureInPicture = false;
+  const canDocumentPictureInPicture = typeof win.documentPictureInPicture?.requestWindow === "function";
   const canFloatingPlayback = typeof doc.createElement === "function";
   const canDetachedFloatingPlayback = typeof win.open === "function";
   const floatingPlaybackUnavailableReason =

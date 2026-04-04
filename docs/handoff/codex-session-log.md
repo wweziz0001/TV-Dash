@@ -1915,3 +1915,42 @@ Both passed on `2026-04-04`.
 ### Exact Suggested Next Task
 
 Add a lightweight global floating-player manager surface that lists active detached/in-page floating sessions across the app, then add route-level watch/multiview tests that verify floating-launch and return workflows from the full page boundary rather than only the player component seam.
+
+---
+
+## `2026-04-04T20:55:23+03:00`
+
+### Objective
+
+Reduce visible browser chrome in TV-Dash floating mode so the floating experience feels closer to a compact player window instead of a normal browser popup.
+
+### Work Completed
+
+- upgraded floating capability detection so TV-Dash now recognizes `Document Picture-in-Picture` support
+- updated `HlsPlayer` to prefer a `Document Picture-in-Picture` floating window when the browser supports it
+- copied active stylesheet nodes into the compact floating document so the player keeps TV-Dash styling in the chromeless window
+- kept the existing detached popup window as the next fallback, and the in-page floating player as the final fallback
+- added frontend coverage confirming TV-Dash prefers the compact floating document window before the popup route
+
+### Files Added Or Changed
+
+- `apps/web/src/player/browser-media.ts`
+- `apps/web/src/player/browser-media.test.ts`
+- `apps/web/src/player/hls-player.tsx`
+- `apps/web/src/player/hls-player.test.tsx`
+- `docs/architecture/player-architecture.md`
+- `docs/handoff/codex-handoff.md`
+- `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- A normal `window.open` popup cannot reliably hide the browser address bar or navigation buttons from web code.
+- When Chromium exposes `Document Picture-in-Picture`, TV-Dash now uses that compact floating document first because it removes the normal URL bar while still hosting TV-Dash HTML controls.
+- Multi-floating support still relies on popup/in-page fallback paths because document PiP is not a practical multi-window replacement.
+
+### Verification Run
+
+- `npm run test -w apps/web -- browser-media.test.ts hls-player.test.tsx`
+- `npm run lint -w apps/web`
+
+Both passed on `2026-04-04`.

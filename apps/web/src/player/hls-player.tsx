@@ -76,6 +76,30 @@ const defaultBrowserCapabilities: PlayerBrowserCapabilities = {
 const SEEK_STEP_SECONDS = 10;
 const FLOATING_PLAYER_HOST_CLASS_NAME = "tv-dash-floating-player-host h-full w-full";
 
+interface DocumentPictureInPictureWindow extends Window {
+  document: Document;
+}
+
+interface DocumentPictureInPictureApi {
+  requestWindow?: (options?: { width?: number; height?: number }) => Promise<DocumentPictureInPictureWindow>;
+}
+
+function getDocumentPictureInPictureApi(win: Window) {
+  return (win as Window & { documentPictureInPicture?: DocumentPictureInPictureApi }).documentPictureInPicture;
+}
+
+function copyDocumentStyles(sourceDocument: Document, targetDocument: Document) {
+  targetDocument.head.innerHTML = "";
+
+  sourceDocument.querySelectorAll("style, link[rel='stylesheet']").forEach((node) => {
+    targetDocument.head.appendChild(node.cloneNode(true));
+  });
+
+  targetDocument.body.style.margin = "0";
+  targetDocument.body.style.background = "#020617";
+  targetDocument.body.style.overflow = "hidden";
+}
+
 function formatPlaybackTime(seconds: number | null) {
   if (seconds === null || !Number.isFinite(seconds)) {
     return "--:--";
@@ -124,6 +148,7 @@ export function HlsPlayer({
   const floatingPlayerInteractionCleanupRef = useRef<(() => void) | null>(null);
   const floatingLayoutRef = useRef<FloatingPlayerLayout | null>(null);
   const detachedWindowRef = useRef<Window | null>(null);
+  const documentPictureInPictureWindowRef = useRef<DocumentPictureInPictureWindow | null>(null);
   const recoveryStateRef = useRef({
     networkAttempts: 0,
     mediaAttempts: 0,
@@ -168,6 +193,7 @@ export function HlsPlayer({
   const [inlineSurfaceAnchor, setInlineSurfaceAnchor] = useState<HTMLDivElement | null>(null);
   const [floatingLayout, setFloatingLayout] = useState<FloatingPlayerLayout | null>(null);
   const [detachedSession, setDetachedSession] = useState<FloatingPlayerSession | null>(null);
+  const [isDocumentPictureInPictureMode, setIsDocumentPictureInPictureMode] = useState(false);
   const isFloatingMode = floatingLayout !== null;
   const isDetachedWindow = floatingEnvironment === "detached-window";
   const isDetachedMode = detachedSession !== null || isDetachedWindow;
@@ -198,6 +224,10 @@ export function HlsPlayer({
 
   function setDetachedFloatingSession(nextSession: FloatingPlayerSession | null) {
     setDetachedSession(nextSession);
+  }
+
+  function setDocumentPictureInPictureMode(nextValue: boolean) {
+    setIsDocumentPictureInPictureMode(nextValue);
   }
 
   function updateStatus(nextStatus: PlayerStatus) {
@@ -297,6 +327,20 @@ export function HlsPlayer({
     showControls();
   }
 
+  function cleanupDocumentPictureInPictureWindow() {
+    documentPictureInPictureWindowRef.current = null;
+    setDocumentPictureInPictureMode(false);
+  }
+
+  function closeDocumentPictureInPictureWindow(statusMessage = "Returned the floating player to the page.") {
+    const activeWindow = documentPictureInPictureWindowRef.current;
+
+    cleanupDocumentPictureInPictureWindow();
+    setStatusDetail(statusMessage);
+    showControls();
+    activeWindow?.close();
+  }
+
   function returnDetachedPlayerToPage(statusMessage = "Returned the detached player to the page.") {
     const activeSession = detachedSession;
 
@@ -326,6 +370,10 @@ export function HlsPlayer({
       buildFloatingPlayerWindowFeatures(detachedSession.window),
     );
     detachedWindowRef.current?.focus();
+  }
+
+  function focusDocumentPictureInPictureWindow() {
+    documentPictureInPictureWindowRef.current?.focus();
   }
 
   function startFloatingPlayerInteraction(
@@ -444,6 +492,8 @@ export function HlsPlayer({
         ? "detached"
         : detachedSession
           ? "detached"
+          : isDocumentPictureInPictureMode
+            ? "floating"
           : floatingLayoutRef.current
         ? "floating"
         : isPictureInPictureActive(video, activeDocument)
@@ -579,6 +629,11 @@ export function HlsPlayer({
       return;
     }
 
+    if (isDocumentPictureInPictureMode) {
+      closeDocumentPictureInPictureWindow();
+      return;
+    }
+
     if (detachedSession) {
       returnDetachedPlayerToPage();
       return;
@@ -607,6 +662,74 @@ export function HlsPlayer({
         height: floatingWindowLayout.height,
       },
     });
+
+    if (capabilities.canDocumentPictureInPicture) {
+      const documentPictureInPictureApi = getDocumentPictureInPictureApi(window);
+
+      if (typeof documentPictureInPictureApi?.requestWindow === "function") {
+        void documentPictureInPictureApi
+          .requestWindow({
+            width: floatingWindowLayout.width,
+            height: floatingWindowLayout.height,
+          })
+          .then((documentPictureInPictureWindow) => {
+            copyDocumentStyles(document, documentPictureInPictureWindow.document);
+            documentPictureInPictureWindow.document.title = `${title} · Floating Player · TV-Dash`;
+            documentPictureInPictureWindow.document.body.dataset.tvDashDocumentPictureInPicture = "true";
+
+            const handleDocumentPictureInPictureClosed = () => {
+              cleanupDocumentPictureInPictureWindow();
+              setStatusDetail("Returned the floating player to the page.");
+              showControls();
+            };
+
+            documentPictureInPictureWindow.addEventListener(
+              "pagehide",
+              handleDocumentPictureInPictureClosed,
+              { once: true },
+            );
+
+            documentPictureInPictureWindowRef.current = documentPictureInPictureWindow;
+            setDocumentPictureInPictureMode(true);
+            setStatusDetail("Opened the floating player in a compact TV-Dash window.");
+            showControls();
+          })
+          .catch(() => {
+            if (capabilities.canDetachedFloatingPlayback) {
+              saveFloatingPlayerSession(session);
+              detachedWindowRef.current = window.open(
+                buildFloatingPlayerRoute(session.id),
+                session.id,
+                buildFloatingPlayerWindowFeatures(session.window),
+              );
+
+              if (detachedWindowRef.current) {
+                detachedWindowRef.current.focus();
+                setDetachedFloatingSession(session);
+                setStatusDetail("Opened a detached TV-Dash floating player window.");
+                showControls();
+                return;
+              }
+
+              removeFloatingPlayerSession(session.id);
+            }
+
+            if (capabilities.canFloatingPlayback) {
+              openFloatingPlayer(
+                "Compact floating window launch was blocked, so TV-Dash opened an in-page floating player instead.",
+              );
+              return;
+            }
+
+            setStatusDetail(
+              capabilities.floatingPlaybackUnavailableReason ??
+                "TV-Dash floating playback could not be opened in this browser session.",
+            );
+          });
+
+        return;
+      }
+    }
 
     if (capabilities.canDetachedFloatingPlayback) {
       saveFloatingPlayerSession(session);
@@ -774,16 +897,28 @@ export function HlsPlayer({
       return;
     }
 
-    const targetParent = floatingLayout ? document.body : inlineSurfaceAnchor;
+    const targetParent = isDocumentPictureInPictureMode
+      ? documentPictureInPictureWindowRef.current?.document.body ?? null
+      : floatingLayout
+        ? document.body
+        : inlineSurfaceAnchor;
 
     if (!targetParent) {
       return;
     }
 
     targetParent.appendChild(surfacePortalHost);
-    surfacePortalHost.dataset.tvDashFloatingPlayer = floatingLayout ? "true" : "false";
+    surfacePortalHost.dataset.tvDashFloatingPlayer =
+      floatingLayout || isDocumentPictureInPictureMode ? "true" : "false";
 
-    if (floatingLayout) {
+    if (isDocumentPictureInPictureMode) {
+      surfacePortalHost.style.position = "relative";
+      surfacePortalHost.style.left = "0";
+      surfacePortalHost.style.top = "0";
+      surfacePortalHost.style.width = "100vw";
+      surfacePortalHost.style.height = "100vh";
+      surfacePortalHost.style.zIndex = "";
+    } else if (floatingLayout) {
       surfacePortalHost.style.position = "fixed";
       surfacePortalHost.style.left = `${floatingLayout.left}px`;
       surfacePortalHost.style.top = `${floatingLayout.top}px`;
@@ -804,7 +939,7 @@ export function HlsPlayer({
         targetParent.removeChild(surfacePortalHost);
       }
     };
-  }, [floatingLayout, inlineSurfaceAnchor, surfacePortalHost]);
+  }, [floatingLayout, inlineSurfaceAnchor, isDocumentPictureInPictureMode, surfacePortalHost]);
 
   useEffect(() => {
     if (!floatingLayout) {
@@ -830,7 +965,7 @@ export function HlsPlayer({
 
   useEffect(() => {
     syncBrowserState();
-  }, [detachedSession, floatingLayout, isDetachedWindow]);
+  }, [detachedSession, floatingLayout, isDetachedWindow, isDocumentPictureInPictureMode]);
 
   useEffect(() => {
     if (!detachedSession) {
@@ -950,6 +1085,14 @@ export function HlsPlayer({
 
     setFloatingPlayerLayout(null);
   }, [effectiveSrc]);
+
+  useEffect(() => {
+    if (effectiveSrc || !isDocumentPictureInPictureMode) {
+      return;
+    }
+
+    closeDocumentPictureInPictureWindow("Returned the floating player to the page.");
+  }, [effectiveSrc, isDocumentPictureInPictureMode]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -1251,6 +1394,7 @@ export function HlsPlayer({
     clearRecoveryNoticeTimeout();
     clearControlsVisibilityTimeout();
     clearFloatingPlayerInteraction();
+    documentPictureInPictureWindowRef.current?.close();
     stopPlayback();
   }, []);
 
@@ -1477,6 +1621,28 @@ export function HlsPlayer({
 
   return (
     <>
+      {isDocumentPictureInPictureMode ? (
+        <div
+          className="flex h-full min-h-[160px] items-center justify-center rounded-[1rem] border border-dashed border-cyan-400/30 bg-slate-950/70 p-4 text-center"
+          data-testid="document-picture-in-picture-placeholder"
+        >
+          <div>
+            <p className="text-sm font-semibold text-white">Playing in compact floating window</p>
+            <p className="mt-1.5 text-[12px] text-slate-400">
+              TV-Dash moved the player into a browser floating window without the normal address bar chrome.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              <Button onClick={focusDocumentPictureInPictureWindow} size="sm" type="button" variant="secondary">
+                Focus window
+              </Button>
+              <Button onClick={() => closeDocumentPictureInPictureWindow()} size="sm" type="button" variant="secondary">
+                Return to page
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {detachedSession ? (
         <div
           className="flex h-full min-h-[160px] items-center justify-center rounded-[1rem] border border-dashed border-cyan-400/30 bg-slate-950/70 p-4 text-center"
@@ -1518,7 +1684,10 @@ export function HlsPlayer({
         </div>
       ) : null}
 
-      <div className={cn("h-full w-full", (detachedSession || floatingLayout) && "hidden")} ref={setInlineSurfaceAnchor} />
+      <div
+        className={cn("h-full w-full", (detachedSession || floatingLayout || isDocumentPictureInPictureMode) && "hidden")}
+        ref={setInlineSurfaceAnchor}
+      />
 
       {!detachedSession && surfacePortalHost ? createPortal(renderPlayerSurface(), surfacePortalHost) : null}
     </>
