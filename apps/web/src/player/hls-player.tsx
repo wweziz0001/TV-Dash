@@ -50,6 +50,23 @@ const defaultBrowserCapabilities: PlayerBrowserCapabilities = {
 
 const SEEK_STEP_SECONDS = 10;
 
+function formatPlaybackTime(seconds: number | null) {
+  if (seconds === null || !Number.isFinite(seconds)) {
+    return "--:--";
+  }
+
+  const totalSeconds = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainingSeconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
+  }
+
+  return `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
 export function HlsPlayer({
   src,
   title,
@@ -103,6 +120,7 @@ export function HlsPlayer({
   const [volume, setVolume] = useState(1);
   const [isPaused, setIsPaused] = useState(false);
   const [seekState, setSeekState] = useState<PlayerSeekState>(defaultPlayerSeekState);
+  const [currentTime, setCurrentTime] = useState(0);
   const [capabilities, setCapabilities] = useState<PlayerBrowserCapabilities>(defaultBrowserCapabilities);
   const [isPictureInPictureMode, setIsPictureInPictureMode] = useState(false);
   const [isFullscreenMode, setIsFullscreenMode] = useState(false);
@@ -208,6 +226,7 @@ export function HlsPlayer({
       return;
     }
 
+    setCurrentTime(video.currentTime);
     setVolume(video.volume);
     setIsPaused(Boolean(video.currentSrc || src) && video.paused && !video.ended);
   }
@@ -296,6 +315,31 @@ export function HlsPlayer({
     }
 
     setStatusDetail(offsetSeconds < 0 ? "Stepped backward inside the live DVR window." : "Stepped forward toward live.");
+    syncBrowserState();
+  }
+
+  function handleSeekTo(value: number) {
+    const video = videoRef.current;
+
+    if (!video || !seekState.canSeek || seekState.rangeStart === null || seekState.rangeEnd === null) {
+      return;
+    }
+
+    const nextTime = Math.min(seekState.rangeEnd, Math.max(seekState.rangeStart, value));
+    video.currentTime = nextTime;
+    setStatusDetail("Adjusted playback position inside the live DVR window.");
+    syncBrowserState();
+  }
+
+  function handleJumpToLive() {
+    const video = videoRef.current;
+
+    if (!video || !seekState.canSeek || seekState.rangeEnd === null) {
+      return;
+    }
+
+    video.currentTime = seekState.rangeEnd;
+    setStatusDetail("Returned to the live edge.");
     syncBrowserState();
   }
 
@@ -412,6 +456,7 @@ export function HlsPlayer({
       setPlayerMuted(video.muted);
     };
     const handleTimeRangeUpdated = () => {
+      setCurrentTime(video.currentTime);
       setSeekState(getPlayerSeekState(video));
     };
     const handlePictureInPictureUpdated = () => {
@@ -474,6 +519,7 @@ export function HlsPlayer({
     setStatusDetail(null);
     setIsPaused(false);
     setSeekState(defaultPlayerSeekState);
+    setCurrentTime(0);
     publishQualityOptions([...defaultQualityOptions]);
     stopPlayback();
     teardownVideo(video);
@@ -771,6 +817,22 @@ export function HlsPlayer({
       ? "Live"
       : `-${Math.round(seekState.liveLatencySeconds ?? 0)}s`
     : "No DVR";
+  const timelineMin = seekState.rangeStart ?? 0;
+  const timelineMax = seekState.rangeEnd ?? 1;
+  const timelineValue = seekState.canSeek
+    ? Math.min(timelineMax, Math.max(timelineMin, currentTime))
+    : timelineMax;
+  const currentTimeLabel = seekState.canSeek
+    ? formatPlaybackTime(currentTime - timelineMin)
+    : liveStateLabel;
+  const durationLabel = seekState.canSeek
+    ? formatPlaybackTime((seekState.rangeEnd ?? timelineMax) - timelineMin)
+    : "LIVE";
+  const timelineStatusLabel = seekState.canSeek
+    ? seekState.isAtLiveEdge
+      ? "Live edge"
+      : `${Math.round(seekState.liveLatencySeconds ?? 0)}s behind live`
+    : "Live stream";
 
   return (
     <div
@@ -840,21 +902,29 @@ export function HlsPlayer({
         canFullscreen={capabilities.canFullscreen}
         canPictureInPicture={capabilities.canPictureInPicture}
         canSeek={seekState.canSeek}
+        currentTimeLabel={currentTimeLabel}
         density={controlDensity}
+        durationLabel={durationLabel}
         hasSource={Boolean(src)}
         isFullscreenActive={isFullscreenMode}
         isMuted={playerMuted}
         isPaused={isPaused}
         isPictureInPictureActive={isPictureInPictureMode}
         liveStateLabel={liveStateLabel}
+        onJumpToLive={handleJumpToLive}
         onSeekBackward={() => handleSeek(-SEEK_STEP_SECONDS)}
         onSeekForward={() => handleSeek(SEEK_STEP_SECONDS)}
+        onTimelineChange={handleSeekTo}
         onToggleFullscreen={() => void handleToggleFullscreen()}
         onToggleMute={handleToggleMute}
         onTogglePictureInPicture={() => void handleTogglePictureInPicture()}
         onTogglePlayback={handleTogglePlayback}
         onVolumeChange={handleVolumeChange}
         pictureInPictureUnavailableReason={capabilities.pictureInPictureUnavailableReason}
+        timelineMax={timelineMax}
+        timelineMin={timelineMin}
+        timelineStatusLabel={timelineStatusLabel}
+        timelineValue={timelineValue}
         volume={volume}
       />
     </div>

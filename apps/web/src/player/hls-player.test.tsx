@@ -317,7 +317,7 @@ describe("HlsPlayer", () => {
     const handleMutedChange = vi.fn();
     const handleDiagnosticsChange = vi.fn();
 
-    render(
+    const { container } = render(
       <HlsPlayer
         muted={false}
         onDiagnosticsChange={handleDiagnosticsChange}
@@ -333,13 +333,39 @@ describe("HlsPlayer", () => {
       });
     });
 
+    const video = container.querySelector("video") as HTMLVideoElement;
+
+    Object.defineProperty(video, "seekable", {
+      configurable: true,
+      value: {
+        length: 1,
+        start: () => 100,
+        end: () => 160,
+      },
+    });
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      value: 120,
+      writable: true,
+    });
+
+    fireEvent(video, new Event("loadedmetadata"));
+    fireEvent(video, new Event("timeupdate"));
+
     expect(screen.getByRole("button", { name: "Pause playback" })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: "Player volume" })).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Player timeline" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Jump to live" })).toBeInTheDocument();
+    expect(screen.getByText("00:20")).toBeInTheDocument();
+    expect(screen.getByText("01:00")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open Picture-in-Picture" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Enter fullscreen" })).toBeEnabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Mute audio" }));
     expect(handleMutedChange).toHaveBeenCalledWith(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Jump to live" }));
+    expect(video.currentTime).toBe(160);
 
     fireEvent.click(screen.getByRole("button", { name: "Pause playback" }));
     expect(screen.getAllByText("Paused").length).toBeGreaterThan(0);

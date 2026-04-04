@@ -21,6 +21,12 @@ interface PlayerControlOverlayProps {
   volume: number;
   canSeek: boolean;
   liveStateLabel: string;
+  timelineValue: number;
+  timelineMin: number;
+  timelineMax: number;
+  currentTimeLabel: string;
+  durationLabel: string;
+  timelineStatusLabel: string;
   isPictureInPictureActive: boolean;
   isFullscreenActive: boolean;
   canPictureInPicture: boolean;
@@ -30,7 +36,9 @@ interface PlayerControlOverlayProps {
   onToggleMute: () => void;
   onVolumeChange: (value: number) => void;
   onSeekBackward: () => void;
+  onJumpToLive: () => void;
   onSeekForward: () => void;
+  onTimelineChange: (value: number) => void;
   onTogglePictureInPicture: () => void;
   onToggleFullscreen: () => void;
 }
@@ -43,6 +51,12 @@ export function PlayerControlOverlay({
   volume,
   canSeek,
   liveStateLabel,
+  timelineValue,
+  timelineMin,
+  timelineMax,
+  currentTimeLabel,
+  durationLabel,
+  timelineStatusLabel,
   isPictureInPictureActive,
   isFullscreenActive,
   canPictureInPicture,
@@ -52,7 +66,9 @@ export function PlayerControlOverlay({
   onToggleMute,
   onVolumeChange,
   onSeekBackward,
+  onJumpToLive,
   onSeekForward,
+  onTimelineChange,
   onTogglePictureInPicture,
   onToggleFullscreen,
 }: PlayerControlOverlayProps) {
@@ -65,6 +81,27 @@ export function PlayerControlOverlay({
         isCompact ? "px-2 py-2" : "px-3 py-2.5",
       )}
     >
+      <div className="mb-2 rounded-2xl border border-slate-800/80 bg-slate-900/75 px-3 py-2">
+        <div className="mb-1.5 flex items-center justify-between gap-2 text-[11px] text-slate-400">
+          <span>{currentTimeLabel}</span>
+          <span className="truncate text-center text-[10px] uppercase tracking-[0.18em] text-slate-500">
+            {timelineStatusLabel}
+          </span>
+          <span>{durationLabel}</span>
+        </div>
+        <input
+          aria-label="Player timeline"
+          className="h-2.5 w-full cursor-pointer accent-cyan-300 disabled:cursor-default disabled:opacity-80"
+          disabled={!canSeek || !hasSource}
+          max={timelineMax}
+          min={timelineMin}
+          onChange={(event) => onTimelineChange(Number(event.target.value))}
+          step={1}
+          type="range"
+          value={timelineValue}
+        />
+      </div>
+
       <div className={cn("flex items-center gap-2", isCompact ? "flex-wrap" : "flex-wrap lg:flex-nowrap")}>
         <div className="flex items-center gap-1.5">
           <Button
@@ -91,6 +128,16 @@ export function PlayerControlOverlay({
                 <SkipBack className="h-4 w-4" />
               </Button>
               <Button
+                aria-label="Jump to live"
+                onClick={onJumpToLive}
+                size="sm"
+                title="Jump to live"
+                type="button"
+                variant={liveStateLabel === "Live" ? "primary" : "secondary"}
+              >
+                Live
+              </Button>
+              <Button
                 aria-label="Seek forward 10 seconds"
                 onClick={onSeekForward}
                 size="icon-sm"
@@ -115,7 +162,12 @@ export function PlayerControlOverlay({
           </Button>
         </div>
 
-        <label className={cn("flex items-center gap-2 text-slate-200", isCompact ? "min-w-[136px] flex-1" : "min-w-[176px] flex-1")}>
+        <label
+          className={cn(
+            "flex items-center gap-2 text-slate-200",
+            isCompact ? "ml-auto w-[120px]" : "ml-auto w-[148px]",
+          )}
+        >
           <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Vol</span>
           <input
             aria-label="Player volume"
@@ -130,7 +182,7 @@ export function PlayerControlOverlay({
           <span className="w-9 text-right text-[11px] text-slate-400">{Math.round(volume * 100)}%</span>
         </label>
 
-        <div className={cn("flex items-center gap-1.5", isCompact ? "ml-auto" : "lg:ml-auto")}>
+        <div className="flex items-center gap-1.5">
           <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
             {liveStateLabel}
           </span>
