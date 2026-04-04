@@ -150,7 +150,6 @@ Key relationship rules:
 
 - `player/hls-player.tsx` owns one video element, one HLS.js instance, and the explicit in-player browser-control surface
 - `player/browser-media.ts` owns browser capability detection plus live-DVR seek window helpers
-- `player/document-picture-in-picture.ts` owns Document PiP detection plus style transfer into the PiP window
 - `player/media-session.ts` owns Media Session metadata/action wiring
 - `player/player-control-overlay.tsx` owns the compact playback-control chrome shared by single-view, multiview, and preview playback
 - `player/playback-recovery.ts` owns bounded fatal error recovery decisions
@@ -186,10 +185,10 @@ Key relationship rules:
   - metadata is published as `TV-Dash / Live playback`
   - play, pause, and stop route back into the same player-owned actions
   - seekbackward/seekforward are only registered when the active stream exposes a real DVR window
-- PiP support is now application-level rather than browser-default-only:
+- PiP support is now explicit rather than browser-default-only:
   - supported browsers get an explicit PiP button
-  - browsers that support Document PiP can now move the TV-Dash controls and timeline into the PiP window itself
-  - browsers that only support native video PiP still fall back cleanly, but custom in-window TV-Dash controls remain browser-limited there
+  - TV-Dash now prefers native video PiP for live-playback stability instead of moving the whole player into a separate PiP document
+  - the browser-managed PiP window stays above the tab and other apps, but its in-window controls remain browser-limited
   - unsupported browsers keep the control disabled with a reason instead of exposing a broken UX
 - Cross-browser expectations:
   - Firefox may still feel richer in native PiP chrome
@@ -198,6 +197,7 @@ Key relationship rules:
   - not every live source exposes a seekable DVR window
   - when no real seek window exists, TV-Dash intentionally shows `No DVR` and omits seek buttons rather than faking VOD behavior
   - PiP richness still varies by browser even though TV-Dash now exposes the same launch point and state handling
+  - browser-native PiP does not allow TV-Dash to force its custom HTML controls into the floating window
 - Recommended future enhancements:
   - add focused-player keyboard shortcuts for play/pause, mute, PiP, and fullscreen that integrate cleanly with the existing multiview shortcut model
   - add optional channel artwork to Media Session metadata once stable image URLs are available

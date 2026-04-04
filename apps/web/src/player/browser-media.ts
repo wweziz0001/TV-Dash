@@ -44,11 +44,10 @@ export function getPlayerBrowserCapabilities(
   fullscreenTarget: Element | null = null,
   doc: PictureInPictureDocument & FullscreenDocument = document,
   nav: Navigator = navigator,
-  win: DocumentPictureInPictureWindow = window,
 ): PlayerBrowserCapabilities {
   const canUseMediaSession = "mediaSession" in nav && typeof nav.mediaSession !== "undefined";
   const canFullscreen = Boolean(fullscreenTarget?.requestFullscreen) && doc.fullscreenEnabled !== false;
-  const canDocumentPictureInPicture = typeof win.documentPictureInPicture?.requestWindow === "function";
+  const canDocumentPictureInPicture = false;
 
   if (!video) {
     return {
@@ -67,16 +66,6 @@ export function getPlayerBrowserCapabilities(
       canDocumentPictureInPicture,
       canUseMediaSession,
       pictureInPictureUnavailableReason: "Picture-in-Picture is disabled for this player.",
-    };
-  }
-
-  if (canDocumentPictureInPicture) {
-    return {
-      canFullscreen,
-      canPictureInPicture: true,
-      canDocumentPictureInPicture,
-      canUseMediaSession,
-      pictureInPictureUnavailableReason: null,
     };
   }
 
@@ -183,14 +172,3 @@ export function isFullscreenActive(
 ) {
   return Boolean(fullscreenTarget && doc.fullscreenElement === fullscreenTarget);
 }
-type DocumentPictureInPictureWindow = Window & {
-  documentPictureInPicture?: {
-    requestWindow?: (options?: {
-      width?: number;
-      height?: number;
-      disallowReturnToOpener?: boolean;
-      preferInitialWindowPlacement?: boolean;
-    }) => Promise<Window>;
-    window?: Window | null;
-  };
-};

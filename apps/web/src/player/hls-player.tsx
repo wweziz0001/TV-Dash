@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type FocusEvent, type RefObject } from "react";
-import { createPortal } from "react-dom";
 import Hls from "hls.js";
 import { AlertTriangle, LoaderCircle, Pause, Play, RotateCcw, Signal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +15,6 @@ import {
   type PlayerBrowserCapabilities,
   type PlayerSeekState,
 } from "./browser-media";
-import { copyDocumentStyles, getDocumentPictureInPictureApi } from "./document-picture-in-picture";
 import { syncPlayerMediaSession } from "./media-session";
 import { buildPlayerDiagnostics, type PlayerDiagnostics } from "./playback-diagnostics";
 import { PlayerControlOverlay } from "./player-control-overlay";
@@ -52,9 +50,6 @@ const defaultBrowserCapabilities: PlayerBrowserCapabilities = {
 };
 
 const SEEK_STEP_SECONDS = 10;
-const DOCUMENT_PIP_WINDOW_WIDTH = 420;
-const DOCUMENT_PIP_WINDOW_HEIGHT = 264;
-
 function formatPlaybackTime(seconds: number | null) {
   if (seconds === null || !Number.isFinite(seconds)) {
     return "--:--";
@@ -131,18 +126,6 @@ export function HlsPlayer({
   const [isPictureInPictureMode, setIsPictureInPictureMode] = useState(false);
   const [isFullscreenMode, setIsFullscreenMode] = useState(false);
   const [areControlsVisible, setAreControlsVisible] = useState(false);
-  const [surfacePortalHost] = useState<HTMLDivElement | null>(() => {
-    if (typeof document === "undefined") {
-      return null;
-    }
-
-    const host = document.createElement("div");
-    host.className = "h-full w-full";
-    return host;
-  });
-  const [inlineSurfaceAnchor, setInlineSurfaceAnchor] = useState<HTMLDivElement | null>(null);
-  const [documentPipAnchor, setDocumentPipAnchor] = useState<HTMLDivElement | null>(null);
-  const [documentPipWindow, setDocumentPipWindow] = useState<Window | null>(null);
 
   callbacksRef.current = {
     onMutedChange,
@@ -158,16 +141,7 @@ export function HlsPlayer({
   };
 
   function getFullscreenTarget() {
-    if (documentPipWindow && !documentPipWindow.closed) {
-      return null;
-    }
-
     return fullscreenTargetRef?.current ?? playerFrameRef.current;
-  }
-
-  function clearDocumentPictureInPictureState() {
-    setDocumentPipAnchor(null);
-    setDocumentPipWindow(null);
   }
 
   function updateStatus(nextStatus: PlayerStatus) {
@@ -269,22 +243,17 @@ export function HlsPlayer({
   function syncBrowserState() {
     const video = videoRef.current;
     const fullscreenTarget = getFullscreenTarget();
-    const activeDocument = (video?.ownerDocument ?? document) as Document;
-    const usingDocumentPictureInPicture = Boolean(documentPipWindow && !documentPipWindow.closed);
+    const activeDocument = document;
     const nextCapabilities = getPlayerBrowserCapabilities(
       video,
-      usingDocumentPictureInPicture ? null : fullscreenTarget,
+      fullscreenTarget,
       activeDocument,
       navigator,
-      window,
     );
 
-    setCapabilities({
-      ...nextCapabilities,
-      canFullscreen: usingDocumentPictureInPicture ? false : nextCapabilities.canFullscreen,
-    });
-    setIsPictureInPictureMode(usingDocumentPictureInPicture || isPictureInPictureActive(video, activeDocument));
-    setIsFullscreenMode(usingDocumentPictureInPicture ? false : isFullscreenActive(fullscreenTarget, activeDocument));
+    setCapabilities(nextCapabilities);
+    setIsPictureInPictureMode(isPictureInPictureActive(video, activeDocument));
+    setIsFullscreenMode(isFullscreenActive(fullscreenTarget, activeDocument));
     setSeekState(getPlayerSeekState(video));
 
     if (!video) {
@@ -410,7 +379,6 @@ export function HlsPlayer({
 
   function handleTogglePictureInPicture() {
     const video = videoRef.current;
-    const documentPictureInPictureApi = getDocumentPictureInPictureApi();
 
     if (!video || !src) {
       return;
@@ -418,14 +386,6 @@ export function HlsPlayer({
 
     void (async () => {
       try {
-        if (documentPipWindow && !documentPipWindow.closed) {
-          documentPipWindow.close();
-          clearDocumentPictureInPictureState();
-          setStatusDetail("Returned the player to the tab.");
-          showControls();
-          return;
-        }
-
         if (document.pictureInPictureElement === video) {
           await document.exitPictureInPicture?.();
           setStatusDetail("Returned the player to the tab.");
@@ -433,37 +393,9 @@ export function HlsPlayer({
           return;
         }
 
-        if (capabilities.canDocumentPictureInPicture && documentPictureInPictureApi) {
-          const pipWindow = await documentPictureInPictureApi.requestWindow({
-            width: DOCUMENT_PIP_WINDOW_WIDTH,
-            height: DOCUMENT_PIP_WINDOW_HEIGHT,
-            preferInitialWindowPlacement: true,
-          });
-
-          copyDocumentStyles(document, pipWindow.document);
-          const pipAnchor = pipWindow.document.createElement("div");
-          pipAnchor.className = "h-full w-full";
-          pipWindow.document.body.innerHTML = "";
-          pipWindow.document.body.appendChild(pipAnchor);
-
-          const handlePipWindowClosed = () => {
-            clearDocumentPictureInPictureState();
-            syncBrowserState();
-          };
-
-          pipWindow.addEventListener("pagehide", handlePipWindowClosed, { once: true });
-          pipWindow.addEventListener("beforeunload", handlePipWindowClosed, { once: true });
-
-          setDocumentPipAnchor(pipAnchor);
-          setDocumentPipWindow(pipWindow);
-          setStatusDetail("Opened a browser Picture-in-Picture window.");
-          showControls();
-          return;
-        }
-
         if (capabilities.canPictureInPicture) {
           await video.requestPictureInPicture?.();
-          setStatusDetail("Opened native Picture-in-Picture. Browser controls will appear in the PiP window.");
+          setStatusDetail("Opened Picture-in-Picture. Playback now continues in the browser PiP window.");
           showControls();
         }
       } catch {
@@ -558,42 +490,9 @@ export function HlsPlayer({
     volume,
   ]);
 
-  useEffect(() => () => {
-    surfacePortalHost?.remove();
-  }, [surfacePortalHost]);
-
   useEffect(() => {
-    if (!surfacePortalHost) {
-      return;
-    }
-
-    const targetAnchor = documentPipAnchor ?? inlineSurfaceAnchor;
-
-    if (!targetAnchor) {
-      return;
-    }
-
-    targetAnchor.appendChild(surfacePortalHost);
-
-    return () => {
-      if (surfacePortalHost.parentElement === targetAnchor) {
-        targetAnchor.removeChild(surfacePortalHost);
-      }
-    };
-  }, [documentPipAnchor, inlineSurfaceAnchor, surfacePortalHost]);
-
-  useEffect(() => {
-    if (!documentPipWindow) {
-      return;
-    }
-
-    copyDocumentStyles(document, documentPipWindow.document);
     syncBrowserState();
-
-    return () => {
-      syncBrowserState();
-    };
-  }, [documentPipWindow]);
+  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -665,7 +564,7 @@ export function HlsPlayer({
       video.removeEventListener("leavepictureinpicture", handlePictureInPictureUpdated);
       document.removeEventListener("fullscreenchange", handleFullscreenUpdated);
     };
-  }, [documentPipAnchor, fullscreenTargetRef, src]);
+  }, [fullscreenTargetRef, src]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -966,11 +865,8 @@ export function HlsPlayer({
     clearReconnectTimeout();
     clearRecoveryNoticeTimeout();
     clearControlsVisibilityTimeout();
-    if (documentPipWindow && !documentPipWindow.closed) {
-      documentPipWindow.close();
-    }
     stopPlayback();
-  }, [documentPipWindow]);
+  }, []);
 
   const diagnostics = buildPlayerDiagnostics({
     status,
@@ -1130,28 +1026,5 @@ export function HlsPlayer({
     );
   }
 
-  return (
-    <>
-      {documentPipAnchor ? (
-        <div
-          className="flex h-full min-h-[160px] items-center justify-center rounded-[1rem] border border-dashed border-cyan-400/30 bg-slate-950/70 p-4 text-center"
-          data-testid="floating-pip-placeholder"
-        >
-          <div>
-            <p className="text-sm font-semibold text-white">Playing in Picture-in-Picture</p>
-            <p className="mt-1.5 text-[12px] text-slate-400">
-              The player controls moved into the PiP window.
-            </p>
-            <Button className="mt-3" onClick={handleTogglePictureInPicture} size="sm" type="button" variant="secondary">
-              Return from PiP
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="h-full w-full" ref={setInlineSurfaceAnchor} />
-
-      {surfacePortalHost ? createPortal(renderPlayerSurface(), surfacePortalHost) : null}
-    </>
-  );
+  return renderPlayerSurface();
 }

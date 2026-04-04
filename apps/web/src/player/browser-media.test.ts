@@ -14,7 +14,7 @@ function createSeekableRange(start: number, end: number): TimeRanges {
 }
 
 describe("browser-media", () => {
-  it("reports document PiP, fullscreen, and media-session capabilities when playback is ready", () => {
+  it("reports native video PiP, fullscreen, and media-session capabilities when playback is ready", () => {
     const video = {
       disablePictureInPicture: false,
       requestPictureInPicture: vi.fn(),
@@ -29,16 +29,10 @@ describe("browser-media", () => {
     const nav = {
       mediaSession: {},
     } as Navigator;
-    const win = {
-      documentPictureInPicture: {
-        requestWindow: vi.fn(),
-      },
-    } as unknown as Window;
-
-    expect(getPlayerBrowserCapabilities(video, fullscreenTarget, doc, nav, win)).toEqual({
+    expect(getPlayerBrowserCapabilities(video, fullscreenTarget, doc, nav)).toEqual({
       canFullscreen: true,
       canPictureInPicture: true,
-      canDocumentPictureInPicture: true,
+      canDocumentPictureInPicture: false,
       canUseMediaSession: true,
       pictureInPictureUnavailableReason: null,
     });

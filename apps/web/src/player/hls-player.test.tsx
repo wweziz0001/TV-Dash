@@ -425,51 +425,7 @@ describe("HlsPlayer", () => {
     expect(controlOverlay).toHaveClass("opacity-0");
   });
 
-  it("prefers document picture-in-picture when the browser supports it", async () => {
-    const pipDocument = document.implementation.createHTMLDocument("pip");
-    const pipWindow = {
-      document: pipDocument,
-      closed: false,
-      close: vi.fn(function (this: { closed: boolean }) {
-        this.closed = true;
-      }),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    } as unknown as Window;
-    const requestWindow = vi.fn(async () => pipWindow);
-
-    Object.defineProperty(window, "documentPictureInPicture", {
-      configurable: true,
-      value: {
-        requestWindow,
-      },
-      writable: true,
-    });
-
-    render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
-
-    act(() => {
-      MockHls.instances[0].emit(MockHls.Events.MANIFEST_PARSED, {
-        levels: [{ height: 1080 }, { height: 720 }],
-      });
-    });
-
-    const playerRoot = screen.getByTestId("player-surface");
-    fireEvent.mouseOver(playerRoot);
-    fireEvent.mouseMove(playerRoot);
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Open Picture-in-Picture" }));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(requestWindow).toHaveBeenCalledTimes(1);
-    expect(HTMLVideoElement.prototype.requestPictureInPicture).not.toHaveBeenCalled();
-    expect(screen.getByTestId("floating-pip-placeholder")).toBeInTheDocument();
-  });
-
-  it("falls back to native video picture-in-picture when document PiP is unavailable", async () => {
+  it("opens native video picture-in-picture without moving playback into a separate document", async () => {
     render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
 
     act(() => {
@@ -488,5 +444,6 @@ describe("HlsPlayer", () => {
     });
 
     expect(HTMLVideoElement.prototype.requestPictureInPicture).toHaveBeenCalledTimes(1);
+    expect(document.pictureInPictureElement).toBeTruthy();
   });
 });
