@@ -29,6 +29,7 @@ import {
 } from "./recording-storage.js";
 import { generateRecordingThumbnail } from "./recording-thumbnail.js";
 import { buildRecordingInputConfig } from "./recording-input.js";
+import { getRecordingFfmpegCapabilities } from "./recording-ffmpeg-capabilities.js";
 import { buildRecordingFfmpegArgs } from "./recording-ffmpeg.js";
 import { syncRecurringRecordingJobs } from "./recording-rule-sync.js";
 
@@ -294,16 +295,19 @@ async function startRecordingJobExecution(recordingJobId: string) {
     return;
   }
 
+  const ffmpegCapabilities = await getRecordingFfmpegCapabilities();
   const inputConfig = await buildRecordingInputConfig(
     streamDetails,
     env.API_PORT,
     claimed.job.requestedQualitySelector,
+    ffmpegCapabilities,
   );
+  const ffmpegArgs = buildRecordingFfmpegArgs(inputConfig, absoluteOutputPath, claimed.job.requestedQualitySelector);
   const childProcess = spawn(
-    env.RECORDINGS_FFMPEG_PATH,
-    buildRecordingFfmpegArgs(inputConfig, absoluteOutputPath, claimed.job.requestedQualitySelector),
+    ffmpegCapabilities.binaryPath,
+    ffmpegArgs,
     {
-    stdio: ["pipe", "ignore", "pipe"],
+      stdio: ["pipe", "ignore", "pipe"],
     },
   );
   const startedAt = new Date();
@@ -349,6 +353,10 @@ async function startRecordingJobExecution(recordingJobId: string) {
       storagePath: output.storagePath,
       ffmpegPid: childProcess.pid ?? null,
       containerFormat: getRecordingContainerFormat(),
+      ffmpegConfiguredPath: ffmpegCapabilities.configuredPath,
+      ffmpegBinaryPath: ffmpegCapabilities.binaryPath,
+      ffmpegVersion: ffmpegCapabilities.version,
+      supportsAllowedSegmentExtensions: ffmpegCapabilities.supportsAllowedSegmentExtensions,
     },
   });
 }

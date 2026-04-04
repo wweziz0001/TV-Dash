@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { normalizeUpstreamHeaders } from "../../app/upstream-request.js";
 import { env } from "../../config/env.js";
 import type { StreamChannelRecord } from "../channels/channel.repository.js";
+import type { RecordingFfmpegCapabilities } from "./recording-ffmpeg-capabilities.js";
 import { resolveRecordingSourceDescriptor } from "./recording-quality.js";
 
 export interface RecordingInputConfig {
@@ -31,29 +32,41 @@ function buildInternalRecordingSourceUrl(channelId: string, apiPort: number) {
   return `http://127.0.0.1:${apiPort}/api/streams/channels/${channelId}/master?intent=recording`;
 }
 
-function buildInternalProxyInputConfig(channelId: string, apiPort: number): RecordingInputConfig {
+function buildProxyHlsInputArgs(ffmpegCapabilities?: Pick<RecordingFfmpegCapabilities, "supportsAllowedSegmentExtensions"> | null) {
+  const ffmpegInputArgs = ["-allowed_extensions", "ALL"];
+
+  if (ffmpegCapabilities?.supportsAllowedSegmentExtensions) {
+    ffmpegInputArgs.push("-allowed_segment_extensions", "ALL");
+  }
+
+  ffmpegInputArgs.push(
+    "-extension_picky",
+    "0",
+    "-protocol_whitelist",
+    "file,http,https,tcp,tls,crypto,data",
+    "-reconnect",
+    "1",
+    "-reconnect_streamed",
+    "1",
+    "-reconnect_on_network_error",
+    "1",
+    "-reconnect_delay_max",
+    "2",
+    "-fflags",
+    "+genpts+discardcorrupt",
+  );
+
+  return ffmpegInputArgs;
+}
+
+function buildInternalProxyInputConfig(
+  channelId: string,
+  apiPort: number,
+  ffmpegCapabilities?: Pick<RecordingFfmpegCapabilities, "supportsAllowedSegmentExtensions"> | null,
+): RecordingInputConfig {
   return {
     sourceUrl: buildInternalRecordingSourceUrl(channelId, apiPort),
-    ffmpegInputArgs: [
-      "-allowed_extensions",
-      "ALL",
-      "-allowed_segment_extensions",
-      "ALL",
-      "-extension_picky",
-      "0",
-      "-protocol_whitelist",
-      "file,http,https,tcp,tls,crypto,data",
-      "-reconnect",
-      "1",
-      "-reconnect_streamed",
-      "1",
-      "-reconnect_on_network_error",
-      "1",
-      "-reconnect_delay_max",
-      "2",
-      "-fflags",
-      "+genpts+discardcorrupt",
-    ],
+    ffmpegInputArgs: buildProxyHlsInputArgs(ffmpegCapabilities),
     captureMode: "PROXY",
     temporaryFilePath: null,
   };
@@ -100,9 +113,10 @@ export async function buildRecordingInputConfig(
   channel: StreamChannelRecord,
   apiPort: number,
   requestedQualitySelector: string | null | undefined,
+  ffmpegCapabilities?: Pick<RecordingFfmpegCapabilities, "supportsAllowedSegmentExtensions"> | null,
 ): Promise<RecordingInputConfig> {
   if (channel.playbackMode === "PROXY") {
-    return buildInternalProxyInputConfig(channel.id, apiPort);
+    return buildInternalProxyInputConfig(channel.id, apiPort, ffmpegCapabilities);
   }
 
   const inputArgs = buildBaseInputArgs(channel);

@@ -165,6 +165,9 @@ mid/index.m3u8`),
       }),
       4000,
       "1",
+      {
+        supportsAllowedSegmentExtensions: true,
+      },
     );
 
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -193,5 +196,46 @@ mid/index.m3u8`),
       "-fflags",
       "+genpts+discardcorrupt",
     ]);
+  });
+
+  it("falls back to broadly compatible HLS input options when ffmpeg does not support allowed_segment_extensions", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const config = await buildRecordingInputConfig(
+      buildChannel({
+        playbackMode: "PROXY",
+      }),
+      4000,
+      "1",
+      {
+        supportsAllowedSegmentExtensions: false,
+      },
+    );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(config.sourceUrl).toBe(
+      "http://127.0.0.1:4000/api/streams/channels/11111111-1111-1111-1111-111111111111/master?intent=recording",
+    );
+    expect(config.captureMode).toBe("PROXY");
+    expect(config.ffmpegInputArgs).toEqual([
+      "-allowed_extensions",
+      "ALL",
+      "-extension_picky",
+      "0",
+      "-protocol_whitelist",
+      "file,http,https,tcp,tls,crypto,data",
+      "-reconnect",
+      "1",
+      "-reconnect_streamed",
+      "1",
+      "-reconnect_on_network_error",
+      "1",
+      "-reconnect_delay_max",
+      "2",
+      "-fflags",
+      "+genpts+discardcorrupt",
+    ]);
+    expect(config.ffmpegInputArgs).not.toContain("-allowed_segment_extensions");
   });
 });
