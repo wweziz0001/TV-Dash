@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
+import { buildPlaybackSessionSemantics } from "@/features/observability/playback-session-semantics";
 import { usePlaybackSessionHeartbeat } from "@/features/observability/use-playback-session-heartbeat";
 import { isEditableKeyboardTarget } from "@/lib/keyboard";
 import { useDeviceProfile } from "@/lib/use-device-profile";
@@ -292,13 +293,16 @@ export function MultiViewPage() {
             status: "loading",
             muted: tile.isMuted,
           });
+        const sessionSemantics = buildPlaybackSessionSemantics(diagnostics);
 
         return [
           {
             sessionKey: `multiview:${index}`,
             channelId: tile.channelId,
             sessionType: "MULTIVIEW" as const,
-            playbackState: diagnostics.status,
+            playbackState: sessionSemantics.playbackState,
+            playbackPositionState: sessionSemantics.playbackPositionState,
+            liveOffsetSeconds: sessionSemantics.liveOffsetSeconds,
             selectedQuality: tile.preferredQuality ?? "AUTO",
             isMuted: tile.isMuted,
             tileIndex: index,

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
+import { buildPlaybackSessionSemantics } from "@/features/observability/playback-session-semantics";
 import { usePlaybackSessionHeartbeat } from "@/features/observability/use-playback-session-heartbeat";
 import { isEditableKeyboardTarget } from "@/lib/keyboard";
 import { getPlaybackModeLabel } from "@/lib/playback-mode";
@@ -231,12 +232,16 @@ export function ChannelWatchPage() {
       return [];
     }
 
+    const sessionSemantics = buildPlaybackSessionSemantics(playerDiagnostics);
+
     return [
       {
         sessionKey: `watch:${channelQuery.data.id}`,
         channelId: channelQuery.data.id,
         sessionType: "SINGLE_VIEW" as const,
-        playbackState: playerDiagnostics.status,
+        playbackState: sessionSemantics.playbackState,
+        playbackPositionState: sessionSemantics.playbackPositionState,
+        liveOffsetSeconds: sessionSemantics.liveOffsetSeconds,
         selectedQuality,
         isMuted: playerDiagnostics.isMuted,
         failureKind: playerDiagnostics.failureKind,

@@ -1,5 +1,10 @@
 import { useEffect, useRef } from "react";
-import type { DiagnosticFailureKind, PlaybackSessionState, PlaybackSessionType } from "@tv-dash/shared";
+import type {
+  DiagnosticFailureKind,
+  PlaybackPositionState,
+  PlaybackSessionState,
+  PlaybackSessionType,
+} from "@tv-dash/shared";
 import { api } from "@/services/api";
 import type { PlaybackSessionHeartbeatPayload } from "@/types/api";
 
@@ -10,6 +15,8 @@ export interface PlaybackSessionDescriptor {
   channelId: string;
   sessionType: PlaybackSessionType;
   playbackState: PlaybackSessionState;
+  playbackPositionState: PlaybackPositionState;
+  liveOffsetSeconds: number;
   selectedQuality: string | null;
   isMuted: boolean;
   tileIndex?: number | null;
@@ -21,10 +28,15 @@ function createPlaybackSessionId() {
     return globalThis.crypto.randomUUID();
   }
 
-  return `session-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`;
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
+    const randomNibble = Math.floor(Math.random() * 16);
+    const value = character === "x" ? randomNibble : (randomNibble & 0x3) | 0x8;
+    return value.toString(16);
+  });
 }
 
 export function usePlaybackSessionHeartbeat(token: string | null, descriptors: PlaybackSessionDescriptor[]) {
+  const surfaceIdRef = useRef(createPlaybackSessionId());
   const sessionIdsByKeyRef = useRef(new Map<string, string>());
   const descriptorsRef = useRef(descriptors);
   const tokenRef = useRef(token);
@@ -58,9 +70,12 @@ export function usePlaybackSessionHeartbeat(token: string | null, descriptors: P
     const payload: PlaybackSessionHeartbeatPayload = {
       sessions: currentDescriptors.map((descriptor) => ({
         sessionId: getSessionId(descriptor.sessionKey),
+        surfaceId: surfaceIdRef.current,
         channelId: descriptor.channelId,
         sessionType: descriptor.sessionType,
         playbackState: descriptor.playbackState,
+        playbackPositionState: descriptor.playbackPositionState,
+        liveOffsetSeconds: descriptor.liveOffsetSeconds,
         selectedQuality: descriptor.selectedQuality,
         isMuted: descriptor.isMuted,
         tileIndex: descriptor.tileIndex ?? null,

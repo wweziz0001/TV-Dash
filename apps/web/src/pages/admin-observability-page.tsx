@@ -137,7 +137,7 @@ export function AdminObservabilityPage() {
             icon={RadioTower}
             label="Shared sessions"
             value={String(monitoring?.summary.activeSharedSessionCount ?? 0)}
-            meta={`${monitoring?.summary.activeSharedViewerCount ?? 0} viewer(s) currently attached to shared local delivery`}
+            meta={`${monitoring?.summary.activeSharedViewerCount ?? 0} viewer session(s) currently attached to shared local delivery`}
           />
           <SummaryCard
             icon={Activity}
@@ -154,6 +154,18 @@ export function AdminObservabilityPage() {
             label="Timeshift"
             value={String(monitoring?.summary.activeTimeshiftSessionCount ?? 0)}
             meta={`${monitoring?.summary.readyTimeshiftSessionCount ?? 0} retained DVR window(s) currently ready`}
+          />
+          <SummaryCard
+            icon={Activity}
+            label="Live edge"
+            value={String(monitoring?.summary.liveEdgeViewerCount ?? 0)}
+            meta="Viewer sessions currently tracking the live edge"
+          />
+          <SummaryCard
+            icon={Activity}
+            label="Behind live"
+            value={String((monitoring?.summary.behindLiveViewerCount ?? 0) + (monitoring?.summary.pausedViewerCount ?? 0))}
+            meta={`${monitoring?.summary.pausedViewerCount ?? 0} paused viewer session(s) currently retained behind live`}
           />
           <SummaryCard
             icon={ScrollText}
@@ -379,6 +391,8 @@ interface WatchingNowSurface {
     isMuted: boolean;
     tileIndex: number | null;
     playbackState: AdminMonitoringSession["playbackState"];
+    playbackPositionState: AdminMonitoringSession["playbackPositionState"];
+    liveOffsetSeconds: number;
   }>;
 }
 
@@ -438,9 +452,12 @@ function WatchingNowSurfaceCard({ surface }: { surface: WatchingNowSurface }) {
                     Tile {channel.tileIndex + 1}
                   </Badge>
                 ) : null}
+                <Badge className={getPlaybackPositionBadgeClassName(channel.playbackPositionState)} size="sm">
+                  {formatViewerPositionLabel(channel.playbackPositionState, channel.liveOffsetSeconds)}
+                </Badge>
               </div>
               <p className="mt-1 text-[11px] text-slate-500">
-                {channel.slug} · {channel.selectedQuality ?? "AUTO"} · {channel.isMuted ? "Muted" : "Audio live"}
+                {channel.slug} · {channel.selectedQuality ?? "AUTO"} · {channel.isMuted ? "Muted" : "Audio live"} · {channel.playbackState}
               </p>
             </div>
           ))}
@@ -460,7 +477,9 @@ function buildWatchingNowSurfaces(sessions: AdminMonitoringSession[]): WatchingN
 
   sessions.forEach((session) => {
     const groupingKey =
-      session.sessionType === "MULTIVIEW" ? `${session.user.id}:MULTIVIEW` : `${session.sessionId}:SINGLE_VIEW`;
+      session.sessionType === "MULTIVIEW"
+        ? `${session.surfaceId ?? session.sessionId}:MULTIVIEW`
+        : `${session.surfaceId ?? session.sessionId}:SINGLE_VIEW`;
     const existingSurface = surfaces.get(groupingKey);
 
     if (!existingSurface) {
@@ -483,6 +502,8 @@ function buildWatchingNowSurfaces(sessions: AdminMonitoringSession[]): WatchingN
                 isMuted: session.isMuted,
                 tileIndex: session.tileIndex,
                 playbackState: session.playbackState,
+                playbackPositionState: session.playbackPositionState,
+                liveOffsetSeconds: session.liveOffsetSeconds,
               },
             ]
           : [],
@@ -509,6 +530,8 @@ function buildWatchingNowSurfaces(sessions: AdminMonitoringSession[]): WatchingN
         isMuted: session.isMuted,
         tileIndex: session.tileIndex,
         playbackState: session.playbackState,
+        playbackPositionState: session.playbackPositionState,
+        liveOffsetSeconds: session.liveOffsetSeconds,
       });
     }
   });
@@ -639,9 +662,18 @@ function ChannelViewerRow({ entry }: { entry: ChannelViewerCount }) {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-semibold text-white">{entry.channel.name}</p>
-            <Badge size="sm">{entry.viewerCount} viewer(s)</Badge>
+            <Badge size="sm">{entry.viewerCount} viewer session(s)</Badge>
             <Badge size="sm">{entry.singleViewCount} single</Badge>
             <Badge size="sm">{entry.multiviewCount} multiview</Badge>
+            <Badge className="border-emerald-400/30 bg-emerald-500/10 text-emerald-100" size="sm">
+              {entry.liveEdgeViewerCount} live edge
+            </Badge>
+            <Badge className="border-cyan-400/30 bg-cyan-500/10 text-cyan-100" size="sm">
+              {entry.behindLiveViewerCount} behind live
+            </Badge>
+            <Badge className="border-slate-700/70 bg-slate-900/90 text-slate-300" size="sm">
+              {entry.pausedViewerCount} paused
+            </Badge>
             {entry.sharedSession ? (
               <Badge className="border-cyan-400/30 bg-cyan-500/10 text-cyan-100" size="sm">
                 Shared session
@@ -675,7 +707,7 @@ function ChannelViewerRow({ entry }: { entry: ChannelViewerCount }) {
           </p>
         </div>
         <Badge className={entry.viewerCount > 0 ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : undefined} size="sm">
-          {entry.viewerCount > 0 ? "Live audience" : "No current viewers"}
+          {entry.viewerCount > 0 ? "Active viewer sessions" : "No current viewers"}
         </Badge>
       </div>
 
@@ -683,7 +715,7 @@ function ChannelViewerRow({ entry }: { entry: ChannelViewerCount }) {
         <div className="mt-3 rounded-2xl border border-cyan-400/15 bg-cyan-500/5 p-3">
           <div className="flex flex-wrap items-center gap-2">
             <Badge size="sm">{entry.sharedSession.upstreamState}</Badge>
-            <Badge size="sm">{entry.sharedSession.viewerCount} attached viewer(s)</Badge>
+            <Badge size="sm">{entry.sharedSession.viewerCount} attached viewer session(s)</Badge>
             <Badge size="sm">{entry.sharedSession.cache.entryCount} cache entr{entry.sharedSession.cache.entryCount === 1 ? "y" : "ies"}</Badge>
             {sharedCacheHitRate !== null ? <Badge size="sm">{sharedCacheHitRate}% hit rate</Badge> : null}
           </div>
@@ -739,7 +771,7 @@ function ChannelViewerRow({ entry }: { entry: ChannelViewerCount }) {
             >
               <p className="font-semibold text-white">{watcher.username}</p>
               <p className="mt-0.5">
-                {watcher.playbackState}
+                {watcher.playbackState} · {formatViewerPositionLabel(watcher.playbackPositionState, watcher.liveOffsetSeconds)}
                 {typeof watcher.tileIndex === "number" ? ` · tile ${watcher.tileIndex + 1}` : ""}
               </p>
               <p className="mt-0.5 text-slate-500">
@@ -858,10 +890,38 @@ function formatBytes(value: number) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatViewerPositionLabel(positionState: AdminMonitoringSession["playbackPositionState"], liveOffsetSeconds: number) {
+  switch (positionState) {
+    case "LIVE_EDGE":
+      return "Live edge";
+    case "BEHIND_LIVE":
+      return `${liveOffsetSeconds}s behind live`;
+    case "PAUSED":
+      return `Paused at -${liveOffsetSeconds}s`;
+    default:
+      return positionState;
+  }
+}
+
+function getPlaybackPositionBadgeClassName(positionState: AdminMonitoringSession["playbackPositionState"]) {
+  switch (positionState) {
+    case "LIVE_EDGE":
+      return "border-emerald-400/30 bg-emerald-500/10 text-emerald-200";
+    case "BEHIND_LIVE":
+      return "border-cyan-400/30 bg-cyan-500/10 text-cyan-100";
+    case "PAUSED":
+      return "border-slate-700/70 bg-slate-900/90 text-slate-200";
+    default:
+      return "";
+  }
+}
+
 function getPlaybackStateBadgeClassName(state: AdminMonitoringSession["playbackState"] | "mixed") {
   switch (state) {
     case "playing":
       return "border-emerald-400/30 bg-emerald-500/10 text-emerald-200";
+    case "paused":
+      return "border-slate-700/70 bg-slate-900/90 text-slate-200";
     case "mixed":
       return "border-cyan-400/30 bg-cyan-500/10 text-cyan-100";
     case "error":

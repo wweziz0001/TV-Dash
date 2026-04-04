@@ -16,6 +16,7 @@ import type {
   ProgramEntrySource,
   PlaybackSessionEndInput,
   PlaybackSessionHeartbeatInput,
+  PlaybackPositionState,
   SavedLayoutConfig,
   StreamPlaybackMode,
   UserRole,
@@ -471,6 +472,10 @@ export interface ChannelStreamSessionStatus {
     bufferedPlaybackAvailable: boolean;
     defaultPlayback: "LIVE_EDGE" | "BUFFERED";
     returnToLiveSupported: boolean;
+    playbackPositionScope: "PER_VIEWER";
+    positionPersistence: "EPHEMERAL";
+    reconnectBehavior: "RESET_TO_LIVE_EDGE";
+    staleViewerStateTtlSeconds: number;
   };
   sharedSession: {
     channelId: string;
@@ -553,8 +558,11 @@ export type { RecordingJobStatus, RecordingMode, RecordingRecurrenceType, Record
 
 export interface AdminMonitoringSession {
   sessionId: string;
+  surfaceId: string | null;
   sessionType: PlaybackSessionType;
   playbackState: PlaybackSessionState;
+  playbackPositionState: PlaybackPositionState;
+  liveOffsetSeconds: number;
   selectedQuality: string | null;
   isMuted: boolean;
   tileIndex: number | null;
@@ -588,11 +596,16 @@ export interface ChannelViewerCount {
   viewerCount: number;
   singleViewCount: number;
   multiviewCount: number;
+  liveEdgeViewerCount: number;
+  behindLiveViewerCount: number;
+  pausedViewerCount: number;
   watchers: Array<{
     sessionId: string;
     userId: string;
     username: string;
     playbackState: PlaybackSessionState;
+    playbackPositionState: PlaybackPositionState;
+    liveOffsetSeconds: number;
     selectedQuality: string | null;
     isMuted: boolean;
     tileIndex: number | null;
@@ -646,6 +659,9 @@ export interface AdminMonitoringSnapshot {
     sharedCacheHitRate: number | null;
     activeTimeshiftSessionCount: number;
     readyTimeshiftSessionCount: number;
+    liveEdgeViewerCount: number;
+    behindLiveViewerCount: number;
+    pausedViewerCount: number;
     warningLogCount: number;
     errorLogCount: number;
     staleAfterSeconds: number;
