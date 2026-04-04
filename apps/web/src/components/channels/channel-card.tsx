@@ -4,6 +4,7 @@ import { ChannelGuideCard } from "@/components/channels/channel-guide-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
+import { getPlaybackModeShortLabel } from "@/lib/playback-mode";
 import type { Channel, ChannelNowNext } from "@/types/api";
 import { cn } from "@/lib/utils";
 
@@ -53,7 +54,7 @@ export function ChannelCard({
           {channel.isActive ? "Active" : "Inactive"}
         </Badge>
         <Badge size="sm">{channel.slug}</Badge>
-        <Badge size="sm">{channel.playbackMode === "PROXY" ? "Proxy" : "Direct"}</Badge>
+        <Badge size="sm">{getPlaybackModeShortLabel(channel.playbackMode)}</Badge>
         {channel.epgSource ? <Badge size="sm">{channel.epgSource.name}</Badge> : null}
       </div>
 

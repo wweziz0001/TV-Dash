@@ -13,6 +13,7 @@ import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { usePlaybackSessionHeartbeat } from "@/features/observability/use-playback-session-heartbeat";
 import { isEditableKeyboardTarget } from "@/lib/keyboard";
+import { getPlaybackModeLabel } from "@/lib/playback-mode";
 import { HlsPlayer, type PlayerDiagnostics } from "@/player/hls-player";
 import { buildPlayerDiagnostics } from "@/player/playback-diagnostics";
 import { defaultQualityOptions } from "@/player/quality-options";
@@ -466,9 +467,11 @@ export function ChannelWatchPage() {
                   </p>
                 ) : null}
                 <p className="mt-1.5 text-[11px] text-slate-500">
-                  {channel.playbackMode === "PROXY"
-                    ? "Playback is routed through the TV-Dash stream gateway."
-                    : "Playback uses the channel's direct upstream HLS URL."}
+                  {channel.playbackMode === "SHARED"
+                    ? "Playback is routed through TV-Dash shared local delivery with per-channel edge caching."
+                    : channel.playbackMode === "PROXY"
+                      ? "Playback is routed through the TV-Dash stream gateway."
+                      : "Playback uses the channel's direct upstream HLS URL."}
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">
                   Audio: {playerDiagnostics.isMuted ? "Muted by player" : `Live audio enabled at ${Math.round(playerDiagnostics.volume * 100)}%`}
@@ -607,9 +610,9 @@ export function ChannelWatchPage() {
               </div>
             </div>
             <div className="mt-3 space-y-2.5 text-[13px] text-slate-400">
-              <p>Stream access</p>
+              <p>Stream access · {getPlaybackModeLabel(channel.playbackMode)}</p>
               <p className="rounded-xl bg-slate-950/80 p-2.5 font-mono text-[11px] text-slate-300">
-                {channel.playbackMode === "PROXY" ? playbackUrl : channel.masterHlsUrl}
+                {channel.playbackMode === "DIRECT" ? channel.masterHlsUrl : playbackUrl}
               </p>
               <p>
                 Guide link:{" "}

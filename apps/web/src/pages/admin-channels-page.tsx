@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
+import { getPlaybackModeLabel } from "@/lib/playback-mode";
 import { HlsPlayer } from "@/player/hls-player";
 import { api, getChannelPlaybackUrl } from "@/services/api";
 import type { Channel, QualityOption, StreamTestResult } from "@/types/api";
@@ -267,7 +268,7 @@ export function AdminChannelsPage() {
           <div className="rounded-3xl border border-slate-800/80 bg-slate-950/70 p-4 text-sm text-slate-400">
             <p className="font-semibold text-white">Operational notes</p>
             <p className="mt-2">
-              Use proxy mode when the provider expects TV-Dash to own upstream access, custom headers, or referrer handling. Direct mode keeps the browser on the upstream path, while manual variants still get a synthesized master playlist from the backend.
+              Use proxy mode when TV-Dash should relay requests without maintaining a shared cache. Use shared delivery when local viewers should reuse one channel-local edge cache/session where possible. Direct mode keeps the browser on the upstream path, while manual variants still get a synthesized master playlist from the backend.
             </p>
             <p className="mt-2">
               Guide mapping and manual programme entry now live in the dedicated Admin EPG workflow so source imports,
@@ -407,7 +408,7 @@ export function AdminChannelsPage() {
                         {channel.sourceMode === "MASTER_PLAYLIST" ? "Master playlist" : `${channel.manualVariantCount} manual variant(s)`}
                       </span>
                       <span className="rounded-full border border-slate-700/80 bg-slate-950/80 px-3 py-1 text-slate-300">
-                        {channel.playbackMode === "PROXY" ? "Proxy playback" : "Direct playback"}
+                        {getPlaybackModeLabel(channel.playbackMode)}
                       </span>
                       <span className="rounded-full border border-slate-700/80 bg-slate-950/80 px-3 py-1 text-slate-300">
                         {channel.epgSource ? `EPG: ${channel.epgSource.name}` : "No EPG mapping"}
@@ -415,9 +416,11 @@ export function AdminChannelsPage() {
                     </div>
                     <p className="mt-3 text-xs text-slate-500">
                       {channel.sourceMode === "MASTER_PLAYLIST"
-                        ? channel.playbackMode === "PROXY"
-                          ? "Upstream master URL hidden from the public channel payload."
-                          : channel.masterHlsUrl
+                        ? channel.playbackMode === "DIRECT"
+                          ? channel.masterHlsUrl
+                          : channel.playbackMode === "SHARED"
+                            ? "Playback uses TV-Dash shared local delivery with per-channel edge caching."
+                            : "Upstream master URL hidden from the public channel payload."
                         : "Playback uses a backend-generated synthetic master playlist."}
                     </p>
                   </div>

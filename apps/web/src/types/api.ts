@@ -550,6 +550,29 @@ export interface ChannelViewerCount {
     tileIndex: number | null;
     lastSeenAt: string;
   }>;
+  sharedSession: {
+    upstreamState: "STARTING" | "ACTIVE" | "ERROR";
+    viewerCount: number;
+    createdAt: string;
+    lastAccessAt: string;
+    expiresAt: string;
+    lastUpstreamRequestAt: string | null;
+    lastError: string | null;
+    lastErrorAt: string | null;
+    mappedAssetCount: number;
+    cache: {
+      entryCount: number;
+      manifestEntryCount: number;
+      segmentEntryCount: number;
+      bytesUsed: number;
+      manifestHitCount: number;
+      manifestMissCount: number;
+      segmentHitCount: number;
+      segmentMissCount: number;
+      inflightReuseCount: number;
+      upstreamRequestCount: number;
+    };
+  } | null;
 }
 
 export interface AdminMonitoringSnapshot {
@@ -557,6 +580,9 @@ export interface AdminMonitoringSnapshot {
   summary: {
     activeSessionCount: number;
     activeChannelCount: number;
+    activeSharedSessionCount: number;
+    activeSharedViewerCount: number;
+    sharedCacheHitRate: number | null;
     warningLogCount: number;
     errorLogCount: number;
     staleAfterSeconds: number;

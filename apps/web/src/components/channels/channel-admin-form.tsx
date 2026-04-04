@@ -1,4 +1,5 @@
 import type { ChannelInput } from "@tv-dash/shared";
+import { isTvDashManagedPlaybackMode } from "@tv-dash/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -126,11 +127,12 @@ export function ChannelAdminFormFields({ form, groups, onChange }: ChannelAdminF
           >
             <option value="DIRECT">Direct client playback</option>
             <option value="PROXY">Proxy through TV-Dash</option>
+            <option value="SHARED">Shared local delivery</option>
           </Select>
           {usesDirectManualHeaders ? (
             <FieldMessage tone="amber">
-              Direct playback only applies these request settings to the synthesized master request. Use proxy mode if the
-              provider requires headers or referrer handling on variant and segment fetches too.
+              Direct playback only applies these request settings to the synthesized master request. Use proxy or shared
+              delivery if the provider requires headers or referrer handling on variant and segment fetches too.
             </FieldMessage>
           ) : null}
         </Field>
@@ -154,13 +156,13 @@ export function ChannelAdminFormFields({ form, groups, onChange }: ChannelAdminF
             value={String(form.timeshiftEnabled)}
           >
             <option value="false">Live only</option>
-            <option value="true" disabled={form.playbackMode !== "PROXY"}>
+            <option value="true" disabled={!isTvDashManagedPlaybackMode(form.playbackMode)}>
               Retained DVR buffer
             </option>
           </Select>
-          {form.playbackMode !== "PROXY" ? (
+          {!isTvDashManagedPlaybackMode(form.playbackMode) ? (
             <FieldMessage tone="amber">
-              Timeshift needs proxy playback so TV-Dash can retain live HLS segments and serve a real DVR window.
+              Timeshift needs TV-Dash-managed delivery so TV-Dash can retain live HLS segments and serve a real DVR window.
             </FieldMessage>
           ) : null}
         </Field>

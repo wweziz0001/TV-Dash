@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { ChannelGuideCard } from "@/components/channels/channel-guide-card";
+import { getPlaybackModeShortLabel } from "@/lib/playback-mode";
 import { cn } from "@/lib/utils";
 import { HlsPlayer, type PlayerDiagnostics, type PlayerStatus } from "@/player/hls-player";
 import type { Channel, ChannelNowNext, LiveTimeshiftStatus, QualityOption, RecordingJob } from "@/types/api";
@@ -121,7 +122,7 @@ export function MultiviewTileCard({
             {tile.isMuted ? <Badge size="sm">Muted</Badge> : <Badge className="text-emerald-200" size="sm">Audio</Badge>}
           </div>
           <p className="mt-0.5 truncate text-[11px] text-slate-400">
-            {channel?.group?.name ?? "No channel selected"} · {channel ? (channel.playbackMode === "PROXY" ? "Proxy" : "Direct") : "Ready for assignment"}
+            {channel?.group?.name ?? "No channel selected"} · {channel ? getPlaybackModeShortLabel(channel.playbackMode) : "Ready for assignment"}
           </p>
           {channel ? (
             <p className="mt-1 truncate text-[11px] text-slate-500">

@@ -14,6 +14,7 @@ import type {
   SavedLayoutInput,
   StreamTestInput,
 } from "@tv-dash/shared";
+import { isSharedPlaybackMode } from "@tv-dash/shared";
 import type {
   AdminLogEntry,
   AuditEvent,
@@ -271,6 +272,10 @@ export function getChannelPlaybackUrl(
 
   if (channel.timeshiftEnabled === true && options.timeshiftStatus?.available === true) {
     return `${API_BASE_URL}/streams/channels/${channel.id}/timeshift/master`;
+  }
+
+  if (isSharedPlaybackMode(channel.playbackMode)) {
+    return `${API_BASE_URL}/streams/channels/${channel.id}/shared/master`;
   }
 
   if (options.preferProxy || channel.playbackMode === "PROXY" || channel.sourceMode === "MANUAL_VARIANTS") {

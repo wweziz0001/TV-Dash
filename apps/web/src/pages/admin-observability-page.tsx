@@ -9,6 +9,7 @@ import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { cn } from "@/lib/utils";
+import { getPlaybackModeLabel } from "@/lib/playback-mode";
 import { api } from "@/services/api";
 import type {
   AdminLogEntry,
@@ -113,7 +114,7 @@ export function AdminObservabilityPage() {
           </Button>
         }
       >
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           <SummaryCard
             icon={Users}
             label="Active sessions"
@@ -131,6 +132,22 @@ export function AdminObservabilityPage() {
             label="Warnings"
             value={String(monitoring?.summary.warningLogCount ?? 0)}
             meta="Retained warning events since the current process started"
+          />
+          <SummaryCard
+            icon={RadioTower}
+            label="Shared sessions"
+            value={String(monitoring?.summary.activeSharedSessionCount ?? 0)}
+            meta={`${monitoring?.summary.activeSharedViewerCount ?? 0} viewer(s) currently attached to shared local delivery`}
+          />
+          <SummaryCard
+            icon={Activity}
+            label="Shared cache"
+            value={
+              monitoring?.summary.sharedCacheHitRate === null
+                ? "n/a"
+                : `${monitoring?.summary.sharedCacheHitRate ?? 0}%`
+            }
+            meta="Manifest and segment hit rate across active shared sessions"
           />
           <SummaryCard
             icon={ScrollText}
@@ -184,12 +201,12 @@ export function AdminObservabilityPage() {
       </div>
 
       <Panel className="overflow-hidden" density="flush">
-        <SectionHeader
-          icon={AlertTriangle}
-          title="Recent Failures And Warnings"
-          subtitle="Fresh playback, proxy, guide, and admin-impacting issues captured by structured logs."
-          timestamp={monitoring?.generatedAt}
-        />
+          <SectionHeader
+            icon={AlertTriangle}
+            title="Recent Failures And Warnings"
+            subtitle="Fresh playback, proxy, shared-delivery, guide, and admin-impacting issues captured by structured logs."
+            timestamp={monitoring?.generatedAt}
+          />
         {monitoringQuery.isLoading && !monitoring ? (
           <EmptyState label="Loading recent failures..." />
         ) : !(monitoring?.recentFailures.length ?? 0) ? (
@@ -595,6 +612,21 @@ function SectionHeader({
 }
 
 function ChannelViewerRow({ entry }: { entry: ChannelViewerCount }) {
+  const sharedCacheAccessCount = entry.sharedSession
+    ? entry.sharedSession.cache.manifestHitCount +
+      entry.sharedSession.cache.manifestMissCount +
+      entry.sharedSession.cache.segmentHitCount +
+      entry.sharedSession.cache.segmentMissCount
+    : 0;
+  const sharedCacheHitRate =
+    entry.sharedSession && sharedCacheAccessCount > 0
+      ? Math.round(
+          ((entry.sharedSession.cache.manifestHitCount + entry.sharedSession.cache.segmentHitCount) /
+            sharedCacheAccessCount) *
+            100,
+        )
+      : null;
+
   return (
     <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -604,9 +636,14 @@ function ChannelViewerRow({ entry }: { entry: ChannelViewerCount }) {
             <Badge size="sm">{entry.viewerCount} viewer(s)</Badge>
             <Badge size="sm">{entry.singleViewCount} single</Badge>
             <Badge size="sm">{entry.multiviewCount} multiview</Badge>
+            {entry.sharedSession ? (
+              <Badge className="border-cyan-400/30 bg-cyan-500/10 text-cyan-100" size="sm">
+                Shared session
+              </Badge>
+            ) : null}
           </div>
           <p className="mt-1 text-[11px] text-slate-500">
-            {entry.channel.slug} · {entry.channel.playbackMode === "PROXY" ? "Proxy playback" : "Direct playback"} ·{" "}
+            {entry.channel.slug} · {getPlaybackModeLabel(entry.channel.playbackMode)} ·{" "}
             {entry.channel.sourceMode === "MANUAL_VARIANTS" ? "Manual variants" : "Master playlist"}
           </p>
         </div>
@@ -614,6 +651,30 @@ function ChannelViewerRow({ entry }: { entry: ChannelViewerCount }) {
           {entry.viewerCount > 0 ? "Live audience" : "No current viewers"}
         </Badge>
       </div>
+
+      {entry.sharedSession ? (
+        <div className="mt-3 rounded-2xl border border-cyan-400/15 bg-cyan-500/5 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge size="sm">{entry.sharedSession.upstreamState}</Badge>
+            <Badge size="sm">{entry.sharedSession.viewerCount} attached viewer(s)</Badge>
+            <Badge size="sm">{entry.sharedSession.cache.entryCount} cache entr{entry.sharedSession.cache.entryCount === 1 ? "y" : "ies"}</Badge>
+            {sharedCacheHitRate !== null ? <Badge size="sm">{sharedCacheHitRate}% hit rate</Badge> : null}
+          </div>
+          <p className="mt-2 text-[11px] text-slate-300">
+            Last shared access {formatTimestamp(entry.sharedSession.lastAccessAt)} · expires {formatTimestamp(entry.sharedSession.expiresAt)}
+            {entry.sharedSession.lastUpstreamRequestAt ? ` · upstream ${formatTimestamp(entry.sharedSession.lastUpstreamRequestAt)}` : ""}
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            {entry.sharedSession.cache.manifestEntryCount} manifest, {entry.sharedSession.cache.segmentEntryCount} segment cache entries ·{" "}
+            {formatBytes(entry.sharedSession.cache.bytesUsed)} retained locally · {entry.sharedSession.mappedAssetCount} upstream asset id(s)
+          </p>
+          {entry.sharedSession.lastError ? (
+            <p className="mt-2 text-[11px] text-rose-200">
+              Last shared-session failure: {entry.sharedSession.lastError}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {entry.watchers.length ? (
         <div className="mt-3 flex flex-wrap gap-2">
@@ -729,6 +790,18 @@ function formatTimestamp(value: string) {
     minute: "2-digit",
     second: "2-digit",
   }).format(new Date(value));
+}
+
+function formatBytes(value: number) {
+  if (value < 1024) {
+    return `${value} B`;
+  }
+
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function getPlaybackStateBadgeClassName(state: AdminMonitoringSession["playbackState"] | "mixed") {

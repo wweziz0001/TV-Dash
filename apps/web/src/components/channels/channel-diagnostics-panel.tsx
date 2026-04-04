@@ -3,6 +3,7 @@ import { Activity, RadioTower, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
+import { getPlaybackModeLabel } from "@/lib/playback-mode";
 import type { ChannelDiagnostics, DiagnosticObservationSummary } from "@/types/api";
 
 interface ChannelDiagnosticsPanelProps {
@@ -22,7 +23,7 @@ export function ChannelDiagnosticsPanel({
         <div>
           <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Runtime Diagnostics</p>
           <p className="mt-1 text-sm text-slate-300">
-            Real observations from proxy serving, synthetic master generation, and guide lookups.
+            Real observations from TV-Dash delivery, synthetic master generation, and guide lookups.
           </p>
         </div>
         {onRefresh ? (
@@ -45,7 +46,7 @@ export function ChannelDiagnosticsPanel({
                 {diagnostics.healthState}
               </Badge>
               <Badge size="sm">{diagnostics.current.sourceMode === "MANUAL_VARIANTS" ? "Manual variants" : "Master playlist"}</Badge>
-              <Badge size="sm">{diagnostics.current.proxyEnabled ? "Proxy mode" : "Direct mode"}</Badge>
+              <Badge size="sm">{getPlaybackModeLabel(diagnostics.current.playbackMode)}</Badge>
               {diagnostics.current.syntheticMasterExpected ? <Badge size="sm">Synthetic master</Badge> : null}
             </div>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -70,12 +71,12 @@ export function ChannelDiagnosticsPanel({
             <ObservationCard
               icon={<RadioTower className="h-4 w-4 text-cyan-200" />}
               observation={diagnostics.proxyMaster}
-              title="Proxy master"
+              title={diagnostics.current.playbackMode === "SHARED" ? "Shared master" : "Proxy master"}
             />
             <ObservationCard
               icon={<RadioTower className="h-4 w-4 text-cyan-200" />}
               observation={diagnostics.proxyAsset}
-              title="Proxy asset"
+              title={diagnostics.current.playbackMode === "SHARED" ? "Shared asset" : "Proxy asset"}
             />
             <ObservationCard
               icon={<Activity className="h-4 w-4 text-cyan-200" />}

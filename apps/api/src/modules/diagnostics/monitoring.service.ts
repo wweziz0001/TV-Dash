@@ -12,6 +12,7 @@ import {
   type StructuredLogEntry,
 } from "../../app/structured-log.js";
 import { listChannelCatalog } from "../channels/channel.service.js";
+import { cleanupStaleSharedStreamSessions, listSharedStreamSessionSnapshots } from "../streams/shared-stream-session.js";
 import { ACTIVE_PLAYBACK_SESSION_TTL_MS, cleanupStalePlaybackSessions } from "./playback-session.service.js";
 import { listActivePlaybackSessions, type ActivePlaybackSessionRecord } from "./playback-session.repository.js";
 
@@ -62,6 +63,29 @@ export interface ChannelViewerCountSnapshot {
     tileIndex: number | null;
     lastSeenAt: string;
   }>;
+  sharedSession: {
+    upstreamState: "STARTING" | "ACTIVE" | "ERROR";
+    viewerCount: number;
+    createdAt: string;
+    lastAccessAt: string;
+    expiresAt: string;
+    lastUpstreamRequestAt: string | null;
+    lastError: string | null;
+    lastErrorAt: string | null;
+    mappedAssetCount: number;
+    cache: {
+      entryCount: number;
+      manifestEntryCount: number;
+      segmentEntryCount: number;
+      bytesUsed: number;
+      manifestHitCount: number;
+      manifestMissCount: number;
+      segmentHitCount: number;
+      segmentMissCount: number;
+      inflightReuseCount: number;
+      upstreamRequestCount: number;
+    };
+  } | null;
 }
 
 export interface AdminMonitoringSnapshot {
@@ -69,6 +93,9 @@ export interface AdminMonitoringSnapshot {
   summary: {
     activeSessionCount: number;
     activeChannelCount: number;
+    activeSharedSessionCount: number;
+    activeSharedViewerCount: number;
+    sharedCacheHitRate: number | null;
     warningLogCount: number;
     errorLogCount: number;
     staleAfterSeconds: number;
@@ -122,13 +149,16 @@ function toSessionSnapshot(record: ActivePlaybackSessionRecord): AdminMonitoring
 export async function buildAdminMonitoringSnapshot() {
   const now = new Date();
   await cleanupStalePlaybackSessions(now);
+  cleanupStaleSharedStreamSessions(now);
 
-  const [channels, activeSessions] = await Promise.all([
+  const [channels, activeSessions, sharedSessions] = await Promise.all([
     listChannelCatalog({}),
     listActivePlaybackSessions(new Date(now.getTime() - ACTIVE_PLAYBACK_SESSION_TTL_MS)),
+    Promise.resolve(listSharedStreamSessionSnapshots()),
   ]);
   const sessionSnapshots = activeSessions.map(toSessionSnapshot);
   const sessionsByChannelId = new Map<string, AdminMonitoringSessionSnapshot[]>();
+  const sharedSessionsByChannelId = new Map(sharedSessions.map((session) => [session.channelId, session]));
 
   sessionSnapshots.forEach((session: AdminMonitoringSessionSnapshot) => {
     if (!session.channel) {
@@ -168,6 +198,36 @@ export async function buildAdminMonitoringSnapshot() {
         tileIndex: watcher.tileIndex,
         lastSeenAt: watcher.lastSeenAt,
       })),
+      sharedSession: (() => {
+        const sharedSession = sharedSessionsByChannelId.get(channel.id);
+        if (!sharedSession) {
+          return null;
+        }
+
+        return {
+          upstreamState: sharedSession.upstreamState,
+          viewerCount: watchers.length,
+          createdAt: sharedSession.createdAt,
+          lastAccessAt: sharedSession.lastAccessAt,
+          expiresAt: sharedSession.expiresAt,
+          lastUpstreamRequestAt: sharedSession.lastUpstreamRequestAt,
+          lastError: sharedSession.lastError,
+          lastErrorAt: sharedSession.lastErrorAt,
+          mappedAssetCount: sharedSession.mappedAssetCount,
+          cache: {
+            entryCount: sharedSession.cache.entryCount,
+            manifestEntryCount: sharedSession.cache.manifestEntryCount,
+            segmentEntryCount: sharedSession.cache.segmentEntryCount,
+            bytesUsed: sharedSession.cache.bytesUsed,
+            manifestHitCount: sharedSession.cache.manifestHitCount,
+            manifestMissCount: sharedSession.cache.manifestMissCount,
+            segmentHitCount: sharedSession.cache.segmentHitCount,
+            segmentMissCount: sharedSession.cache.segmentMissCount,
+            inflightReuseCount: sharedSession.cache.inflightReuseCount,
+            upstreamRequestCount: sharedSession.cache.upstreamRequestCount,
+          },
+        };
+      })(),
     } satisfies ChannelViewerCountSnapshot;
   });
 
@@ -182,12 +242,29 @@ export async function buildAdminMonitoringSnapshot() {
   const recentFailures = listStructuredLogs({ limit: 200 })
     .filter((entry) => entry.level === "warn" || entry.level === "error")
     .slice(0, 12);
+  const sharedCacheHits = sharedSessions.reduce(
+    (count, session) => count + session.cache.manifestHitCount + session.cache.segmentHitCount,
+    0,
+  );
+  const sharedCacheMisses = sharedSessions.reduce(
+    (count, session) => count + session.cache.manifestMissCount + session.cache.segmentMissCount,
+    0,
+  );
+  const sharedCacheAccessCount = sharedCacheHits + sharedCacheMisses;
+  const activeSharedViewerCount = channelViewerCounts.reduce(
+    (count, entry) => count + (entry.sharedSession ? entry.viewerCount : 0),
+    0,
+  );
 
   return {
     generatedAt: now.toISOString(),
     summary: {
       activeSessionCount: sessionSnapshots.length,
       activeChannelCount: channelViewerCounts.filter((item: ChannelViewerCountSnapshot) => item.viewerCount > 0).length,
+      activeSharedSessionCount: sharedSessions.length,
+      activeSharedViewerCount,
+      sharedCacheHitRate:
+        sharedCacheAccessCount > 0 ? Number(((sharedCacheHits / sharedCacheAccessCount) * 100).toFixed(1)) : null,
       warningLogCount: countStructuredLogsByLevel("warn"),
       errorLogCount: countStructuredLogsByLevel("error"),
       staleAfterSeconds: ACTIVE_PLAYBACK_SESSION_TTL_MS / 1000,

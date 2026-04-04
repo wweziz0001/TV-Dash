@@ -3,6 +3,7 @@ import { Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { getPlaybackModeShortLabel } from "@/lib/playback-mode";
 import { cn } from "@/lib/utils";
 import type { Channel, ChannelNowNext } from "@/types/api";
 import { getChannelGuideState } from "./channel-guide-state";
@@ -141,7 +142,7 @@ export function ChannelPickerDialog({
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    <Badge size="sm">{channel.playbackMode === "PROXY" ? "Proxy" : "Direct"}</Badge>
+                    <Badge size="sm">{getPlaybackModeShortLabel(channel.playbackMode)}</Badge>
                     <Badge className={channel.isActive ? "text-emerald-200" : "text-slate-400"} size="sm">
                       {channel.isActive ? "Active" : "Inactive"}
                     </Badge>
