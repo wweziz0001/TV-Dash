@@ -23,6 +23,7 @@ enum LayoutType {
 enum StreamPlaybackMode {
   DIRECT
   PROXY
+  SHARED
 }
 
 enum ChannelSourceMode {

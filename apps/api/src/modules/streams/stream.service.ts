@@ -1,3 +1,4 @@
+import { isTvDashManagedPlaybackMode } from "@tv-dash/shared";
 import { writeStructuredLog, sanitizeUrl, summarizeUpstreamRequestConfig } from "../../app/structured-log.js";
 import { buildUpstreamHeaders, type UpstreamRequestConfig } from "../../app/upstream-request.js";
 import { getChannelStreamDetails } from "../channels/channel.service.js";
@@ -178,7 +179,7 @@ export async function getChannelProxyMasterResponse(
       const assetTokenTtlMs = options.intent === "recording" ? RECORDING_PROXY_TOKEN_TTL_MS : undefined;
       const body = buildSyntheticMasterPlaylist(channel.qualityVariants, {
         rewriteUri:
-          channel.playbackMode === "PROXY"
+          isTvDashManagedPlaybackMode(channel.playbackMode)
             ? (absoluteUrl) => buildProxyAssetPath(channel.id, absoluteUrl, { ttlMs: assetTokenTtlMs })
             : undefined,
       });

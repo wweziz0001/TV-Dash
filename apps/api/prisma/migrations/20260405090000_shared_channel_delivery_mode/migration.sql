@@ -1,0 +1,1 @@
+ALTER TYPE "StreamPlaybackMode" ADD VALUE IF NOT EXISTS 'SHARED';

@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { requirePermission } from "../../app/auth-guards.js";
 import {
   channelIdParamSchema,
+  channelSharedAssetParamSchema,
   channelTimeshiftAssetParamSchema,
   channelTimeshiftVariantParamSchema,
   streamMasterQuerySchema,
@@ -10,6 +11,11 @@ import {
 } from "../../app/request-schemas.js";
 import { parseWithSchema } from "../../app/validation.js";
 import { classifyStreamFailure } from "./stream-diagnostics.js";
+import {
+  getChannelSharedAssetResponse,
+  getChannelSharedMasterResponse,
+  getChannelSharedStreamStatus,
+} from "./shared-stream-session.js";
 import { getChannelProxyAssetResponse, getChannelProxyMasterResponse, inspectStream } from "./stream.service.js";
 import {
   getChannelTimeshiftAssetResponse,
@@ -81,6 +87,73 @@ export const streamRoutes: FastifyPluginAsync = async (fastify) => {
             ? 400
             : 502;
 
+      return reply.status(statusCode).send({
+        message: classification.message,
+      });
+    }
+  });
+
+  fastify.get("/streams/channels/:channelId/shared/status", async (request, reply) => {
+    const params = parseWithSchema(channelIdParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    try {
+      const status = await getChannelSharedStreamStatus(params.channelId);
+      return { status };
+    } catch (error) {
+      const classification = classifyStreamFailure(error, { operation: "proxy-master" });
+      return reply.status(classification.statusCode === 404 ? 404 : 502).send({
+        message: classification.message,
+      });
+    }
+  });
+
+  fastify.get("/streams/channels/:channelId/shared/master", async (request, reply) => {
+    const params = parseWithSchema(channelIdParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    try {
+      const shared = await getChannelSharedMasterResponse(params.channelId);
+      reply.header("content-type", shared.contentType);
+      reply.header("cache-control", "no-store");
+      return reply.send(shared.body);
+    } catch (error) {
+      const classification = classifyStreamFailure(error, { operation: "proxy-master" });
+      const statusCode =
+        classification.statusCode === 404
+          ? 404
+          : classification.statusCode === 400
+            ? 400
+            : 502;
+      return reply.status(statusCode).send({
+        message: classification.message,
+      });
+    }
+  });
+
+  fastify.get("/streams/channels/:channelId/shared/assets/:assetId", async (request, reply) => {
+    const params = parseWithSchema(channelSharedAssetParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    try {
+      const shared = await getChannelSharedAssetResponse(params.channelId, params.assetId);
+      reply.header("content-type", shared.contentType);
+      reply.header("cache-control", "no-store");
+      return reply.send(shared.body);
+    } catch (error) {
+      const classification = classifyStreamFailure(error, { operation: "proxy-asset" });
+      const statusCode =
+        classification.statusCode === 404
+          ? 404
+          : classification.statusCode === 400
+            ? 400
+            : 502;
       return reply.status(statusCode).send({
         message: classification.message,
       });

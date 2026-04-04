@@ -56,11 +56,14 @@ export function classifyStreamFailure(error: unknown, context: StreamFailureCont
   }
 
   if (
+    message === "Shared asset not found" ||
+    message === "Shared stream delivery is not enabled for this channel." ||
+    message === "Shared stream delivery is disabled." ||
     message === "Timeshift asset not found" ||
     message === "Timeshift variant not found" ||
     message === "Timeshift is not available for this channel" ||
     message === "Timeshift is disabled for this channel." ||
-    message === "Timeshift requires proxy playback so TV-Dash can retain the live buffer."
+    message === "Timeshift requires TV-Dash-managed delivery so TV-Dash can retain the live buffer."
   ) {
     return buildClassification("misconfiguration", message, false, 404);
   }

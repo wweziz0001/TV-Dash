@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { isSharedPlaybackMode, isTvDashManagedPlaybackMode } from "@tv-dash/shared";
 import { normalizeUpstreamHeaders } from "../../app/upstream-request.js";
 import { env } from "../../config/env.js";
 import type { StreamChannelRecord } from "../channels/channel.repository.js";
@@ -30,6 +31,10 @@ function buildReconnectInputArgs(sourceUrl: string) {
 
 function buildInternalRecordingSourceUrl(channelId: string, apiPort: number) {
   return `http://127.0.0.1:${apiPort}/api/streams/channels/${channelId}/master?intent=recording`;
+}
+
+function buildInternalSharedRecordingSourceUrl(channelId: string, apiPort: number) {
+  return `http://127.0.0.1:${apiPort}/api/streams/channels/${channelId}/shared/master`;
 }
 
 function buildProxyHlsInputArgs(
@@ -66,13 +71,16 @@ function buildProxyHlsInputArgs(
 function buildInternalProxyInputConfig(
   channelId: string,
   apiPort: number,
+  playbackMode: StreamChannelRecord["playbackMode"],
   ffmpegCapabilities?: Pick<
     RecordingFfmpegCapabilities,
     "supportsAllowedSegmentExtensions" | "supportsExtensionPicky"
   > | null,
 ): RecordingInputConfig {
   return {
-    sourceUrl: buildInternalRecordingSourceUrl(channelId, apiPort),
+    sourceUrl: isSharedPlaybackMode(playbackMode)
+      ? buildInternalSharedRecordingSourceUrl(channelId, apiPort)
+      : buildInternalRecordingSourceUrl(channelId, apiPort),
     ffmpegInputArgs: buildProxyHlsInputArgs(ffmpegCapabilities),
     captureMode: "PROXY",
     temporaryFilePath: null,
@@ -125,8 +133,8 @@ export async function buildRecordingInputConfig(
     "supportsAllowedSegmentExtensions" | "supportsExtensionPicky"
   > | null,
 ): Promise<RecordingInputConfig> {
-  if (channel.playbackMode === "PROXY") {
-    return buildInternalProxyInputConfig(channel.id, apiPort, ffmpegCapabilities);
+  if (isTvDashManagedPlaybackMode(channel.playbackMode)) {
+    return buildInternalProxyInputConfig(channel.id, apiPort, channel.playbackMode, ffmpegCapabilities);
   }
 
   const inputArgs = buildBaseInputArgs(channel);

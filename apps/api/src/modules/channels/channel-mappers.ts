@@ -1,3 +1,4 @@
+import { isTvDashManagedPlaybackMode } from "@tv-dash/shared";
 import { normalizeUpstreamHeaders } from "../../app/upstream-request.js";
 import type { ChannelConfigRecord, PublicChannelRecord } from "./channel.repository.js";
 
@@ -10,7 +11,7 @@ export function mapPublicChannel(record: PublicChannelRecord) {
 
   return {
     ...channel,
-    masterHlsUrl: channel.playbackMode === "PROXY" ? null : channel.masterHlsUrl,
+    masterHlsUrl: isTvDashManagedPlaybackMode(channel.playbackMode) ? null : channel.masterHlsUrl,
     timeshiftWindowMinutes: channel.timeshiftEnabled ? channel.timeshiftWindowMinutes ?? null : null,
     manualVariantCount: activeVariants.length,
     hasManualPrograms: manualProgramItems.length > 0,

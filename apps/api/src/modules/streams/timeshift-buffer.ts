@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isTvDashManagedPlaybackMode } from "@tv-dash/shared";
 import { env } from "../../config/env.js";
 import { writeStructuredLog } from "../../app/structured-log.js";
 import { buildUpstreamHeaders, type UpstreamRequestConfig } from "../../app/upstream-request.js";
@@ -204,7 +205,7 @@ async function loadChannelTimeshiftState(channelId: string) {
   }
 
   const configured = channel.timeshiftEnabled && env.TIMESHIFT_ENABLED;
-  const supported = configured && channel.playbackMode === "PROXY";
+  const supported = configured && isTvDashManagedPlaybackMode(channel.playbackMode);
   const variants: TimeshiftVariantDefinition[] = supported ? await resolveVariantDefinitions(channel) : [];
 
   return {
@@ -268,7 +269,7 @@ function buildDisabledStatus(state: ChannelTimeshiftState): TimeshiftStatus {
     supported: false,
     available: false,
     bufferState: "UNSUPPORTED",
-    message: "Timeshift requires proxy playback so TV-Dash can retain the live buffer.",
+      message: "Timeshift requires TV-Dash-managed delivery so TV-Dash can retain the live buffer.",
     windowSeconds: state.windowSeconds,
     minimumReadyWindowSeconds: env.TIMESHIFT_MIN_AVAILABLE_WINDOW_SECONDS,
     availableWindowSeconds: 0,

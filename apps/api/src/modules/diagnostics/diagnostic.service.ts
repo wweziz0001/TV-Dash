@@ -10,6 +10,8 @@ export type ChannelDiagnosticObservationSource =
   | "STREAM_METADATA"
   | "PROXY_MASTER"
   | "PROXY_ASSET"
+  | "SHARED_MASTER"
+  | "SHARED_ASSET"
   | "SYNTHETIC_MASTER";
 
 export type EpgDiagnosticObservationSource = "EPG_PREVIEW" | "GUIDE_LOOKUP" | "XMLTV_LOAD";

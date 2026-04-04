@@ -26,7 +26,7 @@ export const layoutTypeSchema = z.enum([
   "LAYOUT_FOCUS_1_4",
 ]);
 
-export const streamPlaybackModeSchema = z.enum(["DIRECT", "PROXY"]);
+export const streamPlaybackModeSchema = z.enum(["DIRECT", "PROXY", "SHARED"]);
 export const channelSourceModeSchema = z.enum(["MASTER_PLAYLIST", "MANUAL_VARIANTS"]);
 export const epgSourceTypeSchema = z.enum(["XMLTV_URL", "XMLTV_FILE"]);
 export const epgImportStatusSchema = z.enum(["NEVER_IMPORTED", "SUCCEEDED", "FAILED"]);
@@ -281,11 +281,11 @@ function addDuplicateIssue(
 export const channelInputSchema = z
   .discriminatedUnion("sourceMode", [masterPlaylistChannelInputSchema, manualVariantsChannelInputSchema])
   .superRefine((value, context) => {
-    if (value.timeshiftEnabled && value.playbackMode !== "PROXY") {
+    if (value.timeshiftEnabled && !isTvDashManagedPlaybackMode(value.playbackMode)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["playbackMode"],
-        message: "Timeshift requires proxy playback so TV-Dash can retain the live buffer",
+        message: "Timeshift requires TV-Dash-managed delivery so TV-Dash can retain the live buffer",
       });
     }
 
@@ -727,6 +727,14 @@ export const recordingRulesQuerySchema = z.object({
   channelId: z.string().uuid().optional(),
   isActive: z.enum(["true", "false"]).optional(),
 });
+
+export function isTvDashManagedPlaybackMode(playbackMode: StreamPlaybackMode) {
+  return playbackMode === "PROXY" || playbackMode === "SHARED";
+}
+
+export function isSharedPlaybackMode(playbackMode: StreamPlaybackMode) {
+  return playbackMode === "SHARED";
+}
 
 export type UserRole = z.infer<typeof userRoleSchema>;
 export type AccessPermission = z.infer<typeof accessPermissionSchema>;

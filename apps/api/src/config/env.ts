@@ -25,6 +25,15 @@ const envSchema = z.object({
   TIMESHIFT_MIN_AVAILABLE_WINDOW_SECONDS: z.coerce.number().int().min(10).max(600).default(30),
   TIMESHIFT_POLL_INTERVAL_MS: z.coerce.number().int().min(1000).max(30000).default(4000),
   TIMESHIFT_IDLE_TTL_MS: z.coerce.number().int().min(60000).max(3600000).default(900000),
+  SHARED_STREAM_ENABLED: z
+    .string()
+    .optional()
+    .transform((value) => value !== "false"),
+  SHARED_STREAM_IDLE_TTL_MS: z.coerce.number().int().min(10000).max(3600000).default(180000),
+  SHARED_STREAM_MANIFEST_TTL_MS: z.coerce.number().int().min(250).max(10000).default(1500),
+  SHARED_STREAM_SEGMENT_TTL_MS: z.coerce.number().int().min(1000).max(600000).default(120000),
+  SHARED_STREAM_MAX_CACHE_BYTES: z.coerce.number().int().min(1_000_000).max(512_000_000).default(64_000_000),
+  SHARED_STREAM_MAX_CACHE_ENTRIES: z.coerce.number().int().min(50).max(5000).default(500),
   RECORDINGS_FFMPEG_PATH: z.string().min(1).default("ffmpeg"),
   RECORDINGS_FFPROBE_PATH: z.string().min(1).default("ffprobe"),
   RECORDINGS_POLL_INTERVAL_MS: z.coerce.number().int().min(1000).max(60000).default(5000),
