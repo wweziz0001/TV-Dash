@@ -22,12 +22,23 @@ import { PlayerControlOverlay } from "./player-control-overlay";
 import { getFatalRecoveryAction, type PlayerFailureKind, type PlayerStatus } from "./playback-recovery";
 import { buildQualityOptions, defaultQualityOptions, resolvePreferredQuality } from "./quality-options";
 import {
+  buildFloatingPlayerWindowFeatures,
   clampFloatingPlayerLayout,
   countFloatingPlayers,
   getDefaultFloatingPlayerLayout,
   getNextFloatingPlayerZIndex,
   type FloatingPlayerLayout,
 } from "./floating-player";
+import {
+  buildFloatingPlayerRoute,
+  createFloatingPlayerSession,
+  getFloatingPlayerSession,
+  listFloatingPlayerSessions,
+  removeFloatingPlayerSession,
+  saveFloatingPlayerSession,
+  type FloatingPlayerSession,
+  type FloatingPlayerSessionRuntimeState,
+} from "./floating-player-session";
 
 interface HlsPlayerProps {
   src: string | null;
@@ -38,6 +49,7 @@ interface HlsPlayerProps {
   initialBias?: "AUTO" | "LOWEST";
   className?: string;
   controlDensity?: "micro" | "compact" | "full";
+  floatingEnvironment?: "main-app" | "detached-window";
   fullscreenTargetRef?: RefObject<HTMLElement | null>;
   onMutedChange?: (muted: boolean) => void;
   onQualityOptionsChange?: (options: QualityOption[]) => void;
@@ -54,9 +66,11 @@ const defaultBrowserCapabilities: PlayerBrowserCapabilities = {
   canPictureInPicture: false,
   canNativePictureInPicture: false,
   canFloatingPlayback: false,
+  canDetachedFloatingPlayback: false,
   canDocumentPictureInPicture: false,
   canUseMediaSession: false,
   pictureInPictureUnavailableReason: "Picture-in-Picture is not supported in this browser.",
+  floatingPlaybackUnavailableReason: "TV-Dash floating playback is not supported in this browser.",
 };
 
 const SEEK_STEP_SECONDS = 10;
@@ -88,6 +102,7 @@ export function HlsPlayer({
   initialBias = "AUTO",
   className,
   controlDensity = "full",
+  floatingEnvironment = "main-app",
   fullscreenTargetRef,
   onMutedChange,
   onQualityOptionsChange,
@@ -108,6 +123,7 @@ export function HlsPlayer({
   const wasRecoveringRef = useRef(false);
   const floatingPlayerInteractionCleanupRef = useRef<(() => void) | null>(null);
   const floatingLayoutRef = useRef<FloatingPlayerLayout | null>(null);
+  const detachedWindowRef = useRef<Window | null>(null);
   const recoveryStateRef = useRef({
     networkAttempts: 0,
     mediaAttempts: 0,
@@ -151,8 +167,12 @@ export function HlsPlayer({
   });
   const [inlineSurfaceAnchor, setInlineSurfaceAnchor] = useState<HTMLDivElement | null>(null);
   const [floatingLayout, setFloatingLayout] = useState<FloatingPlayerLayout | null>(null);
+  const [detachedSession, setDetachedSession] = useState<FloatingPlayerSession | null>(null);
   const isFloatingMode = floatingLayout !== null;
+  const isDetachedWindow = floatingEnvironment === "detached-window";
+  const isDetachedMode = detachedSession !== null || isDetachedWindow;
   const isPictureInPictureMode = pictureInPictureMode !== "none";
+  const effectiveSrc = detachedSession ? null : src;
 
   callbacksRef.current = {
     onMutedChange,
@@ -174,6 +194,10 @@ export function HlsPlayer({
   function setFloatingPlayerLayout(nextLayout: FloatingPlayerLayout | null) {
     floatingLayoutRef.current = nextLayout;
     setFloatingLayout(nextLayout);
+  }
+
+  function setDetachedFloatingSession(nextSession: FloatingPlayerSession | null) {
+    setDetachedSession(nextSession);
   }
 
   function updateStatus(nextStatus: PlayerStatus) {
@@ -271,6 +295,37 @@ export function HlsPlayer({
     setStatusDetail(statusMessage);
     clearFloatingPlayerInteraction();
     showControls();
+  }
+
+  function returnDetachedPlayerToPage(statusMessage = "Returned the detached player to the page.") {
+    const activeSession = detachedSession;
+
+    if (!activeSession) {
+      return;
+    }
+
+    removeFloatingPlayerSession(activeSession.id);
+    setDetachedFloatingSession(null);
+    setStatusDetail(statusMessage);
+    showControls();
+  }
+
+  function focusDetachedPlayerWindow() {
+    if (!detachedSession) {
+      return;
+    }
+
+    if (detachedWindowRef.current && !detachedWindowRef.current.closed) {
+      detachedWindowRef.current.focus();
+      return;
+    }
+
+    detachedWindowRef.current = window.open(
+      buildFloatingPlayerRoute(detachedSession.id),
+      detachedSession.id,
+      buildFloatingPlayerWindowFeatures(detachedSession.window),
+    );
+    detachedWindowRef.current?.focus();
   }
 
   function startFloatingPlayerInteraction(
@@ -380,11 +435,16 @@ export function HlsPlayer({
       fullscreenTarget,
       activeDocument,
       navigator,
+      window,
     );
 
     setCapabilities(nextCapabilities);
     setPictureInPictureMode(
-      floatingLayoutRef.current
+      isDetachedWindow
+        ? "detached"
+        : detachedSession
+          ? "detached"
+          : floatingLayoutRef.current
         ? "floating"
         : isPictureInPictureActive(video, activeDocument)
           ? "native"
@@ -399,7 +459,7 @@ export function HlsPlayer({
 
     setCurrentTime(video.currentTime);
     setVolume(video.volume);
-    setIsPaused(Boolean(video.currentSrc || src) && video.paused && !video.ended);
+    setIsPaused(Boolean(video.currentSrc || effectiveSrc) && video.paused && !video.ended);
   }
 
   function applyMutedState(nextMuted: boolean) {
@@ -410,7 +470,7 @@ export function HlsPlayer({
   async function resumePlayback() {
     const video = videoRef.current;
 
-    if (!video || !src) {
+    if (!video || !effectiveSrc) {
       return;
     }
 
@@ -442,7 +502,7 @@ export function HlsPlayer({
   function handleTogglePlayback() {
     const video = videoRef.current;
 
-    if (!video || !src) {
+    if (!video || !effectiveSrc) {
       return;
     }
 
@@ -514,20 +574,85 @@ export function HlsPlayer({
     syncBrowserState();
   }
 
-  function handleTogglePictureInPicture() {
+  function handleToggleFloatingPlayback() {
+    if (!src) {
+      return;
+    }
+
+    if (detachedSession) {
+      returnDetachedPlayerToPage();
+      return;
+    }
+
+    if (floatingLayoutRef.current) {
+      closeFloatingPlayer();
+      return;
+    }
+
+    const floatingWindowLayout = getDefaultFloatingPlayerLayout(
+      listFloatingPlayerSessions().length,
+      window.innerWidth,
+      window.innerHeight,
+    );
+    const session = createFloatingPlayerSession({
+      title,
+      src,
+      returnPath: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+      preferredQuality,
+      muted: playerMuted,
+      window: {
+        left: window.screenX + floatingWindowLayout.left,
+        top: window.screenY + floatingWindowLayout.top,
+        width: floatingWindowLayout.width,
+        height: floatingWindowLayout.height,
+      },
+    });
+
+    if (capabilities.canDetachedFloatingPlayback) {
+      saveFloatingPlayerSession(session);
+      detachedWindowRef.current = window.open(
+        buildFloatingPlayerRoute(session.id),
+        session.id,
+        buildFloatingPlayerWindowFeatures(session.window),
+      );
+
+      if (detachedWindowRef.current) {
+        if (floatingLayoutRef.current) {
+          closeFloatingPlayer();
+        }
+
+        detachedWindowRef.current.focus();
+        setDetachedFloatingSession(session);
+        setStatusDetail("Opened a detached TV-Dash floating player window.");
+        showControls();
+        return;
+      }
+
+      removeFloatingPlayerSession(session.id);
+    }
+
+    if (capabilities.canFloatingPlayback) {
+      openFloatingPlayer(
+        "Detached window launch was blocked, so TV-Dash opened an in-page floating player instead.",
+      );
+      return;
+    }
+
+    setStatusDetail(
+      capabilities.floatingPlaybackUnavailableReason ??
+        "TV-Dash floating playback could not be opened in this browser session.",
+    );
+  }
+
+  function handleToggleNativePictureInPicture() {
     const video = videoRef.current;
 
-    if (!video || !src) {
+    if (!video || !effectiveSrc) {
       return;
     }
 
     void (async () => {
       try {
-        if (floatingLayoutRef.current) {
-          closeFloatingPlayer();
-          return;
-        }
-
         if (document.pictureInPictureElement === video) {
           await document.exitPictureInPicture?.();
           setStatusDetail("Returned the player to the tab.");
@@ -535,13 +660,8 @@ export function HlsPlayer({
           return;
         }
 
-        if (!capabilities.canNativePictureInPicture && capabilities.canFloatingPlayback) {
-          openFloatingPlayer("Opened a floating player because native Picture-in-Picture is unavailable in this browser.");
-          return;
-        }
-
         if (document.pictureInPictureElement && document.pictureInPictureElement !== video) {
-          openFloatingPlayer("Native Picture-in-Picture is already in use, so TV-Dash opened a floating player instead.");
+          setStatusDetail("Another browser Picture-in-Picture session is already active.");
           return;
         }
 
@@ -552,11 +672,6 @@ export function HlsPlayer({
           return;
         }
       } catch {
-        if (capabilities.canFloatingPlayback) {
-          openFloatingPlayer("Native Picture-in-Picture could not be opened, so TV-Dash opened a floating player instead.");
-          return;
-        }
-
         setStatusDetail("Picture-in-Picture could not be opened in this browser session.");
       } finally {
         syncBrowserState();
@@ -615,25 +730,29 @@ export function HlsPlayer({
   useEffect(() => {
     callbacksRef.current.onDiagnosticsChange?.(
       buildPlayerDiagnostics({
-        status,
-        statusDetail,
+        status: detachedSession?.runtimeState?.status ?? status,
+        statusDetail:
+          detachedSession?.runtimeState
+            ? "Playback is running in a detached TV-Dash floating window."
+            : statusDetail,
         error,
         failureKind,
         recoveryNotice,
-        muted: playerMuted,
-        isPaused,
-        volume,
+        muted: detachedSession?.runtimeState?.isMuted ?? playerMuted,
+        isPaused: detachedSession?.runtimeState?.isPaused ?? isPaused,
+        volume: detachedSession?.runtimeState?.volume ?? volume,
         isPictureInPictureActive: isPictureInPictureMode,
         pictureInPictureMode,
-        isFullscreenActive: isFullscreenMode,
+        isFullscreenActive: detachedSession?.runtimeState?.isFullscreenActive ?? isFullscreenMode,
         canPictureInPicture: capabilities.canPictureInPicture,
-        canSeek: seekState.canSeek,
-        isAtLiveEdge: seekState.isAtLiveEdge,
-        liveLatencySeconds: seekState.liveLatencySeconds,
+        canSeek: detachedSession?.runtimeState?.canSeek ?? seekState.canSeek,
+        isAtLiveEdge: detachedSession?.runtimeState?.isAtLiveEdge ?? seekState.isAtLiveEdge,
+        liveLatencySeconds: detachedSession?.runtimeState?.liveLatencySeconds ?? seekState.liveLatencySeconds,
       }),
     );
   }, [
     capabilities.canPictureInPicture,
+    detachedSession,
     error,
     failureKind,
     isFullscreenMode,
@@ -711,7 +830,46 @@ export function HlsPlayer({
 
   useEffect(() => {
     syncBrowserState();
-  }, [floatingLayout]);
+  }, [detachedSession, floatingLayout, isDetachedWindow]);
+
+  useEffect(() => {
+    if (!detachedSession) {
+      return;
+    }
+
+    const detachedSessionId = detachedSession.id;
+
+    function handleStorage(event: StorageEvent) {
+      if (!event.key || event.key !== "tv-dash:floating-player-sessions") {
+        return;
+      }
+
+      const nextSession = getFloatingPlayerSession(detachedSessionId);
+
+      if (!nextSession) {
+        detachedWindowRef.current = null;
+        setDetachedFloatingSession(null);
+        setStatusDetail("Detached playback closed. Returned the player to the page.");
+        showControls();
+        return;
+      }
+
+      setDetachedFloatingSession(nextSession);
+    }
+
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [detachedSession]);
+
+  useEffect(() => {
+    if (!detachedSession || src === detachedSession.src) {
+      return;
+    }
+
+    setDetachedFloatingSession(null);
+  }, [detachedSession, src]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -783,15 +941,15 @@ export function HlsPlayer({
       video.removeEventListener("leavepictureinpicture", handlePictureInPictureUpdated);
       document.removeEventListener("fullscreenchange", handleFullscreenUpdated);
     };
-  }, [fullscreenTargetRef, src]);
+  }, [effectiveSrc, fullscreenTargetRef]);
 
   useEffect(() => {
-    if (src || !floatingLayoutRef.current) {
+    if (effectiveSrc || !floatingLayoutRef.current) {
       return;
     }
 
     setFloatingPlayerLayout(null);
-  }, [src]);
+  }, [effectiveSrc]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -822,7 +980,7 @@ export function HlsPlayer({
     stopPlayback();
     teardownVideo(video);
 
-    if (!src) {
+    if (!effectiveSrc) {
       updateStatus("idle");
       syncBrowserState();
       return;
@@ -923,7 +1081,7 @@ export function HlsPlayer({
           return;
         }
 
-        hls?.loadSource(src);
+        hls?.loadSource(effectiveSrc);
       });
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
@@ -1014,7 +1172,7 @@ export function HlsPlayer({
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       callbacksRef.current.onSelectedQualityChange?.("AUTO");
-      video.src = src;
+      video.src = effectiveSrc;
       video.load();
       syncBrowserState();
 
@@ -1052,7 +1210,7 @@ export function HlsPlayer({
         }
       }
     };
-  }, [reloadKey, src]);
+  }, [effectiveSrc, reloadKey]);
 
   useEffect(() => {
     if (!hlsRef.current) {
@@ -1063,7 +1221,7 @@ export function HlsPlayer({
   }, [preferredQuality]);
 
   useEffect(() => {
-    if (!capabilities.canUseMediaSession || !src) {
+    if (!capabilities.canUseMediaSession || !effectiveSrc) {
       return;
     }
 
@@ -1086,7 +1244,7 @@ export function HlsPlayer({
         },
       },
     );
-  }, [capabilities.canUseMediaSession, isPaused, seekState.canSeek, src, status, title]);
+  }, [capabilities.canUseMediaSession, effectiveSrc, isPaused, seekState.canSeek, status, title]);
 
   useEffect(() => () => {
     clearReconnectTimeout();
@@ -1096,40 +1254,47 @@ export function HlsPlayer({
     stopPlayback();
   }, []);
 
+  const detachedRuntimeState = detachedSession?.runtimeState ?? null;
   const diagnostics = buildPlayerDiagnostics({
-    status,
-    statusDetail,
+    status: detachedRuntimeState?.status ?? status,
+    statusDetail:
+      detachedRuntimeState && !statusDetail
+        ? "Playback is running in a detached TV-Dash floating window."
+        : statusDetail,
     error,
     failureKind,
     recoveryNotice,
-    muted: playerMuted,
-    isPaused,
-    volume,
+    muted: detachedRuntimeState?.isMuted ?? playerMuted,
+    isPaused: detachedRuntimeState?.isPaused ?? isPaused,
+    volume: detachedRuntimeState?.volume ?? volume,
     isPictureInPictureActive: isPictureInPictureMode,
     pictureInPictureMode,
-    isFullscreenActive: isFullscreenMode,
+    isFullscreenActive: detachedRuntimeState?.isFullscreenActive ?? isFullscreenMode,
     canPictureInPicture: capabilities.canPictureInPicture,
-    canSeek: seekState.canSeek,
-    isAtLiveEdge: seekState.isAtLiveEdge,
-    liveLatencySeconds: seekState.liveLatencySeconds,
+    canSeek: detachedRuntimeState?.canSeek ?? seekState.canSeek,
+    isAtLiveEdge: detachedRuntimeState?.isAtLiveEdge ?? seekState.isAtLiveEdge,
+    liveLatencySeconds: detachedRuntimeState?.liveLatencySeconds ?? seekState.liveLatencySeconds,
   });
-  const liveStateLabel = seekState.canSeek
-    ? seekState.isAtLiveEdge
+  const effectiveCanSeek = detachedRuntimeState?.canSeek ?? seekState.canSeek;
+  const effectiveIsAtLiveEdge = detachedRuntimeState?.isAtLiveEdge ?? seekState.isAtLiveEdge;
+  const effectiveLiveLatencySeconds = detachedRuntimeState?.liveLatencySeconds ?? seekState.liveLatencySeconds;
+  const liveStateLabel = effectiveCanSeek
+    ? effectiveIsAtLiveEdge
       ? "Live"
-      : `-${Math.round(seekState.liveLatencySeconds ?? 0)}s`
+      : `-${Math.round(effectiveLiveLatencySeconds ?? 0)}s`
     : "No DVR";
   const timelineMin = seekState.rangeStart ?? 0;
   const timelineMax = seekState.rangeEnd ?? 1;
-  const timelineValue = seekState.canSeek
+  const timelineValue = effectiveCanSeek
     ? Math.min(timelineMax, Math.max(timelineMin, currentTime))
     : timelineMax;
-  const currentTimeLabel = seekState.canSeek
+  const currentTimeLabel = effectiveCanSeek
     ? formatPlaybackTime(currentTime - timelineMin)
     : liveStateLabel;
-  const durationLabel = seekState.canSeek
+  const durationLabel = effectiveCanSeek
     ? formatPlaybackTime((seekState.rangeEnd ?? timelineMax) - timelineMin)
     : "LIVE";
-  const showCenterPlaybackButton = Boolean(src) && (areControlsVisible || isPaused);
+  const showCenterPlaybackButton = Boolean(effectiveSrc) && (areControlsVisible || isPaused);
 
   function renderPlayerSurface() {
     return (
@@ -1206,10 +1371,11 @@ export function HlsPlayer({
           <Badge className="border-slate-700/80 bg-slate-950/80 text-slate-200" size="sm">
             {liveStateLabel}
           </Badge>
-          {playerMuted ? <Badge size="sm">Muted</Badge> : null}
+          {diagnostics.isMuted ? <Badge size="sm">Muted</Badge> : null}
           {pictureInPictureMode === "native" ? <Badge size="sm">PiP</Badge> : null}
           {pictureInPictureMode === "floating" ? <Badge size="sm">Floating</Badge> : null}
-          {isFullscreenMode ? <Badge size="sm">Fullscreen</Badge> : null}
+          {pictureInPictureMode === "detached" ? <Badge size="sm">Detached</Badge> : null}
+          {diagnostics.isFullscreenActive ? <Badge size="sm">Fullscreen</Badge> : null}
           {recoveryNotice ? (
             <Badge className="border-emerald-400/30 bg-emerald-500/10 text-emerald-200" size="sm">{recoveryNotice}</Badge>
           ) : null}
@@ -1261,27 +1427,33 @@ export function HlsPlayer({
 
         <PlayerControlOverlay
           canFullscreen={capabilities.canFullscreen}
-          canPictureInPicture={capabilities.canPictureInPicture}
           canNativePictureInPicture={capabilities.canNativePictureInPicture}
-          canSeek={seekState.canSeek}
+          canOpenFloatingPlayback={
+            floatingEnvironment === "main-app" &&
+            (capabilities.canDetachedFloatingPlayback || capabilities.canFloatingPlayback || Boolean(detachedSession))
+          }
+          canSeek={effectiveCanSeek}
           currentTimeLabel={currentTimeLabel}
           density={controlDensity}
           durationLabel={durationLabel}
-          hasSource={Boolean(src)}
-          isFullscreenActive={isFullscreenMode}
-          isMuted={playerMuted}
-          isPictureInPictureActive={isPictureInPictureMode}
-          pictureInPictureMode={pictureInPictureMode}
+          floatingPlaybackMode={detachedSession ? "detached" : floatingLayout ? "overlay" : "none"}
+          floatingPlaybackUnavailableReason={capabilities.floatingPlaybackUnavailableReason}
+          hasSource={Boolean(effectiveSrc)}
+          isFullscreenActive={diagnostics.isFullscreenActive}
+          isMuted={diagnostics.isMuted}
+          isNativePictureInPictureActive={pictureInPictureMode === "native"}
           liveStateLabel={liveStateLabel}
           onJumpToLive={handleJumpToLive}
           onSeekBackward={() => handleSeek(-SEEK_STEP_SECONDS)}
           onSeekForward={() => handleSeek(SEEK_STEP_SECONDS)}
+          onToggleFloatingPlayback={handleToggleFloatingPlayback}
           onTimelineChange={handleSeekTo}
           onToggleFullscreen={() => void handleToggleFullscreen()}
           onToggleMute={handleToggleMute}
-          onTogglePictureInPicture={() => void handleTogglePictureInPicture()}
+          onToggleNativePictureInPicture={() => void handleToggleNativePictureInPicture()}
           onVolumeChange={handleVolumeChange}
-          pictureInPictureUnavailableReason={capabilities.pictureInPictureUnavailableReason}
+          nativePictureInPictureUnavailableReason={capabilities.pictureInPictureUnavailableReason}
+          showFloatingPlaybackButton={floatingEnvironment === "main-app"}
           timelineMax={timelineMax}
           timelineMin={timelineMin}
           timelineValue={timelineValue}
@@ -1305,6 +1477,30 @@ export function HlsPlayer({
 
   return (
     <>
+      {detachedSession ? (
+        <div
+          className="flex h-full min-h-[160px] items-center justify-center rounded-[1rem] border border-dashed border-cyan-400/30 bg-slate-950/70 p-4 text-center"
+          data-testid="detached-player-placeholder"
+        >
+          <div>
+            <p className="text-sm font-semibold text-white">Playing in detached window</p>
+            <p className="mt-1.5 text-[12px] text-slate-400">
+              {detachedRuntimeState?.status === "playing"
+                ? "The detached TV-Dash window is live and under app-managed control."
+                : "This stream is running in a detached TV-Dash floating window."}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              <Button onClick={focusDetachedPlayerWindow} size="sm" type="button" variant="secondary">
+                Focus window
+              </Button>
+              <Button onClick={() => returnDetachedPlayerToPage()} size="sm" type="button" variant="secondary">
+                Return to page
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {floatingLayout ? (
         <div
           className="flex h-full min-h-[160px] items-center justify-center rounded-[1rem] border border-dashed border-cyan-400/30 bg-slate-950/70 p-4 text-center"
@@ -1322,9 +1518,9 @@ export function HlsPlayer({
         </div>
       ) : null}
 
-      <div className={cn("h-full w-full", floatingLayout && "hidden")} ref={setInlineSurfaceAnchor} />
+      <div className={cn("h-full w-full", (detachedSession || floatingLayout) && "hidden")} ref={setInlineSurfaceAnchor} />
 
-      {surfacePortalHost ? createPortal(renderPlayerSurface(), surfacePortalHost) : null}
+      {!detachedSession && surfacePortalHost ? createPortal(renderPlayerSurface(), surfacePortalHost) : null}
     </>
   );
 }

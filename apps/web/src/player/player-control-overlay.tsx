@@ -24,20 +24,23 @@ interface PlayerControlOverlayProps {
   timelineMax: number;
   currentTimeLabel: string;
   durationLabel: string;
-  pictureInPictureMode: "none" | "native" | "floating";
-  isPictureInPictureActive: boolean;
+  floatingPlaybackMode: "none" | "overlay" | "detached";
+  canOpenFloatingPlayback: boolean;
+  floatingPlaybackUnavailableReason: string | null;
+  showFloatingPlaybackButton?: boolean;
+  isNativePictureInPictureActive: boolean;
   isFullscreenActive: boolean;
-  canPictureInPicture: boolean;
   canNativePictureInPicture: boolean;
-  pictureInPictureUnavailableReason: string | null;
+  nativePictureInPictureUnavailableReason: string | null;
   canFullscreen: boolean;
+  onToggleFloatingPlayback: () => void;
   onToggleMute: () => void;
   onVolumeChange: (value: number) => void;
   onSeekBackward: () => void;
   onJumpToLive: () => void;
   onSeekForward: () => void;
   onTimelineChange: (value: number) => void;
-  onTogglePictureInPicture: () => void;
+  onToggleNativePictureInPicture: () => void;
   onToggleFullscreen: () => void;
 }
 
@@ -54,20 +57,23 @@ export function PlayerControlOverlay({
   timelineMax,
   currentTimeLabel,
   durationLabel,
-  pictureInPictureMode,
-  isPictureInPictureActive,
+  floatingPlaybackMode,
+  canOpenFloatingPlayback,
+  floatingPlaybackUnavailableReason,
+  showFloatingPlaybackButton = true,
+  isNativePictureInPictureActive,
   isFullscreenActive,
-  canPictureInPicture,
   canNativePictureInPicture,
-  pictureInPictureUnavailableReason,
+  nativePictureInPictureUnavailableReason,
   canFullscreen,
+  onToggleFloatingPlayback,
   onToggleMute,
   onVolumeChange,
   onSeekBackward,
   onJumpToLive,
   onSeekForward,
   onTimelineChange,
-  onTogglePictureInPicture,
+  onToggleNativePictureInPicture,
   onToggleFullscreen,
 }: PlayerControlOverlayProps) {
   const isCompact = density === "compact";
@@ -75,22 +81,18 @@ export function PlayerControlOverlay({
   const buttonClassName = isMicro ? "h-7 min-h-7 rounded-md px-1.5 text-[10px]" : "";
   const iconButtonClassName = isMicro ? "h-7 w-7 rounded-md" : "";
   const timelineWrapperClassName = isMicro ? "mb-1 px-1 py-1" : "mb-1.5 px-1 py-1";
-  const pictureInPictureButtonLabel =
-    pictureInPictureMode === "native"
-      ? "Exit PiP"
-      : pictureInPictureMode === "floating"
-        ? "Dock"
-        : canNativePictureInPicture
-          ? "PiP"
-          : "Float";
-  const pictureInPictureButtonTitle =
-    pictureInPictureMode === "native"
-      ? "Exit browser Picture-in-Picture"
-      : pictureInPictureMode === "floating"
-        ? "Return the floating player to the page"
-        : canNativePictureInPicture
-          ? "Open browser Picture-in-Picture"
-          : pictureInPictureUnavailableReason ?? "Open a floating player";
+  const floatingPlaybackButtonLabel =
+    floatingPlaybackMode === "overlay"
+      ? "Dock"
+      : floatingPlaybackMode === "detached"
+        ? "Return"
+        : "Float";
+  const floatingPlaybackButtonTitle =
+    floatingPlaybackMode === "overlay"
+      ? "Return the floating player to the page"
+      : floatingPlaybackMode === "detached"
+        ? "Return playback to the page"
+        : floatingPlaybackUnavailableReason ?? "Open a TV-Dash floating player";
 
   return (
     <div
@@ -132,26 +134,44 @@ export function PlayerControlOverlay({
           >
             {liveStateLabel}
           </span>
-          <Button
-            aria-label={
-              pictureInPictureMode === "native"
-                ? "Exit Picture-in-Picture"
-                : pictureInPictureMode === "floating"
+          {showFloatingPlaybackButton ? (
+            <Button
+              aria-label={
+                floatingPlaybackMode === "overlay"
                   ? "Return floating player to page"
-                  : canNativePictureInPicture
-                    ? "Open Picture-in-Picture"
+                  : floatingPlaybackMode === "detached"
+                    ? "Return detached player to page"
                     : "Open floating player"
-            }
-            disabled={!canPictureInPicture || !hasSource}
-            className={buttonClassName}
-            onClick={onTogglePictureInPicture}
-            size="sm"
-            title={pictureInPictureButtonTitle}
-            type="button"
-            variant={isPictureInPictureActive ? "primary" : "secondary"}
-          >
-            {pictureInPictureButtonLabel}
-          </Button>
+              }
+              disabled={!canOpenFloatingPlayback || !hasSource}
+              className={buttonClassName}
+              onClick={onToggleFloatingPlayback}
+              size="sm"
+              title={floatingPlaybackButtonTitle}
+              type="button"
+              variant={floatingPlaybackMode === "none" ? "secondary" : "primary"}
+            >
+              {floatingPlaybackButtonLabel}
+            </Button>
+          ) : null}
+          {canNativePictureInPicture || isNativePictureInPictureActive ? (
+            <Button
+              aria-label={isNativePictureInPictureActive ? "Exit browser Picture-in-Picture" : "Open browser Picture-in-Picture"}
+              disabled={!canNativePictureInPicture || !hasSource}
+              className={buttonClassName}
+              onClick={onToggleNativePictureInPicture}
+              size="sm"
+              title={
+                isNativePictureInPictureActive
+                  ? "Exit browser Picture-in-Picture"
+                  : nativePictureInPictureUnavailableReason ?? "Open browser Picture-in-Picture"
+              }
+              type="button"
+              variant={isNativePictureInPictureActive ? "primary" : "secondary"}
+            >
+              {isNativePictureInPictureActive ? "Exit PiP" : "PiP"}
+            </Button>
+          ) : null}
           <Button
             aria-label={isFullscreenActive ? "Exit fullscreen" : "Enter fullscreen"}
             disabled={!canFullscreen}

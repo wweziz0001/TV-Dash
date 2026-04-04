@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getFloatingPlayerSession } from "./floating-player-session";
 
 let mediaPaused = true;
 
@@ -64,6 +65,7 @@ describe("HlsPlayer", () => {
     MockHls.instances = [];
     MockHls.isSupported.mockReturnValue(true);
     mediaPaused = true;
+    localStorage.clear();
 
     Object.defineProperty(HTMLMediaElement.prototype, "paused", {
       configurable: true,
@@ -148,6 +150,14 @@ describe("HlsPlayer", () => {
         });
         document.dispatchEvent(new Event("fullscreenchange"));
       }),
+    });
+    Object.defineProperty(window, "open", {
+      configurable: true,
+      value: vi.fn(() => ({
+        focus: vi.fn(),
+        closed: false,
+      })),
+      writable: true,
     });
 
     vi.useFakeTimers();
@@ -366,7 +376,8 @@ describe("HlsPlayer", () => {
     expect(screen.getByRole("button", { name: "Jump to live" })).toBeInTheDocument();
     expect(screen.getByText("00:20")).toBeInTheDocument();
     expect(screen.getByText("01:00")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open Picture-in-Picture" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Open floating player" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Open browser Picture-in-Picture" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Enter fullscreen" })).toBeEnabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Mute audio" }));
@@ -440,7 +451,7 @@ describe("HlsPlayer", () => {
     fireEvent.mouseMove(playerRoot);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Open Picture-in-Picture" }));
+      fireEvent.click(screen.getByRole("button", { name: "Open browser Picture-in-Picture" }));
       await Promise.resolve();
     });
 
@@ -448,12 +459,37 @@ describe("HlsPlayer", () => {
     expect(document.pictureInPictureElement).toBeTruthy();
   });
 
-  it("falls back to a floating player when another native PiP session is already active", async () => {
-    Object.defineProperty(document, "pictureInPictureElement", {
-      configurable: true,
-      value: document.createElement("video"),
-      writable: true,
+  it("opens a detached TV-Dash floating window as the primary floating workflow", async () => {
+    render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
+
+    act(() => {
+      MockHls.instances[0].emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 1080 }, { height: 720 }],
+      });
     });
+
+    const playerRoot = screen.getByTestId("player-surface");
+    fireEvent.mouseOver(playerRoot);
+    fireEvent.mouseMove(playerRoot);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Open floating player" }));
+      await Promise.resolve();
+    });
+
+    expect(window.open).toHaveBeenCalledTimes(1);
+    const [route, target] = vi.mocked(window.open).mock.calls[0]!;
+    expect(route).toMatch(/^\/floating-player\//);
+    expect(target).toMatch(/\S+/);
+    expect(screen.getByTestId("detached-player-placeholder")).toBeInTheDocument();
+    expect(getFloatingPlayerSession(String(target))).toMatchObject({
+      title: "Channel A",
+      src: "https://example.com/a.m3u8",
+    });
+  });
+
+  it("falls back to an in-page floating player when popup launch is blocked", async () => {
+    vi.mocked(window.open).mockReturnValue(null);
 
     render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
 
@@ -468,21 +504,15 @@ describe("HlsPlayer", () => {
     fireEvent.mouseMove(playerRoot);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Open Picture-in-Picture" }));
+      fireEvent.click(screen.getByRole("button", { name: "Open floating player" }));
       await Promise.resolve();
     });
 
-    expect(HTMLVideoElement.prototype.requestPictureInPicture).not.toHaveBeenCalled();
     expect(screen.getByTestId("floating-player-placeholder")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Return to page" })).toBeInTheDocument();
   });
 
-  it("supports more than one TV-Dash floating player when native PiP is unavailable", async () => {
-    Object.defineProperty(HTMLVideoElement.prototype, "requestPictureInPicture", {
-      configurable: true,
-      value: undefined,
-    });
-
+  it("supports more than one detached TV-Dash floating player at the same time", async () => {
     render(
       <>
         <HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />
@@ -511,7 +541,44 @@ describe("HlsPlayer", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getAllByTestId("floating-player-placeholder")).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: "Return to page" })).toHaveLength(2);
+    expect(window.open).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByTestId("detached-player-placeholder")).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Focus window" })).toHaveLength(2);
+  });
+
+  it("returns detached playback to the page when the detached session closes", async () => {
+    render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
+
+    act(() => {
+      MockHls.instances[0].emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 1080 }],
+      });
+    });
+
+    const playerRoot = screen.getByTestId("player-surface");
+    fireEvent.mouseOver(playerRoot);
+    fireEvent.mouseMove(playerRoot);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Open floating player" }));
+      await Promise.resolve();
+    });
+
+    const [, sessionId] = vi.mocked(window.open).mock.calls[0]!;
+    localStorage.removeItem("tv-dash:floating-player-sessions");
+
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "tv-dash:floating-player-sessions",
+          oldValue: "{}",
+          newValue: null,
+        }),
+      );
+    });
+
+    expect(getFloatingPlayerSession(String(sessionId))).toBeNull();
+    expect(screen.queryByTestId("detached-player-placeholder")).not.toBeInTheDocument();
+    expect(screen.getByTestId("player-surface")).toBeInTheDocument();
   });
 });
