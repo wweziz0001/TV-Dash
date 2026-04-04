@@ -44,12 +44,12 @@ export type { PlayerDiagnostics } from "./playback-diagnostics";
 const defaultBrowserCapabilities: PlayerBrowserCapabilities = {
   canFullscreen: false,
   canPictureInPicture: false,
-  canDocumentPictureInPicture: false,
   canUseMediaSession: false,
   pictureInPictureUnavailableReason: "Picture-in-Picture is not supported in this browser.",
 };
 
 const SEEK_STEP_SECONDS = 10;
+
 function formatPlaybackTime(seconds: number | null) {
   if (seconds === null || !Number.isFinite(seconds)) {
     return "--:--";
@@ -466,6 +466,7 @@ export function HlsPlayer({
         isPaused,
         volume,
         isPictureInPictureActive: isPictureInPictureMode,
+        pictureInPictureMode: isPictureInPictureMode ? "native" : "none",
         isFullscreenActive: isFullscreenMode,
         canPictureInPicture: capabilities.canPictureInPicture,
         canSeek: seekState.canSeek,
@@ -604,7 +605,6 @@ export function HlsPlayer({
     updateStatus("loading");
     setStatusDetail("Requesting stream manifest...");
 
-    // Control-state changes like mute handoff and quality preference updates must not rebuild playback.
     const isCurrentSession = () => sessionId === sessionIdRef.current;
 
     const handlePlaying = () => {
@@ -878,6 +878,7 @@ export function HlsPlayer({
     isPaused,
     volume,
     isPictureInPictureActive: isPictureInPictureMode,
+    pictureInPictureMode: isPictureInPictureMode ? "native" : "none",
     isFullscreenActive: isFullscreenMode,
     canPictureInPicture: capabilities.canPictureInPicture,
     canSeek: seekState.canSeek,
@@ -902,129 +903,127 @@ export function HlsPlayer({
     : "LIVE";
   const showCenterPlaybackButton = Boolean(src) && (areControlsVisible || isPaused);
 
-  function renderPlayerSurface() {
-    return (
-      <div
-        ref={playerFrameRef}
-        className={cn("relative h-full overflow-hidden rounded-[1.1rem] bg-black", className)}
-        data-testid="player-surface"
-        onBlur={handleBlurWithin}
-        onFocus={handleFocusWithin}
-        onMouseEnter={handlePointerEnter}
-        onMouseLeave={handlePointerLeave}
-        onMouseMove={handlePointerMove}
-      >
-        <video ref={videoRef} className="h-full w-full object-cover" playsInline muted={playerMuted} />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10" />
+  return (
+    <div
+      ref={playerFrameRef}
+      className={cn("relative h-full overflow-hidden rounded-[1.1rem] bg-black", className)}
+      data-testid="player-surface"
+      onBlur={handleBlurWithin}
+      onFocus={handleFocusWithin}
+      onMouseEnter={handlePointerEnter}
+      onMouseLeave={handlePointerLeave}
+      onMouseMove={handlePointerMove}
+    >
+      <video ref={videoRef} className="h-full w-full object-cover" playsInline muted={playerMuted} />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10" />
 
-        <div
-          data-testid="player-status-chrome"
+      <div
+        data-testid="player-status-chrome"
+        className={cn(
+          "pointer-events-none absolute left-2.5 top-2.5 z-20 flex flex-wrap items-center gap-1.5 transition-opacity duration-200",
+          areControlsVisible ? "opacity-100" : "opacity-0",
+        )}
+      >
+        <Badge className="border-cyan-400/30 bg-slate-950/80 text-cyan-100" size="sm">
+          <Signal className="mr-2 h-3.5 w-3.5" />
+          {title}
+        </Badge>
+        <Badge
+          size="sm"
           className={cn(
-            "pointer-events-none absolute left-2.5 top-2.5 z-20 flex flex-wrap items-center gap-1.5 transition-opacity duration-200",
-            areControlsVisible ? "opacity-100" : "opacity-0",
+            diagnostics.isPaused && "border-slate-700/80 bg-slate-950/80 text-slate-100",
+            status === "playing" && !diagnostics.isPaused && "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
+            (status === "loading" || status === "buffering") && "border-amber-400/30 bg-amber-500/10 text-amber-100",
+            status === "retrying" && "border-amber-400/30 bg-amber-500/10 text-amber-100",
+            status === "error" && "border-rose-400/30 bg-rose-500/10 text-rose-100",
           )}
         >
-          <Badge className="border-cyan-400/30 bg-slate-950/80 text-cyan-100" size="sm">
-            <Signal className="mr-2 h-3.5 w-3.5" />
-            {title}
+          {diagnostics.label}
+        </Badge>
+        <Badge className="border-slate-700/80 bg-slate-950/80 text-slate-200" size="sm">
+          {liveStateLabel}
+        </Badge>
+        {playerMuted ? <Badge size="sm">Muted</Badge> : null}
+        {isPictureInPictureMode ? <Badge size="sm">PiP</Badge> : null}
+        {isFullscreenMode ? <Badge size="sm">Fullscreen</Badge> : null}
+        {recoveryNotice ? (
+          <Badge className="border-emerald-400/30 bg-emerald-500/10 text-emerald-200" size="sm">
+            {recoveryNotice}
           </Badge>
-          <Badge
-            size="sm"
-            className={cn(
-              diagnostics.isPaused && "border-slate-700/80 bg-slate-950/80 text-slate-100",
-              status === "playing" && !diagnostics.isPaused && "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
-              (status === "loading" || status === "buffering") && "border-amber-400/30 bg-amber-500/10 text-amber-100",
-              status === "retrying" && "border-amber-400/30 bg-amber-500/10 text-amber-100",
-              status === "error" && "border-rose-400/30 bg-rose-500/10 text-rose-100",
-            )}
-          >
-            {diagnostics.label}
-          </Badge>
-          <Badge className="border-slate-700/80 bg-slate-950/80 text-slate-200" size="sm">
-            {liveStateLabel}
-          </Badge>
-          {playerMuted ? <Badge size="sm">Muted</Badge> : null}
-          {isPictureInPictureMode ? <Badge size="sm">PiP</Badge> : null}
-          {isFullscreenMode ? <Badge size="sm">Fullscreen</Badge> : null}
-          {recoveryNotice ? (
-            <Badge className="border-emerald-400/30 bg-emerald-500/10 text-emerald-200" size="sm">{recoveryNotice}</Badge>
-          ) : null}
-        </div>
+        ) : null}
+      </div>
 
-        {showCenterPlaybackButton ? (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-            <Button
-              aria-label={isPaused ? "Resume playback" : "Pause playback"}
-              className="pointer-events-auto h-12 w-12 rounded-full border border-white/20 bg-slate-950/78 text-white shadow-[0_16px_40px_rgba(2,6,23,0.45)] backdrop-blur-sm hover:bg-slate-900/90"
-              onClick={handleTogglePlayback}
-              size="icon-md"
-              title={isPaused ? "Resume playback" : "Pause playback"}
-              type="button"
-              variant="ghost"
-            >
-              {isPaused ? <Play className="h-5 w-5" /> : <Pause className="h-5 w-5" />}
+      {showCenterPlaybackButton ? (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+          <Button
+            aria-label={isPaused ? "Resume playback" : "Pause playback"}
+            className="pointer-events-auto h-12 w-12 rounded-full border border-white/20 bg-slate-950/78 text-white shadow-[0_16px_40px_rgba(2,6,23,0.45)] backdrop-blur-sm hover:bg-slate-900/90"
+            onClick={handleTogglePlayback}
+            size="icon-md"
+            title={isPaused ? "Resume playback" : "Pause playback"}
+            type="button"
+            variant="ghost"
+          >
+            {isPaused ? <Play className="h-5 w-5" /> : <Pause className="h-5 w-5" />}
+          </Button>
+        </div>
+      ) : null}
+
+      {status === "loading" || status === "buffering" || status === "retrying" ? (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="rounded-xl border border-slate-700/70 bg-slate-950/80 px-3 py-2 text-[13px] text-slate-200">
+            <div className="flex items-center gap-1.5">
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+              {diagnostics.summary}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {status === "error" ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/55 px-3">
+          <div className="max-w-xs rounded-[1.25rem] border border-rose-500/20 bg-slate-950/90 p-4 text-center shadow-glow">
+            <AlertTriangle className="mx-auto h-6 w-6 text-rose-300" />
+            <p className="mt-2 font-semibold text-white">Playback interrupted</p>
+            <p className="mt-1.5 text-[13px] leading-5 text-slate-400">{diagnostics.summary}</p>
+            {diagnostics.technicalDetail ? (
+              <p className="mt-1.5 text-[11px] uppercase tracking-[0.14em] text-slate-500">{diagnostics.technicalDetail}</p>
+            ) : null}
+            <Button className="mt-3" onClick={() => setReloadKey((value) => value + 1)} size="sm" type="button" variant="secondary">
+              <RotateCcw className="h-4 w-4" />
+              Retry
             </Button>
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
-        {status === "loading" || status === "buffering" || status === "retrying" ? (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="rounded-xl border border-slate-700/70 bg-slate-950/80 px-3 py-2 text-[13px] text-slate-200">
-              <div className="flex items-center gap-1.5">
-                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                {diagnostics.summary}
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {status === "error" ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/55 px-3">
-            <div className="max-w-xs rounded-[1.25rem] border border-rose-500/20 bg-slate-950/90 p-4 text-center shadow-glow">
-              <AlertTriangle className="mx-auto h-6 w-6 text-rose-300" />
-              <p className="mt-2 font-semibold text-white">Playback interrupted</p>
-              <p className="mt-1.5 text-[13px] leading-5 text-slate-400">{diagnostics.summary}</p>
-              {diagnostics.technicalDetail ? (
-                <p className="mt-1.5 text-[11px] uppercase tracking-[0.14em] text-slate-500">{diagnostics.technicalDetail}</p>
-              ) : null}
-              <Button className="mt-3" onClick={() => setReloadKey((value) => value + 1)} size="sm" type="button" variant="secondary">
-                <RotateCcw className="h-4 w-4" />
-                Retry
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
-        <PlayerControlOverlay
-          canFullscreen={capabilities.canFullscreen}
-          canPictureInPicture={capabilities.canPictureInPicture}
-          canSeek={seekState.canSeek}
-          currentTimeLabel={currentTimeLabel}
-          density={controlDensity}
-          durationLabel={durationLabel}
-          hasSource={Boolean(src)}
-          isFullscreenActive={isFullscreenMode}
-          isMuted={playerMuted}
-          isPictureInPictureActive={isPictureInPictureMode}
-          liveStateLabel={liveStateLabel}
-          onJumpToLive={handleJumpToLive}
-          onSeekBackward={() => handleSeek(-SEEK_STEP_SECONDS)}
-          onSeekForward={() => handleSeek(SEEK_STEP_SECONDS)}
-          onTimelineChange={handleSeekTo}
-          onToggleFullscreen={() => void handleToggleFullscreen()}
-          onToggleMute={handleToggleMute}
-          onTogglePictureInPicture={() => void handleTogglePictureInPicture()}
-          onVolumeChange={handleVolumeChange}
-          pictureInPictureUnavailableReason={capabilities.pictureInPictureUnavailableReason}
-          timelineMax={timelineMax}
-          timelineMin={timelineMin}
-          timelineValue={timelineValue}
-          visible={areControlsVisible}
-          volume={volume}
-        />
-      </div>
-    );
-  }
-
-  return renderPlayerSurface();
+      <PlayerControlOverlay
+        canFullscreen={capabilities.canFullscreen}
+        canPictureInPicture={capabilities.canPictureInPicture}
+        canSeek={seekState.canSeek}
+        currentTimeLabel={currentTimeLabel}
+        density={controlDensity}
+        durationLabel={durationLabel}
+        hasSource={Boolean(src)}
+        isFullscreenActive={isFullscreenMode}
+        isMuted={playerMuted}
+        isPictureInPictureActive={isPictureInPictureMode}
+        liveStateLabel={liveStateLabel}
+        onJumpToLive={handleJumpToLive}
+        onSeekBackward={() => handleSeek(-SEEK_STEP_SECONDS)}
+        onSeekForward={() => handleSeek(SEEK_STEP_SECONDS)}
+        onTimelineChange={handleSeekTo}
+        onToggleFullscreen={() => void handleToggleFullscreen()}
+        onToggleMute={handleToggleMute}
+        onTogglePictureInPicture={() => void handleTogglePictureInPicture()}
+        onVolumeChange={handleVolumeChange}
+        pictureInPictureUnavailableReason={capabilities.pictureInPictureUnavailableReason}
+        timelineMax={timelineMax}
+        timelineMin={timelineMin}
+        timelineValue={timelineValue}
+        visible={areControlsVisible}
+        volume={volume}
+      />
+    </div>
+  );
 }

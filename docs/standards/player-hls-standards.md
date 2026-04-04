@@ -116,9 +116,10 @@ Any change to retry timing or retry count must consider multi-view bandwidth pre
 ## Picture-In-Picture And Browser Media APIs
 
 - PiP support must be capability-detected inside `player/`, not guessed from browser family names.
-- When PiP is unsupported, the control must be disabled or hidden with an operator-facing explanation.
+- Native browser PiP remains an optional control when the browser exposes it.
+- When native PiP is not possible, the relevant control must be disabled or hidden with an operator-facing explanation.
 - Firefox may provide richer native PiP chrome than Chrome; do not let that reduce TV-Dash's own in-page controls.
-- Fullscreen and PiP toggles should call the browser APIs directly from player-owned actions and keep state reflected in player diagnostics.
+- Fullscreen and browser PiP toggles should call the browser APIs directly from player-owned actions and keep state reflected in player diagnostics.
 - Media Session metadata and handlers belong in `player/` so browser/system media controls stay aligned with TV-Dash playback state.
 
 ## Live DVR And Seek Realism

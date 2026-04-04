@@ -82,7 +82,7 @@ export function PlayerControlOverlay({
       )}
     >
       <div className={timelineWrapperClassName}>
-        <div className={cn("flex items-center justify-between gap-2 text-slate-300", isMicro ? "mb-1 text-[8px]" : "mb-1 text-[10px]")}>
+        <div className={cn("mb-1 flex items-center justify-between gap-2 text-slate-300", isMicro ? "text-[8px]" : "text-[10px]")}>
           <span>{currentTimeLabel}</span>
           <span>{durationLabel}</span>
         </div>
@@ -102,7 +102,7 @@ export function PlayerControlOverlay({
         />
       </div>
 
-      <div className={cn("flex justify-between items-center gap-1", isMicro || isCompact ? "flex-wrap" : "flex-wrap lg:flex-nowrap")}>
+      <div className={cn("flex items-center justify-between gap-1", isMicro || isCompact ? "flex-wrap" : "flex-wrap lg:flex-nowrap")}>
         <div className="flex items-center gap-1.5">
           <span
             className={cn(
@@ -208,7 +208,9 @@ export function PlayerControlOverlay({
               type="range"
               value={Number.isFinite(volume) ? volume : 1}
             />
-            <span className={cn("text-right text-slate-400", isMicro ? "w-7 text-[9px]" : "w-9 text-[11px]")}>{Math.round(volume * 100)}%</span>
+            <span className={cn("text-right text-slate-400", isMicro ? "w-7 text-[9px]" : "w-9 text-[11px]")}>
+              {Math.round(volume * 100)}%
+            </span>
           </label>
         </div>
       </div>

@@ -28,7 +28,7 @@ That does not belong in:
 - `player/media-session.ts`
   - Media Session metadata/action wiring for browser and system media controls
 - `player/player-control-overlay.tsx`
-  - compact overlay controls for play/pause, mute, volume, PiP, fullscreen, and live-DVR seek actions
+  - compact overlay controls for play/pause, mute, volume, browser PiP, fullscreen, and live-DVR seek actions
 - `player/quality-options.ts`
   - converts manifest levels into UI options and resolves manual/auto selection
 - `player/playback-recovery.ts`
@@ -151,13 +151,15 @@ Do not add silent infinite retry loops. Any retry policy change must consider mu
 - seek backward and seek forward are only shown when the current media element exposes a real seekable window
 - live-only streams without DVR must surface honest state such as `No DVR` instead of fake VOD-style seek controls
 - player diagnostics may report paused, muted, PiP-active, fullscreen-active, and live-edge state so surrounding pages can explain the current browser/player state without reimplementing media APIs
+- player diagnostics should distinguish between normal in-page playback and native browser PiP so surrounding pages can explain the current mode without reimplementing media APIs
 - fullscreen and PiP capability detection belongs in player helpers, not route pages, because Chrome and Firefox diverge most in those browser-owned behaviors
 
 ## Picture-In-Picture And Media Session Policy
 
 - PiP must be triggered from an explicit TV-Dash control when the browser exposes the API
-- unsupported PiP states must disable the control with a clear reason rather than leaving a broken button
-- Firefox may still expose richer native PiP chrome than Chrome; TV-Dash should assume Chrome needs stronger in-page controls
+- browser-native PiP remains the only PiP mode when the current browser exposes it
+- unsupported PiP states must disable the relevant control with a clear reason rather than leaving a broken button
+- Firefox may still expose richer native PiP chrome than Chrome; TV-Dash should assume browser-owned PiP UX differs by platform
 - Media Session integration should publish at least:
   - metadata
   - play

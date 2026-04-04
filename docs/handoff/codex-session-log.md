@@ -1,5 +1,40 @@
 # Codex Session Log
 
+## `2026-04-04T20:20:00+03:00`
+
+### Objective
+
+Improve TV-Dash PiP and floating-player behavior so the player can keep one real native PiP path while also supporting richer multi-player floating fallback inside the page.
+
+### Work Completed
+
+- added `player/floating-player.ts` for reusable floating-window default sizing, viewport clamping, and z-index stacking
+- upgraded `HlsPlayer` to a hybrid PiP model:
+  - native browser PiP stays the first-choice path
+  - when native PiP is unavailable, already occupied, or rejected, the same player can now switch into a TV-Dash floating player instead
+  - floating players reuse the same video element and HLS session, so playback does not restart when falling back
+  - floating players are draggable, resizable, and can exist more than once
+- improved player diagnostics so surrounding pages can distinguish:
+  - no PiP
+  - native browser PiP
+  - TV-Dash floating fallback
+- updated the watch page diagnostics copy so operators can see whether playback is in native PiP or floating fallback
+- added targeted tests for:
+  - floating layout clamping
+  - fallback-to-floating behavior when native PiP is already occupied
+  - multiple floating players when native PiP is unavailable
+
+### Verification Run
+
+- `npm run test -w apps/web -- src/player/hls-player.test.tsx src/player/browser-media.test.ts src/player/floating-player.test.ts src/player/playback-diagnostics.test.ts src/player/multiview-tile-card.test.tsx`
+- `npm run lint -w apps/web`
+- `npm run build -w apps/web`
+
+### Remaining Risk
+
+- Native PiP limits still come from the browser, not TV-Dash, so some platforms will remain single-slot even though TV-Dash now has a better multi-player fallback.
+- Floating fallback improves multi-stream operations inside the tab, but it is still not an OS-level always-on-top window.
+
 ## `2026-04-04T17:35:00+03:00`
 
 ### Objective
@@ -36,6 +71,11 @@ Improve player controls, Picture-in-Picture support, and cross-browser media UX 
   - `2x2` stays compact
   - `3x3` now uses a smaller `micro` control treatment
 - kept PiP explicit at the player level, but standardized runtime playback on native video PiP so live HLS playback stays attached to the real video element instead of moving into a separate PiP document
+- added a hybrid PiP model for richer browser variance handling:
+  - native browser PiP is still preferred first for the active player
+  - when native PiP is unavailable, already occupied, or rejected, TV-Dash now opens an in-page floating player instead
+  - floating fallback players reuse the same live video element so playback does not restart
+  - floating fallback players are draggable, resizable, and can coexist more than once
 - kept live-stream realism explicit:
   - no fake seek controls on live-only streams
   - `No DVR` is shown when the stream does not expose a real seekable window
@@ -52,6 +92,7 @@ Improve player controls, Picture-in-Picture support, and cross-browser media UX 
 - frontend player code:
   - `apps/web/src/player/hls-player.tsx`
   - `apps/web/src/player/browser-media.ts`
+  - `apps/web/src/player/floating-player.ts`
   - `apps/web/src/player/media-session.ts`
   - `apps/web/src/player/player-control-overlay.tsx`
   - `apps/web/src/player/playback-diagnostics.ts`
@@ -60,6 +101,7 @@ Improve player controls, Picture-in-Picture support, and cross-browser media UX 
   - `apps/web/src/pages/channel-watch-page.tsx`
 - frontend tests:
   - `apps/web/src/player/browser-media.test.ts`
+  - `apps/web/src/player/floating-player.test.ts`
   - `apps/web/src/player/media-session.test.ts`
   - `apps/web/src/player/hls-player.test.tsx`
   - `apps/web/src/player/playback-diagnostics.test.ts`
@@ -74,6 +116,7 @@ Improve player controls, Picture-in-Picture support, and cross-browser media UX 
 
 - Kept browser-media capability detection and Media Session logic in dedicated `player/` helpers instead of embedding browser-condition branches directly into route pages.
 - Used one shared in-player control overlay for single-view and multiview so Chrome and Firefox both benefit from explicit controls even when their native PiP behavior differs.
+- Kept native PiP as the first-class path for true above-app playback, but added TV-Dash-managed floating fallback so single-slot PiP limitations do not block multi-player workflows.
 - Exposed seek controls only when the media element reports a real seekable window, because TV-Dash is live-first and should not fake DVR on non-seekable streams.
 - Preserved the existing one-active-audio multiview rule by routing in-player mute changes back through the existing tile audio ownership logic.
 
@@ -87,6 +130,7 @@ Improve player controls, Picture-in-Picture support, and cross-browser media UX 
 - Media Session support still depends on what each browser actually exposes; unsupported actions are cleared gracefully, but browser/system media UI will still vary.
 - PiP richness still differs across browsers, especially Firefox vs Chrome; TV-Dash now provides the explicit launch point and in-page controls, but native floating-window chrome remains browser-owned.
 - Native browser PiP keeps playback stable above other apps, but custom HTML controls remain limited by the browser-owned PiP window.
+- TV-Dash floating fallback is still browser-tab-scoped, so it improves multi-player workflows but does not replace OS-level always-on-top PiP.
 - The player now shows `No DVR` when the stream is not seekable, but there is still no richer operator hint for large DVR windows such as bookmark or jump-to-live controls.
 
 ### Exact Suggested Next Task
@@ -1789,3 +1833,168 @@ Add Fastify integration tests for auth, channels, favorites, and layouts with is
 - moved frontend request logic into `src/services`
 - moved frontend player and multiview logic into `src/player`
 - added Vitest foundations and representative backend/frontend tests
+
+---
+
+## `2026-04-04T20:46:20+03:00`
+
+### Objective
+
+Shift TV-Dash away from browser-native PiP as the main model by implementing a stronger app-managed floating-player workflow with detachable windows, in-page fallback floating playback, richer built-in controls, and honest multi-window state handling.
+
+### Work Completed
+
+- added a detached floating-player session layer under `apps/web/src/player/floating-player-session.ts`
+- expanded floating-player helpers so TV-Dash can launch positioned popup windows as well as in-page floating mini-players
+- reworked `HlsPlayer` so TV-Dash-managed floating playback is now the primary control:
+  - first choice is a detached popup window
+  - popup-blocked cases fall back to the existing in-page floating mini-player
+  - browser-native PiP remains available as an explicit secondary control
+- added a dedicated detached floating-player route/page that wraps `HlsPlayer` in compact app-owned chrome with:
+  - return-to-app
+  - open-app
+  - close
+  - the same playback / mute / volume / fullscreen / live-DVR / optional PiP controls inside the player surface
+- synchronized detached-player runtime state back into session storage so the main app can restore inline playback cleanly when the popup closes or returns
+- extended frontend coverage around:
+  - floating session creation/storage lifecycle
+  - popup launch feature serialization
+  - detached floating-player launch as the primary workflow
+  - popup-blocker fallback into the in-page floating mini-player
+  - multi-floating detached-player support
+  - detached-player route runtime-state sync
+- updated handoff, architecture, player-HLS, and testing docs to describe TV-Dash-managed floating playback as the new primary direction
+
+### Files Added Or Changed
+
+- app / routes:
+  - `apps/web/src/app/router.tsx`
+  - `apps/web/src/pages/floating-player-page.tsx`
+  - `apps/web/src/pages/floating-player-page.test.tsx`
+  - `apps/web/src/pages/channel-watch-page.tsx`
+- player:
+  - `apps/web/src/player/hls-player.tsx`
+  - `apps/web/src/player/hls-player.test.tsx`
+  - `apps/web/src/player/player-control-overlay.tsx`
+  - `apps/web/src/player/browser-media.ts`
+  - `apps/web/src/player/browser-media.test.ts`
+  - `apps/web/src/player/floating-player.ts`
+  - `apps/web/src/player/floating-player.test.ts`
+  - `apps/web/src/player/floating-player-session.ts`
+  - `apps/web/src/player/floating-player-session.test.ts`
+  - `apps/web/src/player/playback-diagnostics.ts`
+- docs:
+  - `docs/handoff/codex-handoff.md`
+  - `docs/architecture/player-architecture.md`
+  - `docs/standards/player-hls-standards.md`
+  - `docs/standards/testing-standards.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- TV-Dash-managed floating playback now comes before browser-native PiP in the operator UX.
+- Detached popup windows are treated as real application windows with persisted session identity, not as fake multi-PiP claims.
+- In-page floating playback remains valuable as the popup-blocker fallback and still supports more than one floating player at once.
+- Browser-native PiP remains useful for the browser-owned always-on-top path, but TV-Dash no longer treats it as the main control flow.
+- The implementation stays honest about web limits: popup windows and in-page floating players cannot guarantee OS-level always-on-top behavior.
+
+### Verification Run
+
+- `npm run test -w apps/web -- browser-media.test.ts floating-player.test.ts floating-player-session.test.ts hls-player.test.tsx floating-player-page.test.tsx`
+- `npm run lint -w apps/web`
+
+Both passed on `2026-04-04`.
+
+### Remaining Risk
+
+- The main app currently manages detached players through placeholder state plus local-storage session sync, but there is not yet a global floating-player manager panel for listing every open window across routes.
+- Popup window placement remembers current bounds per live session, but there is no long-lived per-channel remembered placement policy yet.
+- Route-level multiview coverage still does not exist; multiview launch behavior currently relies on `HlsPlayer` and component-level tests rather than a full-page interaction suite.
+- Browser PiP remains constrained by browser UI limits, and detached windows still cannot guarantee true system always-on-top semantics.
+
+### Exact Suggested Next Task
+
+Add a lightweight global floating-player manager surface that lists active detached/in-page floating sessions across the app, then add route-level watch/multiview tests that verify floating-launch and return workflows from the full page boundary rather than only the player component seam.
+
+---
+
+## `2026-04-04T20:55:23+03:00`
+
+### Objective
+
+Reduce visible browser chrome in TV-Dash floating mode so the floating experience feels closer to a compact player window instead of a normal browser popup.
+
+### Work Completed
+
+- upgraded floating capability detection so TV-Dash now recognizes `Document Picture-in-Picture` support
+- updated `HlsPlayer` to prefer a `Document Picture-in-Picture` floating window when the browser supports it
+- copied active stylesheet nodes into the compact floating document so the player keeps TV-Dash styling in the chromeless window
+- kept the existing detached popup window as the next fallback, and the in-page floating player as the final fallback
+- added frontend coverage confirming TV-Dash prefers the compact floating document window before the popup route
+
+### Files Added Or Changed
+
+- `apps/web/src/player/browser-media.ts`
+- `apps/web/src/player/browser-media.test.ts`
+- `apps/web/src/player/hls-player.tsx`
+- `apps/web/src/player/hls-player.test.tsx`
+- `docs/architecture/player-architecture.md`
+- `docs/handoff/codex-handoff.md`
+- `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- A normal `window.open` popup cannot reliably hide the browser address bar or navigation buttons from web code.
+- When Chromium exposes `Document Picture-in-Picture`, TV-Dash now uses that compact floating document first because it removes the normal URL bar while still hosting TV-Dash HTML controls.
+- Multi-floating support still relies on popup/in-page fallback paths because document PiP is not a practical multi-window replacement.
+
+### Verification Run
+
+- `npm run test -w apps/web -- browser-media.test.ts hls-player.test.tsx`
+- `npm run lint -w apps/web`
+
+Both passed on `2026-04-04`.
+## 2026-04-04 21:14:12 +03:00
+
+Remove the TV-Dash floating-player workflow completely and return the web player to an in-page playback model with optional native browser Picture-in-Picture only.
+
+### What changed
+
+- removed the detached/in-page floating-player implementation and its route, helpers, storage session layer, and tests
+- simplified browser capability detection back down to fullscreen, native PiP, and Media Session support
+- restored player/watch-page messaging so operator diagnostics describe only normal playback vs native browser PiP
+- rewrote player tests to cover the non-floating behavior again instead of detached/document-PiP workflows
+- updated architecture, standards, and handoff docs so they no longer describe TV-Dash-managed floating playback as a current feature
+
+### Files changed
+
+- removed:
+  - `apps/web/src/pages/floating-player-page.tsx`
+  - `apps/web/src/pages/floating-player-page.test.tsx`
+  - `apps/web/src/player/floating-player.ts`
+  - `apps/web/src/player/floating-player.test.ts`
+  - `apps/web/src/player/floating-player-session.ts`
+  - `apps/web/src/player/floating-player-session.test.ts`
+- updated:
+  - `apps/web/src/app/router.tsx`
+  - `apps/web/src/pages/channel-watch-page.tsx`
+  - `apps/web/src/player/browser-media.ts`
+  - `apps/web/src/player/browser-media.test.ts`
+  - `apps/web/src/player/hls-player.tsx`
+  - `apps/web/src/player/hls-player.test.tsx`
+  - `apps/web/src/player/playback-diagnostics.ts`
+  - `apps/web/src/player/player-control-overlay.tsx`
+  - `docs/architecture/player-architecture.md`
+  - `docs/handoff/codex-handoff.md`
+  - `docs/standards/player-hls-standards.md`
+  - `docs/standards/testing-standards.md`
+
+### Verification
+
+- `npm run test -w apps/web -- browser-media.test.ts hls-player.test.tsx`
+- `npm run lint -w apps/web`
+
+### Notes
+
+- TV-Dash no longer supports app-managed floating windows in this branch after this change.
+- Browser-native PiP remains optional and still depends on browser support and browser-owned UI.

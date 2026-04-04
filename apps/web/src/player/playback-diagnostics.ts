@@ -1,5 +1,7 @@
 import type { PlayerFailureKind, PlayerStatus } from "./playback-recovery";
 
+export type PlayerPictureInPictureMode = "none" | "native";
+
 export interface PlayerDiagnostics {
   status: PlayerStatus;
   label: string;
@@ -11,6 +13,7 @@ export interface PlayerDiagnostics {
   isPaused: boolean;
   volume: number;
   isPictureInPictureActive: boolean;
+  pictureInPictureMode: PlayerPictureInPictureMode;
   isFullscreenActive: boolean;
   canPictureInPicture: boolean;
   canSeek: boolean;
@@ -28,6 +31,7 @@ interface BuildPlayerDiagnosticsOptions {
   isPaused?: boolean;
   volume?: number;
   isPictureInPictureActive?: boolean;
+  pictureInPictureMode?: PlayerPictureInPictureMode;
   isFullscreenActive?: boolean;
   canPictureInPicture?: boolean;
   canSeek?: boolean;
@@ -72,6 +76,7 @@ export function buildPlayerDiagnostics({
   isPaused = false,
   volume = 1,
   isPictureInPictureActive = false,
+  pictureInPictureMode = "none",
   isFullscreenActive = false,
   canPictureInPicture = false,
   canSeek = false,
@@ -94,6 +99,7 @@ export function buildPlayerDiagnostics({
       isPaused,
       volume,
       isPictureInPictureActive,
+      pictureInPictureMode,
       isFullscreenActive,
       canPictureInPicture,
       canSeek,
@@ -114,6 +120,7 @@ export function buildPlayerDiagnostics({
       isPaused,
       volume,
       isPictureInPictureActive,
+      pictureInPictureMode,
       isFullscreenActive,
       canPictureInPicture,
       canSeek,
@@ -134,6 +141,7 @@ export function buildPlayerDiagnostics({
       isPaused,
       volume,
       isPictureInPictureActive,
+      pictureInPictureMode,
       isFullscreenActive,
       canPictureInPicture,
       canSeek,
@@ -161,6 +169,7 @@ export function buildPlayerDiagnostics({
     isPaused,
     volume,
     isPictureInPictureActive,
+    pictureInPictureMode,
     isFullscreenActive,
     canPictureInPicture,
     canSeek,

@@ -1,7 +1,6 @@
 export interface PlayerBrowserCapabilities {
   canFullscreen: boolean;
   canPictureInPicture: boolean;
-  canDocumentPictureInPicture: boolean;
   canUseMediaSession: boolean;
   pictureInPictureUnavailableReason: string | null;
 }
@@ -47,13 +46,11 @@ export function getPlayerBrowserCapabilities(
 ): PlayerBrowserCapabilities {
   const canUseMediaSession = "mediaSession" in nav && typeof nav.mediaSession !== "undefined";
   const canFullscreen = Boolean(fullscreenTarget?.requestFullscreen) && doc.fullscreenEnabled !== false;
-  const canDocumentPictureInPicture = false;
 
   if (!video) {
     return {
       canFullscreen,
       canPictureInPicture: false,
-      canDocumentPictureInPicture,
       canUseMediaSession,
       pictureInPictureUnavailableReason: "Picture-in-Picture is unavailable until playback is ready.",
     };
@@ -63,7 +60,6 @@ export function getPlayerBrowserCapabilities(
     return {
       canFullscreen,
       canPictureInPicture: false,
-      canDocumentPictureInPicture,
       canUseMediaSession,
       pictureInPictureUnavailableReason: "Picture-in-Picture is disabled for this player.",
     };
@@ -73,7 +69,6 @@ export function getPlayerBrowserCapabilities(
     return {
       canFullscreen,
       canPictureInPicture: false,
-      canDocumentPictureInPicture,
       canUseMediaSession,
       pictureInPictureUnavailableReason: "Picture-in-Picture is not supported in this browser.",
     };
@@ -83,7 +78,6 @@ export function getPlayerBrowserCapabilities(
     return {
       canFullscreen,
       canPictureInPicture: false,
-      canDocumentPictureInPicture,
       canUseMediaSession,
       pictureInPictureUnavailableReason: "Picture-in-Picture is disabled in this browser.",
     };
@@ -92,7 +86,6 @@ export function getPlayerBrowserCapabilities(
   return {
     canFullscreen,
     canPictureInPicture: true,
-    canDocumentPictureInPicture,
     canUseMediaSession,
     pictureInPictureUnavailableReason: null,
   };

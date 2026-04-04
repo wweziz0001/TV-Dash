@@ -86,11 +86,6 @@ describe("HlsPlayer", () => {
       configurable: true,
       value: true,
     });
-    Object.defineProperty(window, "documentPictureInPicture", {
-      configurable: true,
-      value: undefined,
-      writable: true,
-    });
     Object.defineProperty(document, "pictureInPictureElement", {
       configurable: true,
       value: null,
@@ -386,6 +381,7 @@ describe("HlsPlayer", () => {
         isPaused: true,
         canPictureInPicture: true,
         isFullscreenActive: true,
+        pictureInPictureMode: "none",
       }),
     );
   });
