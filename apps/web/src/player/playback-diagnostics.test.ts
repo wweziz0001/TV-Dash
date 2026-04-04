@@ -34,4 +34,21 @@ describe("playback-diagnostics", () => {
     });
     expect(getPlaybackTone(diagnostics)).toBe("danger");
   });
+
+  it("reflects paused playback as a visible neutral state without faking an error", () => {
+    const diagnostics = buildPlayerDiagnostics({
+      status: "playing",
+      muted: false,
+      isPaused: true,
+      canSeek: true,
+    });
+
+    expect(diagnostics).toMatchObject({
+      label: "Paused",
+      summary: "Playback is paused. Resume when you want to return to the live edge.",
+      isPaused: true,
+      canSeek: true,
+    });
+    expect(getPlaybackTone(diagnostics)).toBe("neutral");
+  });
 });

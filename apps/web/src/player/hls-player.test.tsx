@@ -1,5 +1,7 @@
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+let mediaPaused = true;
 
 const { MockHls } = vi.hoisted(() => {
   class MockHls {
@@ -61,7 +63,88 @@ describe("HlsPlayer", () => {
   beforeEach(() => {
     MockHls.instances = [];
     MockHls.isSupported.mockReturnValue(true);
-    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    mediaPaused = true;
+
+    Object.defineProperty(HTMLMediaElement.prototype, "paused", {
+      configurable: true,
+      get() {
+        return mediaPaused;
+      },
+    });
+
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(async function (this: HTMLMediaElement) {
+      mediaPaused = false;
+      this.dispatchEvent(new Event("play"));
+      this.dispatchEvent(new Event("playing"));
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(function (this: HTMLMediaElement) {
+      mediaPaused = true;
+      this.dispatchEvent(new Event("pause"));
+    });
+
+    Object.defineProperty(document, "pictureInPictureEnabled", {
+      configurable: true,
+      value: true,
+    });
+    Object.defineProperty(document, "pictureInPictureElement", {
+      configurable: true,
+      value: null,
+      writable: true,
+    });
+    Object.defineProperty(document, "exitPictureInPicture", {
+      configurable: true,
+      value: vi.fn(async () => {
+        Object.defineProperty(document, "pictureInPictureElement", {
+          configurable: true,
+          value: null,
+          writable: true,
+        });
+      }),
+    });
+    Object.defineProperty(document, "fullscreenEnabled", {
+      configurable: true,
+      value: true,
+    });
+    Object.defineProperty(document, "fullscreenElement", {
+      configurable: true,
+      value: null,
+      writable: true,
+    });
+    Object.defineProperty(document, "exitFullscreen", {
+      configurable: true,
+      value: vi.fn(async () => {
+        Object.defineProperty(document, "fullscreenElement", {
+          configurable: true,
+          value: null,
+          writable: true,
+        });
+        document.dispatchEvent(new Event("fullscreenchange"));
+      }),
+    });
+    Object.defineProperty(HTMLVideoElement.prototype, "requestPictureInPicture", {
+      configurable: true,
+      value: vi.fn(async function (this: HTMLVideoElement) {
+        Object.defineProperty(document, "pictureInPictureElement", {
+          configurable: true,
+          value: this,
+          writable: true,
+        });
+        this.dispatchEvent(new Event("enterpictureinpicture"));
+        return {};
+      }),
+    });
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      value: vi.fn(async function (this: HTMLElement) {
+        Object.defineProperty(document, "fullscreenElement", {
+          configurable: true,
+          value: this,
+          writable: true,
+        });
+        document.dispatchEvent(new Event("fullscreenchange"));
+      }),
+    });
+
     vi.useFakeTimers();
   });
 
@@ -228,5 +311,63 @@ describe("HlsPlayer", () => {
     });
 
     expect(handleSelectedQualityChange).toHaveBeenLastCalledWith("1");
+  });
+
+  it("renders explicit in-player controls and reports pause, mute, PiP, and fullscreen state", async () => {
+    const handleMutedChange = vi.fn();
+    const handleDiagnosticsChange = vi.fn();
+
+    render(
+      <HlsPlayer
+        muted={false}
+        onDiagnosticsChange={handleDiagnosticsChange}
+        onMutedChange={handleMutedChange}
+        src="https://example.com/a.m3u8"
+        title="Channel A"
+      />,
+    );
+
+    act(() => {
+      MockHls.instances[0].emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 1080 }, { height: 720 }],
+      });
+    });
+
+    expect(screen.getByRole("button", { name: "Pause playback" })).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Player volume" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Picture-in-Picture" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Enter fullscreen" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mute audio" }));
+    expect(handleMutedChange).toHaveBeenCalledWith(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Pause playback" }));
+    expect(screen.getAllByText("Paused").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Picture-in-Picture" }));
+    expect(screen.getByText("PiP")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
+    expect(screen.getByText("Fullscreen")).toBeInTheDocument();
+
+    expect(handleDiagnosticsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        isPaused: true,
+        canPictureInPicture: true,
+        isPictureInPictureActive: true,
+        isFullscreenActive: true,
+      }),
+    );
+  });
+
+  it("disables the PiP control when the browser does not expose Picture-in-Picture support", () => {
+    Object.defineProperty(HTMLVideoElement.prototype, "requestPictureInPicture", {
+      configurable: true,
+      value: undefined,
+    });
+
+    render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
+
+    expect(screen.getByRole("button", { name: "Open Picture-in-Picture" })).toBeDisabled();
   });
 });
