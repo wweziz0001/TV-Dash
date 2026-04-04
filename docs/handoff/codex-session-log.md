@@ -1,5 +1,75 @@
 # Codex Session Log
 
+## `2026-04-04T17:15:00+03:00`
+
+### Objective
+
+Restructure the recordings page into a compact operational workspace with top actions/jobs, middle recorded media, and bottom recording events, while preserving the current recording-card identity.
+
+### Work Completed
+
+- continued on the existing branch `018-recordings-library-polish-metadata-thumbnails-and-retention` without creating a new branch
+- refactored `/recordings` into three clear vertical sections:
+  - top `Active and upcoming jobs`
+  - middle `Recordings library`
+  - bottom `Recording activity log`
+- moved the one-off and recurring recording setup forms into dialogs so the page no longer spends most of its vertical space on always-open forms
+- added action buttons in the top section for:
+  - `Record now`
+  - `Create timed`
+  - `Schedule recording`
+  - `Add recurring`
+- kept guide/watch-page handoff behavior intact by auto-opening the correct dialog when `/recordings` is opened with recording or recurring-rule prefill params
+- split active job presentation into:
+  - currently recording jobs
+  - upcoming queued/scheduled jobs
+- kept recurring-rule management available inside the recurring-rule dialog through compact edit/pause/delete controls
+- tightened the recordings library layout so:
+  - completed recording media stays the only content in the middle section
+  - failed/canceled operations are excluded from the library section
+  - the existing thumbnail-first recording card style remains in place
+  - metadata density is higher and the page now renders multiple recordings per row on large screens
+- added a real recording-event feed foundation in the bottom section using real recording jobs and lifecycle status mapping
+- added targeted frontend helper coverage for:
+  - top-section job separation
+  - event-feed ordering and status mapping
+  - completed-only default library query behavior
+
+### Files Added Or Changed
+
+- frontend recordings UI:
+  - `apps/web/src/pages/recordings-page.tsx`
+  - `apps/web/src/components/recordings/recording-library-state.ts`
+  - `apps/web/src/components/recordings/recording-workspace-state.ts`
+- frontend tests:
+  - `apps/web/src/components/recordings/recording-library-state.test.ts`
+  - `apps/web/src/components/recordings/recording-workspace-state.test.ts`
+- docs:
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- Kept the existing recording card identity and thumbnail treatment rather than inventing a new card style, because the task asked for workflow restructuring and density more than visual redesign.
+- Used dialog-driven recording setup to reclaim page height while keeping the existing recording and recurring-rule validation/state helpers intact.
+- Derived the bottom event feed from real recording jobs and lifecycle timestamps instead of introducing a second logging model just for the page.
+- Restricted the middle library back to completed media so failed/canceled operational history is visible in the event feed, not mixed into the browseable media area.
+
+### Verification Run
+
+- `npm run test -w apps/web -- recording-library-state.test.ts recording-workspace-state.test.ts`
+- `npm run lint -w apps/web`
+- `npm run build -w apps/web`
+
+### Remaining Risk
+
+- The bottom event feed is currently derived from recording jobs rather than a durable append-only execution log, so repeated edits on the same job surface as the latest lifecycle state rather than every intermediate transition.
+- Recurring-rule management now lives inside the dialog instead of a dedicated page panel; if operators accumulate many rules, future work may still want filtering or a dedicated automation view.
+
+### Exact Suggested Next Task
+
+Add a dedicated recording execution-history API with append-only runtime events so the bottom activity strip can show richer per-run lifecycle detail, retries, and failure diagnostics.
+
 ## `2026-04-04T12:10:00+03:00`
 
 ### Objective

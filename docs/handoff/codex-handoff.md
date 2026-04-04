@@ -241,6 +241,15 @@ Key relationship rules:
   - watch page guide-to-recurring-rule handoff into `/recordings`
   - multiview tile `REC` / `Stop`
   - `/recordings` workspace for one-off create/edit/cancel/stop flows, recurring-rule create/edit/enable/disable/delete flows, browse, search, and delete flows
+  - `/recordings` now reads as a three-section operational workspace:
+    - top: action buttons plus active/upcoming jobs
+    - middle: completed recording media library only
+    - bottom: compact recording activity/event log
+- Current recordings workspace behavior:
+  - recording action buttons now open dialogs instead of leaving the full setup forms expanded on the page
+  - `Record now`, `Create timed`, and `Schedule recording` all reuse the job dialog with the requested mode preselected
+  - `Add recurring` opens the recurring-rule dialog, which also includes compact rule management for edit/pause/delete flows
+  - guide-to-recurring-rule and watch-page schedule handoffs still prefill the correct dialog when `/recordings` opens
 - Recordings library capabilities:
   - richer metadata for each item:
     - title
@@ -252,17 +261,21 @@ Key relationship rules:
     - storage path and protection state
   - filter/search recorded jobs by:
     - text
-    - status
     - channel
     - origin/mode
     - protected vs auto-retained state
     - recorded date range
-  - sort library results by newest/oldest/title/channel/status
-  - distinguish `COMPLETED`, `FAILED`, `CANCELED`, `PENDING`, `SCHEDULED`, and `RECORDING`
+  - sort library results by newest/oldest/title/channel
+  - the middle library is now intentionally restricted to completed recording media instead of mixing in failed or canceled operations
+  - recorded media cards keep the existing thumbnail-first visual identity but use a denser two-up grid and more compact metadata
   - show real recording thumbnails when extraction succeeds, with lazy generation on first thumbnail request as a fallback
   - open completed media on `/recordings/:id`
   - toggle `Keep forever` / protected on a recording
   - delete library items and underlying stored files
+- Current recording activity log behavior:
+  - the bottom event feed shows real job lifecycle events for `SCHEDULED`, `PENDING`, `RECORDING`, `COMPLETED`, `FAILED`, and `CANCELED`
+  - events are newest-first, compact, and scrollable
+  - completed events can jump into playback, while recurring events can jump into the linked rule
 - Current thumbnail/preview foundation:
   - finalized playable recordings attempt one representative JPEG thumbnail extraction through ffmpeg
   - thumbnails are stored as sidecar files under the recordings storage root using relative safe paths
