@@ -46,6 +46,7 @@ const { buildServer } = await import("../../app/build-server.js");
 const { createAuthHeaders } = await import("../../app/test-support.js");
 const { readProxyToken } = await import("./proxy-token.js");
 const { clearTimeshiftBufferStateForTests } = await import("./timeshift-buffer.js");
+const { clearSharedStreamSessionsForTests } = await import("./shared-stream-session.js");
 
 describe("streamRoutes", () => {
   let server: Awaited<ReturnType<typeof buildServer>>;
@@ -80,6 +81,7 @@ describe("streamRoutes", () => {
 
   afterEach(async () => {
     clearTimeshiftBufferStateForTests();
+    clearSharedStreamSessionsForTests();
     await server.close();
     vi.unstubAllGlobals();
   });
@@ -553,6 +555,76 @@ segment24.ts`),
     expect(response.statusCode).toBe(200);
     expect(response.headers["content-type"]).toContain("application/vnd.apple.mpegurl");
     expect(response.body).toContain("/api/streams/channels/55555555-5555-5555-5555-555555555555/timeshift/variants/live/index.m3u8");
+  });
+
+  it("starts a shared delivery session and rewrites the master playlist through shared asset paths", async () => {
+    mockPrisma.channel.findUnique.mockResolvedValue({
+      id: "66666666-6666-6666-6666-666666666666",
+      name: "Local News",
+      slug: "local-news",
+      isActive: true,
+      sourceMode: "MASTER_PLAYLIST",
+      masterHlsUrl: "https://origin.example.com/live/master.m3u8",
+      playbackMode: "SHARED",
+      timeshiftEnabled: false,
+      timeshiftWindowMinutes: null,
+      upstreamUserAgent: null,
+      upstreamReferrer: null,
+      upstreamHeaders: null,
+      qualityVariants: [],
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: vi.fn().mockResolvedValue("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1800000\nvariant/high.m3u8\n"),
+        headers: {
+          get: vi.fn().mockReturnValue("application/vnd.apple.mpegurl"),
+        },
+      }),
+    );
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/streams/channels/66666666-6666-6666-6666-666666666666/shared/master",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain("/api/streams/channels/66666666-6666-6666-6666-666666666666/shared/assets/");
+  });
+
+  it("reports shared session status for shared-delivery channels", async () => {
+    mockPrisma.channel.findUnique.mockResolvedValue({
+      id: "77777777-7777-7777-7777-777777777777",
+      name: "Edge Feed",
+      slug: "edge-feed",
+      isActive: true,
+      sourceMode: "MASTER_PLAYLIST",
+      masterHlsUrl: "https://origin.example.com/live/master.m3u8",
+      playbackMode: "SHARED",
+      timeshiftEnabled: false,
+      timeshiftWindowMinutes: null,
+      upstreamUserAgent: null,
+      upstreamReferrer: null,
+      upstreamHeaders: null,
+      qualityVariants: [],
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/streams/channels/77777777-7777-7777-7777-777777777777/shared/status",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      status: expect.objectContaining({
+        channelId: "77777777-7777-7777-7777-777777777777",
+        configured: true,
+        active: false,
+        upstreamState: "IDLE",
+      }),
+    });
   });
 
   it("rejects invalid proxy asset tokens at the route edge", async () => {

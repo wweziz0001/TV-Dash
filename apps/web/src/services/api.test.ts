@@ -24,6 +24,17 @@ describe("getChannelPlaybackUrl", () => {
     ).toContain("/streams/channels/11111111-1111-1111-1111-111111111111/master");
   });
 
+  it("returns the shared local-delivery master path for shared channels", () => {
+    expect(
+      getChannelPlaybackUrl({
+        id: "11111111-1111-1111-1111-111111111111",
+        sourceMode: "MASTER_PLAYLIST",
+        masterHlsUrl: null,
+        playbackMode: "SHARED",
+      }),
+    ).toContain("/streams/channels/11111111-1111-1111-1111-111111111111/shared/master");
+  });
+
   it("can prefer the API proxy path even for direct channels", () => {
     expect(
       getChannelPlaybackUrl(

@@ -70,6 +70,29 @@ describe("channelInputSchema", () => {
     ).not.toThrow();
   });
 
+  it("accepts shared delivery when TV-Dash owns the local serving path", () => {
+    expect(() =>
+      channelInputSchema.parse({
+        name: "Shared News",
+        slug: "shared-news",
+        logoUrl: "",
+        sourceMode: "MASTER_PLAYLIST",
+        masterHlsUrl: "https://example.com/live/master.m3u8",
+        groupId: null,
+        isActive: true,
+        sortOrder: 3,
+        playbackMode: "SHARED",
+        timeshiftEnabled: true,
+        timeshiftWindowMinutes: 30,
+        upstreamUserAgent: "",
+        upstreamReferrer: "",
+        upstreamHeaders: {},
+        epgSourceId: null,
+        epgChannelId: null,
+      }),
+    ).not.toThrow();
+  });
+
   it("rejects mixed-mode payloads", () => {
     const mixedModeResult = channelInputSchema.safeParse({
       name: "Broken",

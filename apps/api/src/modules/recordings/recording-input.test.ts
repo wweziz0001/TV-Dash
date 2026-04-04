@@ -199,6 +199,29 @@ mid/index.m3u8`),
     ]);
   });
 
+  it("uses the internal shared master for shared-delivery channels", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const config = await buildRecordingInputConfig(
+      buildChannel({
+        playbackMode: "SHARED",
+      }),
+      4000,
+      "1",
+      {
+        supportsAllowedSegmentExtensions: true,
+        supportsExtensionPicky: true,
+      },
+    );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(config.sourceUrl).toBe(
+      "http://127.0.0.1:4000/api/streams/channels/11111111-1111-1111-1111-111111111111/shared/master",
+    );
+    expect(config.captureMode).toBe("PROXY");
+  });
+
   it("falls back to broadly compatible HLS input options when ffmpeg does not support allowed_segment_extensions", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
