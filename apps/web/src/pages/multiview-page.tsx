@@ -488,10 +488,7 @@ export function MultiViewPage() {
             ))}
           </Select>
           <div className="rounded-xl border border-slate-800/80 bg-slate-950/70 px-3 py-2.5 md:col-span-2 2xl:col-span-1">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Current wall</p>
-            <p className="mt-1 text-[13px] font-semibold text-white">
-              {layoutDefinition.label} · {layoutDefinition.tileCount} tiles
-            </p>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Current wall </p>
             <p className="mt-0.5 text-[10px] text-slate-500">
               {selectedLayout ? `Editing saved layout: ${selectedLayout.name}` : "Working in an unsaved operator draft"} ·{" "}
               {deviceClass}
@@ -513,15 +510,6 @@ export function MultiViewPage() {
           ))}
         </div>
 
-        <div className="mt-3 rounded-xl border border-slate-800/80 bg-slate-950/70 px-3 py-2.5">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Viewport policy</p>
-          <p className="mt-1 text-[13px] text-slate-300">{viewportPolicy.operatorNote}</p>
-          <p className="mt-1 text-[11px] text-slate-500">
-            {canDragSwap
-              ? "Drag-swap stays enabled for fine-pointer devices."
-              : "Touch-first mode disables drag-swap and prioritizes focus, replace, and saved-layout flows."}
-          </p>
-        </div>
       </PageHeader>
 
       <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
