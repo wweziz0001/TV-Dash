@@ -17,7 +17,7 @@ import { HlsPlayer, type PlayerDiagnostics } from "@/player/hls-player";
 import { buildPlayerDiagnostics } from "@/player/playback-diagnostics";
 import { defaultQualityOptions } from "@/player/quality-options";
 import { api, getChannelPlaybackUrl } from "@/services/api";
-import type { QualityOption, RecordingJob } from "@/types/api";
+import type { LiveTimeshiftStatus, QualityOption, RecordingJob } from "@/types/api";
 
 export function ChannelWatchPage() {
   const { slug = "" } = useParams();
@@ -68,6 +68,19 @@ export function ChannelWatchPage() {
       return (await api.getNowNext([channelQuery.data.id], token)).items[0] ?? null;
     },
     enabled: Boolean(token && channelQuery.data?.id),
+  });
+
+  const timeshiftStatusQuery = useQuery({
+    queryKey: ["channel-timeshift", channelQuery.data?.id, token],
+    queryFn: async () => {
+      if (!channelQuery.data) {
+        throw new Error("Missing channel context");
+      }
+
+      return (await api.getChannelTimeshiftStatus(channelQuery.data.id, token)).status;
+    },
+    enabled: Boolean(token && channelQuery.data?.id),
+    refetchInterval: 10000,
   });
 
   const guideWindowQuery = useQuery({
@@ -307,6 +320,7 @@ export function ChannelWatchPage() {
   }
 
   const channel = channelQuery.data;
+  const timeshiftStatus: LiveTimeshiftStatus | null = timeshiftStatusQuery.data ?? null;
   const playbackUrl = getChannelPlaybackUrl(channel);
   const nowNext = nowNextQuery.data;
   const guideProgrammes = (guideWindowQuery.data?.programmes ?? []).filter((programme) => {
@@ -378,6 +392,7 @@ export function ChannelWatchPage() {
               onDiagnosticsChange={setPlayerDiagnostics}
               preferredQuality={selectedQuality}
               src={playbackUrl}
+              timeshiftStatus={timeshiftStatus}
               title={channel.name}
             />
           </div>
@@ -466,11 +481,15 @@ export function ChannelWatchPage() {
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">
                   Live window:{" "}
-                  {playerDiagnostics.canSeek
-                    ? playerDiagnostics.isAtLiveEdge
-                      ? "at the live edge"
-                      : `${Math.round(playerDiagnostics.liveLatencySeconds ?? 0)} seconds behind live`
-                    : "this stream does not expose a seekable DVR window"}
+                  {timeshiftStatus?.supported
+                    ? !timeshiftStatus.available
+                      ? `${timeshiftStatus.message} (${Math.max(0, Math.floor(timeshiftStatus.availableWindowSeconds))}s retained so far)`
+                      : playerDiagnostics.canSeek
+                        ? playerDiagnostics.isAtLiveEdge
+                          ? `DVR ready with ${Math.floor(timeshiftStatus.availableWindowSeconds)} seconds retained at the live edge`
+                          : `${Math.round(playerDiagnostics.liveLatencySeconds ?? 0)} seconds behind live`
+                        : "DVR is enabled but the player has not exposed a seekable window yet"
+                    : "this channel is live-only and TV-Dash does not expose pause or rewind controls"}
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">
                   {isPlayerFullscreen || playerDiagnostics.isFullscreenActive

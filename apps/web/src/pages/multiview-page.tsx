@@ -40,7 +40,7 @@ import {
 } from "@/player/multiview-viewport";
 import { defaultQualityOptions } from "@/player/quality-options";
 import { api, getChannelPlaybackUrl } from "@/services/api";
-import type { QualityOption, RecordingJob } from "@/types/api";
+import type { LiveTimeshiftStatus, QualityOption, RecordingJob } from "@/types/api";
 
 export function MultiViewPage() {
   const { token } = useAuth();
@@ -95,6 +95,26 @@ export function MultiViewPage() {
       return (await api.getNowNext(tileChannelIds, token)).items;
     },
     enabled: Boolean(token && tileChannelIds.length),
+  });
+
+  const timeshiftStatusQuery = useQuery({
+    queryKey: ["multiview-timeshift", token, tileChannelIds],
+    queryFn: async () => {
+      if (!token || !tileChannelIds.length) {
+        return {};
+      }
+
+      const statuses = await Promise.all(
+        tileChannelIds.map(async (channelId) => [
+          channelId,
+          (await api.getChannelTimeshiftStatus(channelId, token)).status,
+        ] as const),
+      );
+
+      return Object.fromEntries(statuses) as Record<string, LiveTimeshiftStatus>;
+    },
+    enabled: Boolean(token && tileChannelIds.length),
+    refetchInterval: 10000,
   });
 
   const recordingJobsQuery = useQuery({
@@ -294,6 +314,8 @@ export function MultiViewPage() {
   const focusedTile = tiles[focusedTileIndex] ?? tiles[0];
   const focusedChannel = focusedTile?.channelId ? channelMap.get(focusedTile.channelId) ?? null : null;
   const focusedGuide = focusedChannel ? nowNextByChannelId.get(focusedChannel.id) : null;
+  const timeshiftStatusByChannelId = timeshiftStatusQuery.data ?? {};
+  const focusedTimeshiftStatus = focusedChannel ? timeshiftStatusByChannelId[focusedChannel.id] ?? null : null;
   const focusedPlayerDiagnostics =
     playerDiagnosticsByTile[focusedTileIndex] ??
     buildPlayerDiagnostics({
@@ -527,6 +549,7 @@ export function MultiViewPage() {
             {tiles.map((tile, index) => {
               const channel = tile.channelId ? channelMap.get(tile.channelId) ?? null : null;
               const recordingJob = channel ? activeRecordingByChannelId.get(channel.id) ?? null : null;
+              const timeshiftStatus = channel ? timeshiftStatusByChannelId[channel.id] ?? null : null;
               const qualityOptions = qualityOptionsByTile[index] ?? [...defaultQualityOptions];
               const playerStatus = playerStatusByTile[index] ?? (channel ? "loading" : "idle");
               const playerDiagnostics =
@@ -644,6 +667,7 @@ export function MultiViewPage() {
                     qualityOptions={qualityOptions}
                     recordingJob={recordingJob}
                     src={channel ? getChannelPlaybackUrl(channel, { preferProxy: true }) : null}
+                    timeshiftStatus={timeshiftStatus}
                     tile={tile}
                     tileIndex={index}
                   />
@@ -700,6 +724,13 @@ export function MultiViewPage() {
                   </span>
                   <span className="rounded-full border border-slate-700/80 bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200">
                     {focusedTile?.isMuted ? "Muted tile" : "Audio owner"}
+                  </span>
+                  <span className="rounded-full border border-slate-700/80 bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200">
+                    {focusedTimeshiftStatus?.supported
+                      ? focusedTimeshiftStatus.available
+                        ? `DVR ${Math.floor(focusedTimeshiftStatus.availableWindowSeconds / 60)}m`
+                        : "DVR warming"
+                      : "Live only"}
                   </span>
                   {focusedPlayerDiagnostics.failureKind ? (
                     <span className="rounded-full border border-rose-400/20 bg-rose-500/10 px-2 py-0.5 text-[10px] text-rose-200">

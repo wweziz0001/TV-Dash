@@ -19,6 +19,11 @@ export interface PlayerDiagnostics {
   canSeek: boolean;
   isAtLiveEdge: boolean;
   liveLatencySeconds: number | null;
+  timeshiftSupported: boolean;
+  timeshiftAvailable: boolean;
+  timeshiftBufferState: "DISABLED" | "UNSUPPORTED" | "STARTING" | "WARMING" | "READY" | "ERROR";
+  timeshiftAvailableWindowSeconds: number;
+  timeshiftMessage: string | null;
 }
 
 interface BuildPlayerDiagnosticsOptions {
@@ -37,6 +42,11 @@ interface BuildPlayerDiagnosticsOptions {
   canSeek?: boolean;
   isAtLiveEdge?: boolean;
   liveLatencySeconds?: number | null;
+  timeshiftSupported?: boolean;
+  timeshiftAvailable?: boolean;
+  timeshiftBufferState?: "DISABLED" | "UNSUPPORTED" | "STARTING" | "WARMING" | "READY" | "ERROR";
+  timeshiftAvailableWindowSeconds?: number;
+  timeshiftMessage?: string | null;
 }
 
 function getStatusLabel(status: PlayerStatus, recoveryNotice: string | null, isPaused: boolean) {
@@ -82,6 +92,11 @@ export function buildPlayerDiagnostics({
   canSeek = false,
   isAtLiveEdge = true,
   liveLatencySeconds = null,
+  timeshiftSupported = false,
+  timeshiftAvailable = false,
+  timeshiftBufferState = "DISABLED",
+  timeshiftAvailableWindowSeconds = 0,
+  timeshiftMessage = null,
 }: BuildPlayerDiagnosticsOptions): PlayerDiagnostics {
   const label = getStatusLabel(status, recoveryNotice, isPaused);
   const recoveryState =
@@ -105,6 +120,11 @@ export function buildPlayerDiagnostics({
       canSeek,
       isAtLiveEdge,
       liveLatencySeconds,
+      timeshiftSupported,
+      timeshiftAvailable,
+      timeshiftBufferState,
+      timeshiftAvailableWindowSeconds,
+      timeshiftMessage,
     };
   }
 
@@ -112,7 +132,7 @@ export function buildPlayerDiagnostics({
     return {
       status,
       label,
-      summary: "Playback is paused. Resume when you want to return to the live edge.",
+      summary: "Playback is paused inside the live DVR window.",
       technicalDetail: canSeek ? "Seek controls are available while paused." : null,
       failureKind,
       recoveryState,
@@ -126,14 +146,33 @@ export function buildPlayerDiagnostics({
       canSeek,
       isAtLiveEdge,
       liveLatencySeconds,
+      timeshiftSupported,
+      timeshiftAvailable,
+      timeshiftBufferState,
+      timeshiftAvailableWindowSeconds,
+      timeshiftMessage,
     };
   }
 
   if (status === "playing") {
+    const liveSummary = canSeek
+      ? isAtLiveEdge
+        ? "Live playback is at the live edge."
+        : `Playback is ${Math.round(liveLatencySeconds ?? 0)} seconds behind live inside the DVR window.`
+      : muted
+        ? "Live playback is stable and muted."
+        : "Live playback is stable.";
+
     return {
       status,
       label,
-      summary: recoveryNotice ?? (muted ? "Live playback is stable and muted." : "Live playback is stable."),
+      summary:
+        recoveryNotice ??
+        (!timeshiftSupported
+          ? liveSummary
+          : !timeshiftAvailable
+            ? timeshiftMessage ?? "Timeshift buffer is warming up."
+            : liveSummary),
       technicalDetail: null,
       failureKind,
       recoveryState,
@@ -147,6 +186,11 @@ export function buildPlayerDiagnostics({
       canSeek,
       isAtLiveEdge,
       liveLatencySeconds,
+      timeshiftSupported,
+      timeshiftAvailable,
+      timeshiftBufferState,
+      timeshiftAvailableWindowSeconds,
+      timeshiftMessage,
     };
   }
 
@@ -175,6 +219,11 @@ export function buildPlayerDiagnostics({
     canSeek,
     isAtLiveEdge,
     liveLatencySeconds,
+    timeshiftSupported,
+    timeshiftAvailable,
+    timeshiftBufferState,
+    timeshiftAvailableWindowSeconds,
+    timeshiftMessage,
   };
 }
 

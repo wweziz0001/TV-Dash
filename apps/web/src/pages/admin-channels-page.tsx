@@ -500,5 +500,6 @@ function buildPreviewSrc(form: typeof emptyChannelForm, editingChannelId: string
     sourceMode: form.sourceMode,
     masterHlsUrl: form.masterHlsUrl || null,
     playbackMode: form.playbackMode,
+    timeshiftEnabled: form.timeshiftEnabled,
   });
 }

@@ -15,6 +15,8 @@ export interface ChannelAdminFormValue {
   isActive: boolean;
   sortOrder: number;
   playbackMode: ChannelInput["playbackMode"];
+  timeshiftEnabled: boolean;
+  timeshiftWindowMinutes: number;
   upstreamUserAgent: string;
   upstreamReferrer: string;
   upstreamHeadersText: string;
@@ -56,6 +58,8 @@ export const emptyChannelForm: ChannelAdminFormValue = {
   isActive: true,
   sortOrder: 0,
   playbackMode: "DIRECT",
+  timeshiftEnabled: false,
+  timeshiftWindowMinutes: 30,
   upstreamUserAgent: "",
   upstreamReferrer: "",
   upstreamHeadersText: "",
@@ -209,6 +213,8 @@ export function buildChannelInput(form: ChannelAdminFormValue): ChannelInput {
     isActive: form.isActive,
     sortOrder: Number(form.sortOrder),
     playbackMode: form.playbackMode,
+    timeshiftEnabled: form.timeshiftEnabled,
+    timeshiftWindowMinutes: form.timeshiftEnabled ? Number(form.timeshiftWindowMinutes) : null,
     upstreamUserAgent: form.upstreamUserAgent,
     upstreamReferrer: form.upstreamReferrer,
     upstreamHeaders: parseHeadersJson(form.upstreamHeadersText),
@@ -265,6 +271,8 @@ export function buildChannelFormFromConfig(channel: ChannelConfig): ChannelAdmin
     isActive: channel.isActive,
     sortOrder: channel.sortOrder,
     playbackMode: channel.playbackMode,
+    timeshiftEnabled: channel.timeshiftEnabled ?? false,
+    timeshiftWindowMinutes: channel.timeshiftWindowMinutes ?? 30,
     upstreamUserAgent: channel.upstreamUserAgent ?? "",
     upstreamReferrer: channel.upstreamReferrer ?? "",
     upstreamHeadersText: formatHeadersJson(channel.upstreamHeaders),

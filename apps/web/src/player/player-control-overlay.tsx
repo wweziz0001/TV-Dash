@@ -15,6 +15,7 @@ interface PlayerControlOverlayProps {
   density?: PlayerControlDensity;
   visible?: boolean;
   hasSource: boolean;
+  showTimeline: boolean;
   isMuted: boolean;
   volume: number;
   canSeek: boolean;
@@ -43,6 +44,7 @@ export function PlayerControlOverlay({
   density = "full",
   visible = true,
   hasSource,
+  showTimeline,
   isMuted,
   volume,
   canSeek,
@@ -81,26 +83,28 @@ export function PlayerControlOverlay({
         visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
       )}
     >
-      <div className={timelineWrapperClassName}>
-        <div className={cn("mb-1 flex items-center justify-between gap-2 text-slate-300", isMicro ? "text-[8px]" : "text-[10px]")}>
-          <span>{currentTimeLabel}</span>
-          <span>{durationLabel}</span>
+      {showTimeline ? (
+        <div className={timelineWrapperClassName}>
+          <div className={cn("mb-1 flex items-center justify-between gap-2 text-slate-300", isMicro ? "text-[8px]" : "text-[10px]")}>
+            <span>{currentTimeLabel}</span>
+            <span>{durationLabel}</span>
+          </div>
+          <input
+            aria-label="Player timeline"
+            className={cn(
+              "w-full cursor-pointer accent-cyan-300 disabled:cursor-default disabled:opacity-80",
+              isMicro ? "h-1" : "h-1.5",
+            )}
+            disabled={!canSeek || !hasSource}
+            max={timelineMax}
+            min={timelineMin}
+            onChange={(event) => onTimelineChange(Number(event.target.value))}
+            step={1}
+            type="range"
+            value={timelineValue}
+          />
         </div>
-        <input
-          aria-label="Player timeline"
-          className={cn(
-            "w-full cursor-pointer accent-cyan-300 disabled:cursor-default disabled:opacity-80",
-            isMicro ? "h-1" : "h-1.5",
-          )}
-          disabled={!canSeek || !hasSource}
-          max={timelineMax}
-          min={timelineMin}
-          onChange={(event) => onTimelineChange(Number(event.target.value))}
-          step={1}
-          type="range"
-          value={timelineValue}
-        />
-      </div>
+      ) : null}
 
       <div className={cn("flex items-center justify-between gap-1", isMicro || isCompact ? "flex-wrap" : "flex-wrap lg:flex-nowrap")}>
         <div className="flex items-center gap-1.5">

@@ -4,7 +4,7 @@ import { AlertTriangle, LoaderCircle, Pause, Play, RotateCcw, Signal } from "luc
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { QualityOption } from "@/types/api";
+import type { LiveTimeshiftStatus, QualityOption } from "@/types/api";
 import {
   defaultPlayerSeekState,
   getPlayerBrowserCapabilities,
@@ -24,6 +24,7 @@ import { buildQualityOptions, defaultQualityOptions, resolvePreferredQuality } f
 interface HlsPlayerProps {
   src: string | null;
   title: string;
+  timeshiftStatus?: LiveTimeshiftStatus | null;
   muted?: boolean;
   autoPlay?: boolean;
   preferredQuality?: string | null;
@@ -70,6 +71,7 @@ function formatPlaybackTime(seconds: number | null) {
 export function HlsPlayer({
   src,
   title,
+  timeshiftStatus = null,
   muted = true,
   autoPlay = true,
   preferredQuality = "AUTO",
@@ -126,6 +128,9 @@ export function HlsPlayer({
   const [isPictureInPictureMode, setIsPictureInPictureMode] = useState(false);
   const [isFullscreenMode, setIsFullscreenMode] = useState(false);
   const [areControlsVisible, setAreControlsVisible] = useState(false);
+  const timeshiftSupported = timeshiftStatus?.supported ?? false;
+  const timeshiftAvailable = timeshiftStatus?.available ?? false;
+  const effectiveCanSeek = timeshiftAvailable && seekState.canSeek;
 
   callbacksRef.current = {
     onMutedChange,
@@ -273,7 +278,7 @@ export function HlsPlayer({
   async function resumePlayback() {
     const video = videoRef.current;
 
-    if (!video || !src) {
+    if (!video || !src || !timeshiftStatus?.available) {
       return;
     }
 
@@ -292,7 +297,7 @@ export function HlsPlayer({
   function pausePlayback(detail = "Playback paused by the operator.") {
     const video = videoRef.current;
 
-    if (!video) {
+    if (!video || !timeshiftStatus?.available) {
       return;
     }
 
@@ -305,7 +310,7 @@ export function HlsPlayer({
   function handleTogglePlayback() {
     const video = videoRef.current;
 
-    if (!video || !src) {
+    if (!video || !src || !timeshiftStatus?.available) {
       return;
     }
 
@@ -344,6 +349,10 @@ export function HlsPlayer({
   function handleSeek(offsetSeconds: number) {
     const video = videoRef.current;
 
+    if (!timeshiftAvailable) {
+      return;
+    }
+
     if (!seekVideoByOffset(video, offsetSeconds)) {
       return;
     }
@@ -355,7 +364,7 @@ export function HlsPlayer({
   function handleSeekTo(value: number) {
     const video = videoRef.current;
 
-    if (!video || !seekState.canSeek || seekState.rangeStart === null || seekState.rangeEnd === null) {
+    if (!video || !effectiveCanSeek || seekState.rangeStart === null || seekState.rangeEnd === null) {
       return;
     }
 
@@ -368,7 +377,7 @@ export function HlsPlayer({
   function handleJumpToLive() {
     const video = videoRef.current;
 
-    if (!video || !seekState.canSeek || seekState.rangeEnd === null) {
+    if (!video || !effectiveCanSeek || seekState.rangeEnd === null) {
       return;
     }
 
@@ -469,13 +478,19 @@ export function HlsPlayer({
         pictureInPictureMode: isPictureInPictureMode ? "native" : "none",
         isFullscreenActive: isFullscreenMode,
         canPictureInPicture: capabilities.canPictureInPicture,
-        canSeek: seekState.canSeek,
+        canSeek: effectiveCanSeek,
         isAtLiveEdge: seekState.isAtLiveEdge,
         liveLatencySeconds: seekState.liveLatencySeconds,
+        timeshiftSupported,
+        timeshiftAvailable,
+        timeshiftBufferState: timeshiftStatus?.bufferState ?? "DISABLED",
+        timeshiftAvailableWindowSeconds: timeshiftStatus?.availableWindowSeconds ?? 0,
+        timeshiftMessage: timeshiftStatus?.message ?? null,
       }),
     );
   }, [
     capabilities.canPictureInPicture,
+    effectiveCanSeek,
     error,
     failureKind,
     isFullscreenMode,
@@ -483,11 +498,15 @@ export function HlsPlayer({
     isPictureInPictureMode,
     playerMuted,
     recoveryNotice,
-    seekState.canSeek,
     seekState.isAtLiveEdge,
     seekState.liveLatencySeconds,
     status,
     statusDetail,
+    timeshiftAvailable,
+    timeshiftStatus?.availableWindowSeconds,
+    timeshiftStatus?.bufferState,
+    timeshiftStatus?.message,
+    timeshiftSupported,
     volume,
   ]);
 
@@ -836,7 +855,7 @@ export function HlsPlayer({
   }, [preferredQuality]);
 
   useEffect(() => {
-    if (!capabilities.canUseMediaSession || !src) {
+    if (!capabilities.canUseMediaSession || !src || !timeshiftAvailable) {
       return;
     }
 
@@ -846,7 +865,7 @@ export function HlsPlayer({
       {
         title,
         playbackState: isPaused ? "paused" : status === "playing" || status === "buffering" || status === "retrying" ? "playing" : "none",
-        canSeek: seekState.canSeek,
+        canSeek: effectiveCanSeek,
         seekOffsetSeconds: SEEK_STEP_SECONDS,
         onPlay: resumePlayback,
         onPause: () => pausePlayback("Playback paused from a browser media control."),
@@ -859,7 +878,7 @@ export function HlsPlayer({
         },
       },
     );
-  }, [capabilities.canUseMediaSession, isPaused, seekState.canSeek, src, status, title]);
+  }, [capabilities.canUseMediaSession, effectiveCanSeek, isPaused, src, status, timeshiftAvailable, title]);
 
   useEffect(() => () => {
     clearReconnectTimeout();
@@ -881,27 +900,36 @@ export function HlsPlayer({
     pictureInPictureMode: isPictureInPictureMode ? "native" : "none",
     isFullscreenActive: isFullscreenMode,
     canPictureInPicture: capabilities.canPictureInPicture,
-    canSeek: seekState.canSeek,
+    canSeek: effectiveCanSeek,
     isAtLiveEdge: seekState.isAtLiveEdge,
     liveLatencySeconds: seekState.liveLatencySeconds,
+    timeshiftSupported,
+    timeshiftAvailable,
+    timeshiftBufferState: timeshiftStatus?.bufferState ?? "DISABLED",
+    timeshiftAvailableWindowSeconds: timeshiftStatus?.availableWindowSeconds ?? 0,
+    timeshiftMessage: timeshiftStatus?.message ?? null,
   });
-  const liveStateLabel = seekState.canSeek
-    ? seekState.isAtLiveEdge
-      ? "Live"
-      : `-${Math.round(seekState.liveLatencySeconds ?? 0)}s`
-    : "No DVR";
+  const liveStateLabel = !timeshiftSupported
+    ? "No DVR"
+    : !timeshiftAvailable
+      ? "DVR warming"
+      : seekState.isAtLiveEdge
+        ? "Live"
+        : `-${Math.round(seekState.liveLatencySeconds ?? 0)}s`;
   const timelineMin = seekState.rangeStart ?? 0;
   const timelineMax = seekState.rangeEnd ?? 1;
-  const timelineValue = seekState.canSeek
+  const timelineValue = effectiveCanSeek
     ? Math.min(timelineMax, Math.max(timelineMin, currentTime))
     : timelineMax;
-  const currentTimeLabel = seekState.canSeek
+  const currentTimeLabel = effectiveCanSeek
     ? formatPlaybackTime(currentTime - timelineMin)
     : liveStateLabel;
-  const durationLabel = seekState.canSeek
+  const durationLabel = effectiveCanSeek
     ? formatPlaybackTime((seekState.rangeEnd ?? timelineMax) - timelineMin)
-    : "LIVE";
-  const showCenterPlaybackButton = Boolean(src) && (areControlsVisible || isPaused);
+    : timeshiftSupported
+      ? formatPlaybackTime(timeshiftStatus?.availableWindowSeconds ?? 0)
+      : "LIVE";
+  const showCenterPlaybackButton = Boolean(src) && timeshiftAvailable && (areControlsVisible || isPaused);
 
   return (
     <div
@@ -1000,7 +1028,7 @@ export function HlsPlayer({
       <PlayerControlOverlay
         canFullscreen={capabilities.canFullscreen}
         canPictureInPicture={capabilities.canPictureInPicture}
-        canSeek={seekState.canSeek}
+        canSeek={effectiveCanSeek}
         currentTimeLabel={currentTimeLabel}
         density={controlDensity}
         durationLabel={durationLabel}
@@ -1018,6 +1046,7 @@ export function HlsPlayer({
         onTogglePictureInPicture={() => void handleTogglePictureInPicture()}
         onVolumeChange={handleVolumeChange}
         pictureInPictureUnavailableReason={capabilities.pictureInPictureUnavailableReason}
+        showTimeline={timeshiftSupported}
         timelineMax={timelineMax}
         timelineMin={timelineMin}
         timelineValue={timelineValue}

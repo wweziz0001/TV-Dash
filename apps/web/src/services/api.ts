@@ -29,6 +29,7 @@ import type {
   EpgSource,
   EpgSourceDiagnostics,
   Favorite,
+  LiveTimeshiftStatus,
   ProgramEntry,
   RecordingJob,
   RecordingQualityOption,
@@ -120,6 +121,8 @@ export const api = {
     request<{ channels: Channel[] }>(`/channels${params ? `?${params.toString()}` : ""}`, {}, token),
   getChannelConfig: (id: string, token: string) =>
     request<{ channel: ChannelConfig }>(`/channels/${id}/config`, {}, token),
+  getChannelTimeshiftStatus: (id: string, token: string | null) =>
+    request<{ status: LiveTimeshiftStatus }>(`/streams/channels/${id}/timeshift/status`, {}, token),
   getChannelDiagnostics: (id: string, token: string) =>
     request<{ diagnostics: ChannelDiagnostics }>(`/diagnostics/channels/${id}`, {}, token),
   getAdminMonitoring: (token: string) =>
@@ -254,12 +257,17 @@ export const api = {
 
 interface ChannelPlaybackUrlOptions {
   preferProxy?: boolean;
+  preferTimeshift?: boolean;
 }
 
 export function getChannelPlaybackUrl(
-  channel: Pick<Channel, "id" | "masterHlsUrl" | "playbackMode" | "sourceMode">,
+  channel: Pick<Channel, "id" | "masterHlsUrl" | "playbackMode" | "sourceMode" | "timeshiftEnabled">,
   options: ChannelPlaybackUrlOptions = {},
 ) {
+  if (options.preferTimeshift || channel.timeshiftEnabled === true) {
+    return `${API_BASE_URL}/streams/channels/${channel.id}/timeshift/master`;
+  }
+
   if (options.preferProxy || channel.playbackMode === "PROXY" || channel.sourceMode === "MANUAL_VARIANTS") {
     return `${API_BASE_URL}/streams/channels/${channel.id}/master`;
   }

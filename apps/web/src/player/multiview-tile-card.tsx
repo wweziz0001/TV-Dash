@@ -15,7 +15,7 @@ import { Select } from "@/components/ui/select";
 import { ChannelGuideCard } from "@/components/channels/channel-guide-card";
 import { cn } from "@/lib/utils";
 import { HlsPlayer, type PlayerDiagnostics, type PlayerStatus } from "@/player/hls-player";
-import type { Channel, ChannelNowNext, QualityOption, RecordingJob } from "@/types/api";
+import type { Channel, ChannelNowNext, LiveTimeshiftStatus, QualityOption, RecordingJob } from "@/types/api";
 import { getPlaybackTone } from "./playback-diagnostics";
 import type { LayoutDefinition } from "./layouts";
 import type { TileState } from "./multiview-layout";
@@ -27,6 +27,7 @@ interface MultiviewTileCardProps {
   src: string | null;
   guide: ChannelNowNext | null | undefined;
   guideLoading: boolean;
+  timeshiftStatus?: LiveTimeshiftStatus | null;
   qualityOptions: QualityOption[];
   playerStatus: PlayerStatus;
   playerDiagnostics: PlayerDiagnostics;
@@ -61,6 +62,7 @@ export function MultiviewTileCard({
   src,
   guide,
   guideLoading,
+  timeshiftStatus = null,
   qualityOptions,
   playerStatus,
   playerDiagnostics,
@@ -121,6 +123,15 @@ export function MultiviewTileCard({
           <p className="mt-0.5 truncate text-[11px] text-slate-400">
             {channel?.group?.name ?? "No channel selected"} · {channel ? (channel.playbackMode === "PROXY" ? "Proxy" : "Direct") : "Ready for assignment"}
           </p>
+          {channel ? (
+            <p className="mt-1 truncate text-[11px] text-slate-500">
+              {timeshiftStatus?.supported
+                ? timeshiftStatus.available
+                  ? `DVR ready · ${Math.floor(timeshiftStatus.availableWindowSeconds / 60)}m retained`
+                  : timeshiftStatus.message
+                : "Live only · pause and rewind stay hidden until TV-Dash has a real retained buffer"}
+            </p>
+          ) : null}
           {channel ? (
             <p className="mt-1 truncate text-[11px] text-slate-500">
               {playerDiagnostics.summary}
@@ -232,6 +243,7 @@ export function MultiviewTileCard({
             onDiagnosticsChange={onDiagnosticsChange}
             preferredQuality={tile.preferredQuality}
             src={src}
+            timeshiftStatus={timeshiftStatus}
             title={channel.name}
           />
         ) : (

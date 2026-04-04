@@ -115,7 +115,12 @@ export function ChannelAdminFormFields({ form, groups, onChange }: ChannelAdminF
       <div className="grid gap-3 md:grid-cols-2">
         <Field label="Playback mode">
           <Select
-            onChange={(event) => onChange({ playbackMode: event.target.value as ChannelInput["playbackMode"] })}
+            onChange={(event) =>
+              onChange({
+                playbackMode: event.target.value as ChannelInput["playbackMode"],
+                ...(event.target.value === "DIRECT" ? { timeshiftEnabled: false } : {}),
+              })
+            }
             uiSize="sm"
             value={form.playbackMode}
           >
@@ -138,6 +143,36 @@ export function ChannelAdminFormFields({ form, groups, onChange }: ChannelAdminF
             <option value="true">Active</option>
             <option value="false">Inactive</option>
           </Select>
+        </Field>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label="Live timeshift">
+          <Select
+            onChange={(event) => onChange({ timeshiftEnabled: event.target.value === "true" })}
+            uiSize="sm"
+            value={String(form.timeshiftEnabled)}
+          >
+            <option value="false">Live only</option>
+            <option value="true" disabled={form.playbackMode !== "PROXY"}>
+              Retained DVR buffer
+            </option>
+          </Select>
+          {form.playbackMode !== "PROXY" ? (
+            <FieldMessage tone="amber">
+              Timeshift needs proxy playback so TV-Dash can retain live HLS segments and serve a real DVR window.
+            </FieldMessage>
+          ) : null}
+        </Field>
+        <Field label="DVR window minutes">
+          <Input
+            disabled={!form.timeshiftEnabled}
+            min={5}
+            onChange={(event) => onChange({ timeshiftWindowMinutes: Number(event.target.value) })}
+            type="number"
+            uiSize="sm"
+            value={form.timeshiftWindowMinutes}
+          />
         </Field>
       </div>
 

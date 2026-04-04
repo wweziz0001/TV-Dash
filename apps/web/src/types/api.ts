@@ -4,6 +4,7 @@ import type {
   DiagnosticHealthState,
   EpgImportStatus,
   EpgSourceType,
+  LiveTimeshiftBufferState,
   LayoutType,
   RecordingJobStatus,
   RecordingMode,
@@ -49,6 +50,8 @@ export interface Channel {
   sourceMode: ChannelSourceMode;
   masterHlsUrl: string | null;
   playbackMode: StreamPlaybackMode;
+  timeshiftEnabled?: boolean;
+  timeshiftWindowMinutes?: number | null;
   manualVariantCount: number;
   hasManualPrograms?: boolean;
   groupId: string | null;
@@ -435,6 +438,20 @@ export interface RecordingRule {
 export interface AuthResponse {
   token: string;
   user: User;
+}
+
+export interface LiveTimeshiftStatus {
+  channelId: string;
+  configured: boolean;
+  supported: boolean;
+  available: boolean;
+  bufferState: LiveTimeshiftBufferState;
+  message: string;
+  windowSeconds: number;
+  availableWindowSeconds: number;
+  bufferedSegmentCount: number;
+  lastUpdatedAt: string | null;
+  lastError: string | null;
 }
 
 export interface QualityOption {
