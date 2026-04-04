@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { isTvDashManagedPlaybackMode } from "@tv-dash/shared";
+import { isSharedPlaybackMode, isTvDashManagedPlaybackMode, type ChannelSourceMode, type StreamPlaybackMode } from "@tv-dash/shared";
 import { env } from "../../config/env.js";
 import { writeStructuredLog } from "../../app/structured-log.js";
 import { buildUpstreamHeaders, type UpstreamRequestConfig } from "../../app/upstream-request.js";
@@ -8,6 +8,7 @@ import { parseMasterPlaylist } from "./playlist-parser.js";
 import { resolveUri, rewriteAttributeUris } from "./playlist-rewrite.js";
 import { buildSyntheticMasterPlaylist } from "./synthetic-master.js";
 import { parseMediaPlaylist } from "./media-playlist.js";
+import { getSharedStreamUpstreamResponse } from "./shared-stream-session.js";
 import {
   buildTimeshiftStoragePath,
   deleteTimeshiftAsset,
@@ -19,11 +20,12 @@ import { getAvailableTimeshiftWindowSeconds, partitionTimeshiftSegmentsByCutoff 
 const FETCH_TIMEOUT_MS = 8000;
 const API_PREFIX = "/api";
 
-interface TimeshiftStatus {
+export interface TimeshiftStatus {
   channelId: string;
   configured: boolean;
   supported: boolean;
   available: boolean;
+  acquisitionMode: TimeshiftAcquisitionMode;
   bufferState: "DISABLED" | "UNSUPPORTED" | "STARTING" | "WARMING" | "READY" | "ERROR";
   message: string;
   windowSeconds: number;
@@ -32,6 +34,21 @@ interface TimeshiftStatus {
   bufferedSegmentCount: number;
   lastUpdatedAt: string | null;
   lastError: string | null;
+}
+
+export type TimeshiftAcquisitionMode = "NONE" | "DIRECT_UPSTREAM" | "SHARED_SESSION";
+
+export interface TimeshiftSessionSnapshot {
+  channelId: string;
+  channelSlug: string;
+  playbackMode: StreamPlaybackMode;
+  sourceMode: ChannelSourceMode;
+  acquisitionMode: TimeshiftAcquisitionMode;
+  lastAccessAt: string;
+  expiresAt: string;
+  variantCount: number;
+  trackedVariantCount: number;
+  status: TimeshiftStatus;
 }
 
 interface TimeshiftVariantDefinition {
@@ -75,6 +92,9 @@ interface TimeshiftVariantState extends TimeshiftVariantDefinition {
 interface ChannelTimeshiftState {
   channelId: string;
   channelSlug: string;
+  playbackMode: StreamPlaybackMode;
+  sourceMode: ChannelSourceMode;
+  acquisitionMode: TimeshiftAcquisitionMode;
   requestConfig: UpstreamRequestConfig;
   windowSeconds: number;
   lastAccessAtMs: number;
@@ -125,8 +145,50 @@ async function fetchUpstreamResponse(url: string, requestConfig: UpstreamRequest
   }
 }
 
+type TimeshiftFetchContext = Pick<ChannelTimeshiftState, "channelId" | "requestConfig" | "acquisitionMode">;
+
+async function fetchManagedResource(state: TimeshiftFetchContext, url: string) {
+  if (state.acquisitionMode === "SHARED_SESSION") {
+    return getSharedStreamUpstreamResponse(state.channelId, url, {
+      observationSource: "SHARED_TIMESHIFT",
+    });
+  }
+
+  const response = await fetchUpstreamResponse(url, state.requestConfig);
+  const contentType = response.headers.get("content-type") ?? "application/octet-stream";
+
+  if (contentType.includes("mpegurl") || /\.m3u8($|\?)/i.test(url)) {
+    return {
+      body: await response.text(),
+      contentType,
+      cacheKind: "manifest" as const,
+    };
+  }
+
+  return {
+    body: Buffer.from(await response.arrayBuffer()),
+    contentType,
+    cacheKind: "segment" as const,
+  };
+}
+
+async function fetchManagedPlaylistText(state: TimeshiftFetchContext, url: string) {
+  const response = await fetchManagedResource(state, url);
+  return typeof response.body === "string" ? response.body : response.body.toString("utf8");
+}
+
+async function fetchManagedAssetBuffer(state: TimeshiftFetchContext, url: string) {
+  const response = await fetchManagedResource(state, url);
+
+  return {
+    body: Buffer.isBuffer(response.body) ? response.body : Buffer.from(response.body, "utf8"),
+    contentType: response.contentType,
+  };
+}
+
 async function resolveVariantDefinitions(
   channel: NonNullable<Awaited<ReturnType<typeof getChannelStreamDetails>>>,
+  state: Pick<ChannelTimeshiftState, "channelId" | "requestConfig" | "acquisitionMode">,
 ): Promise<TimeshiftVariantDefinition[]> {
   if (channel.sourceMode === "MANUAL_VARIANTS") {
     return channel.qualityVariants.map((variant, index) => ({
@@ -146,8 +208,13 @@ async function resolveVariantDefinitions(
   }
 
   const masterPlaylistUrl = channel.masterHlsUrl;
-  const response = await fetchUpstreamResponse(masterPlaylistUrl, mapChannelRequestConfig(channel));
-  const playlistText = await response.text();
+  const playlistText =
+    state.acquisitionMode === "SHARED_SESSION"
+      ? await fetchManagedPlaylistText(state, masterPlaylistUrl)
+      : await (async () => {
+          const response = await fetchUpstreamResponse(masterPlaylistUrl, mapChannelRequestConfig(channel));
+          return response.text();
+        })();
   const parsed = parseMasterPlaylist(playlistText);
 
   if (!parsed.isMasterPlaylist || parsed.variantEntries.length === 0) {
@@ -206,12 +273,20 @@ async function loadChannelTimeshiftState(channelId: string) {
 
   const configured = channel.timeshiftEnabled && env.TIMESHIFT_ENABLED;
   const supported = configured && isTvDashManagedPlaybackMode(channel.playbackMode);
-  const variants: TimeshiftVariantDefinition[] = supported ? await resolveVariantDefinitions(channel) : [];
-
-  return {
+  const acquisitionMode: TimeshiftAcquisitionMode =
+    supported && isSharedPlaybackMode(channel.playbackMode) ? "SHARED_SESSION" : supported ? "DIRECT_UPSTREAM" : "NONE";
+  const baseState = {
     channelId: channel.id,
     channelSlug: channel.slug,
+    playbackMode: channel.playbackMode,
+    sourceMode: channel.sourceMode,
+    acquisitionMode,
     requestConfig: mapChannelRequestConfig(channel),
+  };
+  const variants: TimeshiftVariantDefinition[] = supported ? await resolveVariantDefinitions(channel, baseState) : [];
+
+  return {
+    ...baseState,
     windowSeconds: getWindowSeconds(channel.timeshiftWindowMinutes ?? null),
     lastAccessAtMs: Date.now(),
     timer: null,
@@ -252,6 +327,7 @@ function buildDisabledStatus(state: ChannelTimeshiftState): TimeshiftStatus {
       configured: false,
       supported: false,
       available: false,
+      acquisitionMode: state.acquisitionMode,
       bufferState: "DISABLED",
       message: "Timeshift is disabled for this channel.",
       windowSeconds: state.windowSeconds,
@@ -268,6 +344,7 @@ function buildDisabledStatus(state: ChannelTimeshiftState): TimeshiftStatus {
     configured: true,
     supported: false,
     available: false,
+    acquisitionMode: state.acquisitionMode,
     bufferState: "UNSUPPORTED",
       message: "Timeshift requires TV-Dash-managed delivery so TV-Dash can retain the live buffer.",
     windowSeconds: state.windowSeconds,
@@ -309,6 +386,7 @@ function buildReadyStatus(state: ChannelTimeshiftState): TimeshiftStatus {
     configured: state.configured,
     supported: true,
     available,
+    acquisitionMode: state.acquisitionMode,
     bufferState: state.lastError ? "ERROR" : lastUpdatedAtMs === null ? "STARTING" : available ? "READY" : "WARMING",
     message: state.lastError
       ? "Timeshift buffer refresh failed."
@@ -326,6 +404,21 @@ function buildReadyStatus(state: ChannelTimeshiftState): TimeshiftStatus {
   };
 }
 
+function buildTimeshiftSessionSnapshot(state: ChannelTimeshiftState): TimeshiftSessionSnapshot {
+  return {
+    channelId: state.channelId,
+    channelSlug: state.channelSlug,
+    playbackMode: state.playbackMode,
+    sourceMode: state.sourceMode,
+    acquisitionMode: state.acquisitionMode,
+    lastAccessAt: new Date(state.lastAccessAtMs).toISOString(),
+    expiresAt: new Date(state.lastAccessAtMs + env.TIMESHIFT_IDLE_TTL_MS).toISOString(),
+    variantCount: state.variants.length,
+    trackedVariantCount: getTrackedVariants(state).length,
+    status: buildReadyStatus(state),
+  };
+}
+
 function scheduleRefresh(state: ChannelTimeshiftState) {
   if (!state.supported || state.timer) {
     return;
@@ -336,6 +429,7 @@ function scheduleRefresh(state: ChannelTimeshiftState) {
 
     const isIdle = Date.now() - state.lastAccessAtMs >= env.TIMESHIFT_IDLE_TTL_MS;
     if (isIdle) {
+      await evictTimeshiftState(state.channelId, "expired");
       return;
     }
 
@@ -347,6 +441,45 @@ function scheduleRefresh(state: ChannelTimeshiftState) {
   }, env.TIMESHIFT_POLL_INTERVAL_MS);
 }
 
+async function evictTimeshiftState(channelId: string, reason: "cleanup" | "expired") {
+  const state = timeshiftStates.get(channelId);
+  if (!state) {
+    return;
+  }
+
+  if (state.timer) {
+    clearTimeout(state.timer);
+  }
+
+  state.timer = null;
+  timeshiftStates.delete(channelId);
+
+  await Promise.all(
+    state.variants.flatMap((variant) =>
+      [...variant.assetsById.values()].map(async (asset) => {
+        await deleteTimeshiftAsset(asset.storagePath);
+      }),
+    ),
+  );
+
+  state.variants.forEach((variant) => {
+    variant.assetsById.clear();
+    variant.segments = [];
+    variant.lastUpdatedAtMs = null;
+  });
+
+  writeStructuredLog("info", {
+    event: "stream.timeshift.session.expired",
+    channelId: state.channelId,
+    channelSlug: state.channelSlug,
+    detail: {
+      reason,
+      acquisitionMode: state.acquisitionMode,
+      lastError: state.lastError,
+    },
+  });
+}
+
 async function storeVariantAsset(
   state: ChannelTimeshiftState,
   variant: TimeshiftVariantState,
@@ -356,9 +489,9 @@ async function storeVariantAsset(
     return;
   }
 
-  const response = await fetchUpstreamResponse(segment.absoluteUrl, state.requestConfig);
-  const data = Buffer.from(await response.arrayBuffer());
-  const contentType = response.headers.get("content-type") ?? "application/octet-stream";
+  const response = await fetchManagedAssetBuffer(state, segment.absoluteUrl);
+  const data = response.body;
+  const contentType = response.contentType;
   const storagePath = buildTimeshiftStoragePath({
     channelSlug: state.channelSlug,
     variantKey: variant.variantId,
@@ -398,8 +531,7 @@ async function evictOldSegments(state: ChannelTimeshiftState, variant: Timeshift
 
 async function refreshVariantState(state: ChannelTimeshiftState, variant: TimeshiftVariantState) {
   markVariantAccessed(variant);
-  const response = await fetchUpstreamResponse(variant.playlistUrl, state.requestConfig);
-  const playlistText = await response.text();
+  const playlistText = await fetchManagedPlaylistText(state, variant.playlistUrl);
   const parsed = parseMediaPlaylist(playlistText, variant.playlistUrl);
   const existingAssetIds = new Set(variant.segments.map((segment) => segment.assetId));
   const newSegments: TimeshiftSegmentRecord[] = [];
@@ -595,11 +727,26 @@ export async function getChannelTimeshiftAssetResponse(channelId: string, assetI
   };
 }
 
-export function clearTimeshiftBufferStateForTests() {
-  timeshiftStates.forEach((state) => {
-    if (state.timer) {
-      clearTimeout(state.timer);
-    }
-  });
-  timeshiftStates.clear();
+export async function cleanupStaleTimeshiftStates(now = new Date()) {
+  const nowMs = now.getTime();
+  const expiredChannelIds = [...timeshiftStates.entries()]
+    .filter(([, state]) => nowMs - state.lastAccessAtMs >= env.TIMESHIFT_IDLE_TTL_MS)
+    .map(([channelId]) => channelId);
+
+  for (const channelId of expiredChannelIds) {
+    await evictTimeshiftState(channelId, "cleanup");
+  }
+}
+
+export async function listTimeshiftSessionSnapshots() {
+  await cleanupStaleTimeshiftStates();
+  return [...timeshiftStates.values()].map(buildTimeshiftSessionSnapshot);
+}
+
+export async function clearTimeshiftBufferStateForTests() {
+  const channelIds = [...timeshiftStates.keys()];
+
+  for (const channelId of channelIds) {
+    await evictTimeshiftState(channelId, "cleanup");
+  }
 }

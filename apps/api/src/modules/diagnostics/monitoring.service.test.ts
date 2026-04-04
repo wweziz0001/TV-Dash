@@ -6,6 +6,8 @@ const mockCleanupStalePlaybackSessions = vi.fn();
 const mockListActivePlaybackSessions = vi.fn();
 const mockCleanupStaleSharedStreamSessions = vi.fn();
 const mockListSharedStreamSessionSnapshots = vi.fn();
+const mockCleanupStaleTimeshiftStates = vi.fn();
+const mockListTimeshiftSessionSnapshots = vi.fn();
 
 vi.mock("../channels/channel.service.js", () => ({
   listChannelCatalog: mockListChannelCatalog,
@@ -14,6 +16,11 @@ vi.mock("../channels/channel.service.js", () => ({
 vi.mock("../streams/shared-stream-session.js", () => ({
   cleanupStaleSharedStreamSessions: mockCleanupStaleSharedStreamSessions,
   listSharedStreamSessionSnapshots: mockListSharedStreamSessionSnapshots,
+}));
+
+vi.mock("../streams/timeshift-buffer.js", () => ({
+  cleanupStaleTimeshiftStates: mockCleanupStaleTimeshiftStates,
+  listTimeshiftSessionSnapshots: mockListTimeshiftSessionSnapshots,
 }));
 
 vi.mock("./playback-session.service.js", () => ({
@@ -39,6 +46,7 @@ describe("monitoring.service", () => {
   it("aggregates active sessions into per-channel viewer counts and recent failures", async () => {
     mockCleanupStalePlaybackSessions.mockResolvedValue({ count: 0 });
     mockCleanupStaleSharedStreamSessions.mockReturnValue(undefined);
+    mockCleanupStaleTimeshiftStates.mockResolvedValue(undefined);
     mockListChannelCatalog.mockResolvedValue([
       {
         id: "channel-1",
@@ -141,6 +149,34 @@ describe("monitoring.service", () => {
         },
       },
     ]);
+    mockListTimeshiftSessionSnapshots.mockResolvedValue([
+      {
+        channelId: "channel-1",
+        channelSlug: "world-feed",
+        playbackMode: "PROXY",
+        sourceMode: "MASTER_PLAYLIST",
+        acquisitionMode: "DIRECT_UPSTREAM",
+        lastAccessAt: "2026-04-03T12:00:11.000Z",
+        expiresAt: "2026-04-03T12:15:11.000Z",
+        variantCount: 1,
+        trackedVariantCount: 1,
+        status: {
+          channelId: "channel-1",
+          configured: true,
+          supported: true,
+          available: true,
+          acquisitionMode: "DIRECT_UPSTREAM",
+          bufferState: "READY",
+          message: "Live DVR window is ready.",
+          windowSeconds: 1800,
+          minimumReadyWindowSeconds: 30,
+          availableWindowSeconds: 180,
+          bufferedSegmentCount: 30,
+          lastUpdatedAt: "2026-04-03T12:00:11.000Z",
+          lastError: null,
+        },
+      },
+    ]);
 
     writeStructuredLog("warn", {
       event: "playback.session.failed",
@@ -156,16 +192,24 @@ describe("monitoring.service", () => {
     expect(snapshot.summary.activeSharedSessionCount).toBe(1);
     expect(snapshot.summary.activeSharedViewerCount).toBe(2);
     expect(snapshot.summary.sharedCacheHitRate).toBe(76.9);
+    expect(snapshot.summary.activeTimeshiftSessionCount).toBe(1);
+    expect(snapshot.summary.readyTimeshiftSessionCount).toBe(1);
     expect(snapshot.channelViewerCounts[0]).toMatchObject({
       channel: {
         id: "channel-1",
       },
+      sessionMode: "PROXY_DVR",
       viewerCount: 2,
       singleViewCount: 1,
       multiviewCount: 1,
       sharedSession: {
         upstreamState: "ACTIVE",
         viewerCount: 2,
+      },
+      timeshiftSession: {
+        available: true,
+        acquisitionMode: "DIRECT_UPSTREAM",
+        availableWindowSeconds: 180,
       },
     });
     expect(snapshot.channelViewerCounts[0]?.watchers[0]?.username).toBe("bob");

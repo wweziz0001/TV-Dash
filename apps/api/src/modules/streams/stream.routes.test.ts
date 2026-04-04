@@ -46,7 +46,7 @@ const { buildServer } = await import("../../app/build-server.js");
 const { createAuthHeaders } = await import("../../app/test-support.js");
 const { readProxyToken } = await import("./proxy-token.js");
 const { clearTimeshiftBufferStateForTests } = await import("./timeshift-buffer.js");
-const { clearSharedStreamSessionsForTests } = await import("./shared-stream-session.js");
+const { clearSharedStreamSessionsForTests, listSharedStreamSessionSnapshots } = await import("./shared-stream-session.js");
 
 describe("streamRoutes", () => {
   let server: Awaited<ReturnType<typeof buildServer>>;
@@ -80,7 +80,7 @@ describe("streamRoutes", () => {
   });
 
   afterEach(async () => {
-    clearTimeshiftBufferStateForTests();
+    await clearTimeshiftBufferStateForTests();
     clearSharedStreamSessionsForTests();
     await server.close();
     vi.unstubAllGlobals();
@@ -624,6 +624,159 @@ segment24.ts`),
         active: false,
         upstreamState: "IDLE",
       }),
+    });
+  });
+
+  it("reports an integrated shared session with DVR status for shared channels", async () => {
+    mockPrisma.channel.findUnique.mockResolvedValue({
+      id: "88888888-8888-8888-8888-888888888888",
+      name: "Buffered Shared News",
+      slug: "buffered-shared-news",
+      isActive: true,
+      sourceMode: "MASTER_PLAYLIST",
+      masterHlsUrl: "https://origin.example.com/live/index.m3u8",
+      playbackMode: "SHARED",
+      timeshiftEnabled: true,
+      timeshiftWindowMinutes: 30,
+      upstreamUserAgent: null,
+      upstreamReferrer: null,
+      upstreamHeaders: null,
+      qualityVariants: [],
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+
+        if (url === "https://origin.example.com/live/index.m3u8") {
+          return Promise.resolve({
+            ok: true,
+            text: vi.fn().mockResolvedValue(`#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:6
+#EXT-X-MEDIA-SEQUENCE:40
+#EXTINF:6.0,
+segment40.ts
+#EXTINF:6.0,
+segment41.ts
+#EXTINF:6.0,
+segment42.ts
+#EXTINF:6.0,
+segment43.ts
+#EXTINF:6.0,
+segment44.ts`),
+            headers: {
+              get: vi.fn().mockReturnValue("application/vnd.apple.mpegurl"),
+            },
+          });
+        }
+
+        return Promise.resolve({
+          ok: true,
+          arrayBuffer: vi.fn().mockResolvedValue(Uint8Array.from([1, 2, 3]).buffer),
+          headers: {
+            get: vi.fn().mockReturnValue("video/mp2t"),
+          },
+        });
+      }),
+    );
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/streams/channels/88888888-8888-8888-8888-888888888888/session/status",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      status: expect.objectContaining({
+        channelId: "88888888-8888-8888-8888-888888888888",
+        sessionMode: "SHARED_DVR",
+        livePlaybackUrl: "/api/streams/channels/88888888-8888-8888-8888-888888888888/shared/master",
+        bufferedPlaybackUrl: "/api/streams/channels/88888888-8888-8888-8888-888888888888/timeshift/master",
+        defaultPlaybackUrl: "/api/streams/channels/88888888-8888-8888-8888-888888888888/timeshift/master",
+        viewerModel: expect.objectContaining({
+          liveEdgeAvailable: true,
+          bufferedPlaybackSupported: true,
+          bufferedPlaybackAvailable: true,
+          defaultPlayback: "BUFFERED",
+        }),
+        timeshift: expect.objectContaining({
+          available: true,
+          acquisitionMode: "SHARED_SESSION",
+        }),
+        sharedSession: expect.objectContaining({
+          active: true,
+        }),
+      }),
+    });
+  });
+
+  it("reuses the shared session cache when timeshift warms a shared channel buffer", async () => {
+    mockPrisma.channel.findUnique.mockResolvedValue({
+      id: "99999999-9999-9999-9999-999999999999",
+      name: "Integrated Feed",
+      slug: "integrated-feed",
+      isActive: true,
+      sourceMode: "MASTER_PLAYLIST",
+      masterHlsUrl: "https://origin.example.com/live/index.m3u8",
+      playbackMode: "SHARED",
+      timeshiftEnabled: true,
+      timeshiftWindowMinutes: 30,
+      upstreamUserAgent: null,
+      upstreamReferrer: null,
+      upstreamHeaders: null,
+      qualityVariants: [],
+    });
+
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === "https://origin.example.com/live/index.m3u8") {
+        return Promise.resolve({
+          ok: true,
+          text: vi.fn().mockResolvedValue(`#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:6
+#EXT-X-MEDIA-SEQUENCE:60
+#EXTINF:6.0,
+segment60.ts
+#EXTINF:6.0,
+segment61.ts
+#EXTINF:6.0,
+segment62.ts`),
+          headers: {
+            get: vi.fn().mockReturnValue("application/vnd.apple.mpegurl"),
+          },
+        });
+      }
+
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: vi.fn().mockResolvedValue(Uint8Array.from([1, 2, 3]).buffer),
+        headers: {
+          get: vi.fn().mockReturnValue("video/mp2t"),
+        },
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const timeshiftResponse = await server.inject({
+      method: "GET",
+      url: "/api/streams/channels/99999999-9999-9999-9999-999999999999/timeshift/status",
+    });
+    expect(timeshiftResponse.statusCode).toBe(200);
+
+    const sharedMasterResponse = await server.inject({
+      method: "GET",
+      url: "/api/streams/channels/99999999-9999-9999-9999-999999999999/shared/master",
+    });
+    expect(sharedMasterResponse.statusCode).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(listSharedStreamSessionSnapshots()[0]).toMatchObject({
+      channelId: "99999999-9999-9999-9999-999999999999",
+      upstreamState: "ACTIVE",
     });
   });
 

@@ -13,6 +13,7 @@ import {
 } from "../../app/structured-log.js";
 import { listChannelCatalog } from "../channels/channel.service.js";
 import { cleanupStaleSharedStreamSessions, listSharedStreamSessionSnapshots } from "../streams/shared-stream-session.js";
+import { cleanupStaleTimeshiftStates, listTimeshiftSessionSnapshots, type TimeshiftAcquisitionMode } from "../streams/timeshift-buffer.js";
 import { ACTIVE_PLAYBACK_SESSION_TTL_MS, cleanupStalePlaybackSessions } from "./playback-session.service.js";
 import { listActivePlaybackSessions, type ActivePlaybackSessionRecord } from "./playback-session.repository.js";
 
@@ -63,6 +64,7 @@ export interface ChannelViewerCountSnapshot {
     tileIndex: number | null;
     lastSeenAt: string;
   }>;
+  sessionMode: "DIRECT" | "PROXY_RELAY" | "PROXY_DVR" | "SHARED_RELAY" | "SHARED_DVR";
   sharedSession: {
     upstreamState: "STARTING" | "ACTIVE" | "ERROR";
     viewerCount: number;
@@ -86,6 +88,18 @@ export interface ChannelViewerCountSnapshot {
       upstreamRequestCount: number;
     };
   } | null;
+  timeshiftSession: {
+    configured: boolean;
+    supported: boolean;
+    available: boolean;
+    acquisitionMode: TimeshiftAcquisitionMode;
+    bufferState: "DISABLED" | "UNSUPPORTED" | "STARTING" | "WARMING" | "READY" | "ERROR";
+    windowSeconds: number;
+    availableWindowSeconds: number;
+    bufferedSegmentCount: number;
+    lastUpdatedAt: string | null;
+    lastError: string | null;
+  } | null;
 }
 
 export interface AdminMonitoringSnapshot {
@@ -96,6 +110,8 @@ export interface AdminMonitoringSnapshot {
     activeSharedSessionCount: number;
     activeSharedViewerCount: number;
     sharedCacheHitRate: number | null;
+    activeTimeshiftSessionCount: number;
+    readyTimeshiftSessionCount: number;
     warningLogCount: number;
     errorLogCount: number;
     staleAfterSeconds: number;
@@ -150,15 +166,18 @@ export async function buildAdminMonitoringSnapshot() {
   const now = new Date();
   await cleanupStalePlaybackSessions(now);
   cleanupStaleSharedStreamSessions(now);
+  await cleanupStaleTimeshiftStates(now);
 
-  const [channels, activeSessions, sharedSessions] = await Promise.all([
+  const [channels, activeSessions, sharedSessions, timeshiftSessions] = await Promise.all([
     listChannelCatalog({}),
     listActivePlaybackSessions(new Date(now.getTime() - ACTIVE_PLAYBACK_SESSION_TTL_MS)),
     Promise.resolve(listSharedStreamSessionSnapshots()),
+    listTimeshiftSessionSnapshots(),
   ]);
   const sessionSnapshots = activeSessions.map(toSessionSnapshot);
   const sessionsByChannelId = new Map<string, AdminMonitoringSessionSnapshot[]>();
   const sharedSessionsByChannelId = new Map(sharedSessions.map((session) => [session.channelId, session]));
+  const timeshiftSessionsByChannelId = new Map(timeshiftSessions.map((session) => [session.channelId, session]));
 
   sessionSnapshots.forEach((session: AdminMonitoringSessionSnapshot) => {
     if (!session.channel) {
@@ -198,6 +217,19 @@ export async function buildAdminMonitoringSnapshot() {
         tileIndex: watcher.tileIndex,
         lastSeenAt: watcher.lastSeenAt,
       })),
+      sessionMode: (() => {
+        const timeshiftSession = timeshiftSessionsByChannelId.get(channel.id)?.status ?? null;
+
+        if (channel.playbackMode === "DIRECT") {
+          return "DIRECT";
+        }
+
+        if (channel.playbackMode === "SHARED") {
+          return timeshiftSession?.configured ? "SHARED_DVR" : "SHARED_RELAY";
+        }
+
+        return timeshiftSession?.configured ? "PROXY_DVR" : "PROXY_RELAY";
+      })(),
       sharedSession: (() => {
         const sharedSession = sharedSessionsByChannelId.get(channel.id);
         if (!sharedSession) {
@@ -226,6 +258,25 @@ export async function buildAdminMonitoringSnapshot() {
             inflightReuseCount: sharedSession.cache.inflightReuseCount,
             upstreamRequestCount: sharedSession.cache.upstreamRequestCount,
           },
+        };
+      })(),
+      timeshiftSession: (() => {
+        const timeshiftSession = timeshiftSessionsByChannelId.get(channel.id)?.status ?? null;
+        if (!timeshiftSession) {
+          return null;
+        }
+
+        return {
+          configured: timeshiftSession.configured,
+          supported: timeshiftSession.supported,
+          available: timeshiftSession.available,
+          acquisitionMode: timeshiftSession.acquisitionMode,
+          bufferState: timeshiftSession.bufferState,
+          windowSeconds: timeshiftSession.windowSeconds,
+          availableWindowSeconds: timeshiftSession.availableWindowSeconds,
+          bufferedSegmentCount: timeshiftSession.bufferedSegmentCount,
+          lastUpdatedAt: timeshiftSession.lastUpdatedAt,
+          lastError: timeshiftSession.lastError,
         };
       })(),
     } satisfies ChannelViewerCountSnapshot;
@@ -265,6 +316,8 @@ export async function buildAdminMonitoringSnapshot() {
       activeSharedViewerCount,
       sharedCacheHitRate:
         sharedCacheAccessCount > 0 ? Number(((sharedCacheHits / sharedCacheAccessCount) * 100).toFixed(1)) : null,
+      activeTimeshiftSessionCount: timeshiftSessions.length,
+      readyTimeshiftSessionCount: timeshiftSessions.filter((session) => session.status.available).length,
       warningLogCount: countStructuredLogsByLevel("warn"),
       errorLogCount: countStructuredLogsByLevel("error"),
       staleAfterSeconds: ACTIVE_PLAYBACK_SESSION_TTL_MS / 1000,

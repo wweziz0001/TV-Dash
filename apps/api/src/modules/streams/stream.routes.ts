@@ -11,6 +11,7 @@ import {
 } from "../../app/request-schemas.js";
 import { parseWithSchema } from "../../app/validation.js";
 import { classifyStreamFailure } from "./stream-diagnostics.js";
+import { getChannelStreamSessionStatus } from "./channel-stream-session.js";
 import {
   getChannelSharedAssetResponse,
   getChannelSharedMasterResponse,
@@ -104,6 +105,23 @@ export const streamRoutes: FastifyPluginAsync = async (fastify) => {
       return { status };
     } catch (error) {
       const classification = classifyStreamFailure(error, { operation: "proxy-master" });
+      return reply.status(classification.statusCode === 404 ? 404 : 502).send({
+        message: classification.message,
+      });
+    }
+  });
+
+  fastify.get("/streams/channels/:channelId/session/status", async (request, reply) => {
+    const params = parseWithSchema(channelIdParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    try {
+      const status = await getChannelStreamSessionStatus(params.channelId);
+      return { status };
+    } catch (error) {
+      const classification = classifyStreamFailure(error, { operation: "timeshift" });
       return reply.status(classification.statusCode === 404 ? 404 : 502).send({
         message: classification.message,
       });

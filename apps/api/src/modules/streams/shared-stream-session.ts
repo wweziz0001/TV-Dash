@@ -13,7 +13,7 @@ import { createSharedSessionCache } from "./shared-session-cache.js";
 
 const FETCH_TIMEOUT_MS = 6000;
 
-type SharedSessionObservationSource = "SHARED_MASTER" | "SHARED_ASSET";
+export type SharedSessionObservationSource = "SHARED_MASTER" | "SHARED_ASSET" | "SHARED_TIMESHIFT";
 type SharedUpstreamState = "STARTING" | "ACTIVE" | "ERROR";
 
 export interface SharedStreamSessionSnapshot {
@@ -61,6 +61,12 @@ interface SharedStreamSessionState {
   assetIdsByUrl: Map<string, string>;
   urlsByAssetId: Map<string, string>;
   cache: ReturnType<typeof createSharedSessionCache>;
+}
+
+export interface SharedStreamUpstreamResponse {
+  body: string | Buffer;
+  contentType: string;
+  cacheKind: "manifest" | "segment";
 }
 
 const sharedStreamSessions = new Map<string, SharedStreamSessionState>();
@@ -287,7 +293,10 @@ async function resolveSharedUpstreamResponse(
           cacheKind: "manifest" as const,
         };
 
-        recordChannelObservation(session.channelId, observationSource === "SHARED_MASTER" ? "proxyMaster" : "proxyAsset", {
+        recordChannelObservation(
+          session.channelId,
+          observationSource === "SHARED_MASTER" ? "proxyMaster" : "proxyAsset",
+          {
           status: "success",
           source: observationSource,
           detail: {
@@ -295,7 +304,8 @@ async function resolveSharedUpstreamResponse(
             contentType: sharedPayload.contentType,
             targetUrl: sanitizeUrl(absoluteUrl),
           },
-        });
+          },
+        );
 
         session.lastError = null;
         session.lastErrorAtMs = null;
@@ -308,7 +318,10 @@ async function resolveSharedUpstreamResponse(
         cacheKind: "segment" as const,
       };
 
-      recordChannelObservation(session.channelId, observationSource === "SHARED_MASTER" ? "proxyMaster" : "proxyAsset", {
+      recordChannelObservation(
+        session.channelId,
+        observationSource === "SHARED_MASTER" ? "proxyMaster" : "proxyAsset",
+        {
         status: "success",
         source: observationSource,
         detail: {
@@ -316,7 +329,8 @@ async function resolveSharedUpstreamResponse(
           contentType: sharedPayload.contentType,
           targetUrl: sanitizeUrl(absoluteUrl),
         },
-      });
+        },
+      );
 
       session.lastError = null;
       session.lastErrorAtMs = null;
@@ -329,7 +343,10 @@ async function resolveSharedUpstreamResponse(
       session.lastError = classification.message;
       session.lastErrorAtMs = Date.now();
 
-      recordChannelObservation(session.channelId, observationSource === "SHARED_MASTER" ? "proxyMaster" : "proxyAsset", {
+      recordChannelObservation(
+        session.channelId,
+        observationSource === "SHARED_MASTER" ? "proxyMaster" : "proxyAsset",
+        {
         status: "failure",
         source: observationSource,
         reason: classification.message,
@@ -339,11 +356,16 @@ async function resolveSharedUpstreamResponse(
           statusCode: classification.statusCode,
           targetUrl: sanitizeUrl(absoluteUrl),
         },
-      });
+        },
+      );
 
       writeStructuredLog("warn", {
         event:
-          observationSource === "SHARED_MASTER" ? "stream.shared.master.failed" : "stream.shared.asset.failed",
+          observationSource === "SHARED_MASTER"
+            ? "stream.shared.master.failed"
+            : observationSource === "SHARED_TIMESHIFT"
+              ? "stream.shared.timeshift.failed"
+              : "stream.shared.asset.failed",
         channelId: session.channelId,
         channelSlug: session.channelSlug,
         failureKind: classification.failureKind,
@@ -420,6 +442,17 @@ export async function getChannelSharedAssetResponse(channelId: string, assetId: 
     body: entry.body,
     contentType: entry.contentType,
   };
+}
+
+export async function getSharedStreamUpstreamResponse(
+  channelId: string,
+  absoluteUrl: string,
+  options: {
+    observationSource?: SharedSessionObservationSource;
+  } = {},
+): Promise<SharedStreamUpstreamResponse> {
+  const session = await ensureSharedSession(channelId);
+  return resolveSharedUpstreamResponse(session, absoluteUrl, options.observationSource ?? "SHARED_ASSET");
 }
 
 export async function getChannelSharedStreamStatus(channelId: string): Promise<SharedStreamStatus> {
