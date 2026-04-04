@@ -33,7 +33,8 @@ export const epgImportStatusSchema = z.enum(["NEVER_IMPORTED", "SUCCEEDED", "FAI
 export const programEntrySourceSchema = z.enum(["IMPORTED", "MANUAL"]);
 export const qualityModeSchema = z.enum(["AUTO", "LOWEST", "HIGHEST", "MANUAL"]);
 export const playbackSessionTypeSchema = z.enum(["SINGLE_VIEW", "MULTIVIEW"]);
-export const playbackSessionStateSchema = z.enum(["idle", "loading", "playing", "buffering", "retrying", "error"]);
+export const playbackSessionStateSchema = z.enum(["idle", "loading", "playing", "paused", "buffering", "retrying", "error"]);
+export const playbackPositionStateSchema = z.enum(["LIVE_EDGE", "BEHIND_LIVE", "PAUSED"]);
 export const diagnosticHealthStateSchema = z.enum(["healthy", "degraded", "failing", "unknown"]);
 export const liveTimeshiftBufferStateSchema = z.enum(["DISABLED", "UNSUPPORTED", "STARTING", "WARMING", "READY", "ERROR"]);
 export const recordingModeSchema = z.enum(["IMMEDIATE", "TIMED", "SCHEDULED", "EPG_PROGRAM", "RECURRING_RULE"]);
@@ -491,9 +492,12 @@ export const streamVariantSchema = z.object({
 
 export const playbackSessionHeartbeatItemInputSchema = z.object({
   sessionId: z.string().uuid(),
+  surfaceId: z.string().uuid(),
   channelId: z.string().uuid(),
   sessionType: playbackSessionTypeSchema,
   playbackState: playbackSessionStateSchema,
+  playbackPositionState: playbackPositionStateSchema,
+  liveOffsetSeconds: z.number().int().min(0).max(24 * 60 * 60).optional().default(0),
   selectedQuality: z
     .string()
     .trim()
@@ -747,6 +751,7 @@ export type ProgramEntrySource = z.infer<typeof programEntrySourceSchema>;
 export type QualityMode = z.infer<typeof qualityModeSchema>;
 export type PlaybackSessionType = z.infer<typeof playbackSessionTypeSchema>;
 export type PlaybackSessionState = z.infer<typeof playbackSessionStateSchema>;
+export type PlaybackPositionState = z.infer<typeof playbackPositionStateSchema>;
 export type DiagnosticHealthState = z.infer<typeof diagnosticHealthStateSchema>;
 export type LiveTimeshiftBufferState = z.infer<typeof liveTimeshiftBufferStateSchema>;
 export type RecordingMode = z.infer<typeof recordingModeSchema>;

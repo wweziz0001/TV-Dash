@@ -68,10 +68,13 @@ describe("monitoring.service", () => {
     mockListActivePlaybackSessions.mockResolvedValue([
       {
         id: "session-1",
+        surfaceId: "surface-1",
         userId: "user-1",
         channelId: "channel-1",
         sessionType: "SINGLE_VIEW",
         playbackState: "playing",
+        playbackPositionState: "LIVE_EDGE",
+        liveOffsetSeconds: 0,
         selectedQuality: "AUTO",
         isMuted: false,
         tileIndex: null,
@@ -95,10 +98,13 @@ describe("monitoring.service", () => {
       },
       {
         id: "session-2",
+        surfaceId: "surface-2",
         userId: "user-2",
         channelId: "channel-1",
         sessionType: "MULTIVIEW",
         playbackState: "retrying",
+        playbackPositionState: "BEHIND_LIVE",
+        liveOffsetSeconds: 27,
         selectedQuality: "LOWEST",
         isMuted: true,
         tileIndex: 1,
@@ -194,6 +200,9 @@ describe("monitoring.service", () => {
     expect(snapshot.summary.sharedCacheHitRate).toBe(76.9);
     expect(snapshot.summary.activeTimeshiftSessionCount).toBe(1);
     expect(snapshot.summary.readyTimeshiftSessionCount).toBe(1);
+    expect(snapshot.summary.liveEdgeViewerCount).toBe(1);
+    expect(snapshot.summary.behindLiveViewerCount).toBe(1);
+    expect(snapshot.summary.pausedViewerCount).toBe(0);
     expect(snapshot.channelViewerCounts[0]).toMatchObject({
       channel: {
         id: "channel-1",
@@ -202,6 +211,9 @@ describe("monitoring.service", () => {
       viewerCount: 2,
       singleViewCount: 1,
       multiviewCount: 1,
+      liveEdgeViewerCount: 1,
+      behindLiveViewerCount: 1,
+      pausedViewerCount: 0,
       sharedSession: {
         upstreamState: "ACTIVE",
         viewerCount: 2,
@@ -213,6 +225,10 @@ describe("monitoring.service", () => {
       },
     });
     expect(snapshot.channelViewerCounts[0]?.watchers[0]?.username).toBe("bob");
+    expect(snapshot.channelViewerCounts[0]?.watchers[0]).toMatchObject({
+      playbackPositionState: "BEHIND_LIVE",
+      liveOffsetSeconds: 27,
+    });
     expect(snapshot.recentFailures[0]?.event).toBe("playback.session.failed");
   });
 });

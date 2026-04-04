@@ -1,6 +1,7 @@
 import type {
   ChannelSourceMode,
   DiagnosticFailureKind,
+  PlaybackPositionState,
   PlaybackSessionState,
   PlaybackSessionType,
   StreamPlaybackMode,
@@ -19,8 +20,11 @@ import { listActivePlaybackSessions, type ActivePlaybackSessionRecord } from "./
 
 export interface AdminMonitoringSessionSnapshot {
   sessionId: string;
+  surfaceId: string | null;
   sessionType: PlaybackSessionType;
   playbackState: PlaybackSessionState;
+  playbackPositionState: PlaybackPositionState;
+  liveOffsetSeconds: number;
   selectedQuality: string | null;
   isMuted: boolean;
   tileIndex: number | null;
@@ -54,11 +58,16 @@ export interface ChannelViewerCountSnapshot {
   viewerCount: number;
   singleViewCount: number;
   multiviewCount: number;
+  liveEdgeViewerCount: number;
+  behindLiveViewerCount: number;
+  pausedViewerCount: number;
   watchers: Array<{
     sessionId: string;
     userId: string;
     username: string;
     playbackState: PlaybackSessionState;
+    playbackPositionState: PlaybackPositionState;
+    liveOffsetSeconds: number;
     selectedQuality: string | null;
     isMuted: boolean;
     tileIndex: number | null;
@@ -112,6 +121,9 @@ export interface AdminMonitoringSnapshot {
     sharedCacheHitRate: number | null;
     activeTimeshiftSessionCount: number;
     readyTimeshiftSessionCount: number;
+    liveEdgeViewerCount: number;
+    behindLiveViewerCount: number;
+    pausedViewerCount: number;
     warningLogCount: number;
     errorLogCount: number;
     staleAfterSeconds: number;
@@ -136,8 +148,11 @@ type MonitoringChannel = Awaited<ReturnType<typeof listChannelCatalog>>[number];
 function toSessionSnapshot(record: ActivePlaybackSessionRecord): AdminMonitoringSessionSnapshot {
   return {
     sessionId: record.id,
+    surfaceId: record.surfaceId,
     sessionType: record.sessionType,
     playbackState: record.playbackState,
+    playbackPositionState: record.playbackPositionState,
+    liveOffsetSeconds: record.liveOffsetSeconds,
     selectedQuality: record.selectedQuality ?? null,
     isMuted: record.isMuted,
     tileIndex: record.tileIndex ?? null,
@@ -207,11 +222,16 @@ export async function buildAdminMonitoringSnapshot() {
       viewerCount: watchers.length,
       singleViewCount: watchers.filter((watcher) => watcher.sessionType === "SINGLE_VIEW").length,
       multiviewCount: watchers.filter((watcher) => watcher.sessionType === "MULTIVIEW").length,
+      liveEdgeViewerCount: watchers.filter((watcher) => watcher.playbackPositionState === "LIVE_EDGE").length,
+      behindLiveViewerCount: watchers.filter((watcher) => watcher.playbackPositionState === "BEHIND_LIVE").length,
+      pausedViewerCount: watchers.filter((watcher) => watcher.playbackPositionState === "PAUSED").length,
       watchers: watchers.map((watcher) => ({
         sessionId: watcher.sessionId,
         userId: watcher.user.id,
         username: watcher.user.username,
         playbackState: watcher.playbackState,
+        playbackPositionState: watcher.playbackPositionState,
+        liveOffsetSeconds: watcher.liveOffsetSeconds,
         selectedQuality: watcher.selectedQuality,
         isMuted: watcher.isMuted,
         tileIndex: watcher.tileIndex,
@@ -306,6 +326,9 @@ export async function buildAdminMonitoringSnapshot() {
     (count, entry) => count + (entry.sharedSession ? entry.viewerCount : 0),
     0,
   );
+  const liveEdgeViewerCount = channelViewerCounts.reduce((count, entry) => count + entry.liveEdgeViewerCount, 0);
+  const behindLiveViewerCount = channelViewerCounts.reduce((count, entry) => count + entry.behindLiveViewerCount, 0);
+  const pausedViewerCount = channelViewerCounts.reduce((count, entry) => count + entry.pausedViewerCount, 0);
 
   return {
     generatedAt: now.toISOString(),
@@ -318,6 +341,9 @@ export async function buildAdminMonitoringSnapshot() {
         sharedCacheAccessCount > 0 ? Number(((sharedCacheHits / sharedCacheAccessCount) * 100).toFixed(1)) : null,
       activeTimeshiftSessionCount: timeshiftSessions.length,
       readyTimeshiftSessionCount: timeshiftSessions.filter((session) => session.status.available).length,
+      liveEdgeViewerCount,
+      behindLiveViewerCount,
+      pausedViewerCount,
       warningLogCount: countStructuredLogsByLevel("warn"),
       errorLogCount: countStructuredLogsByLevel("error"),
       staleAfterSeconds: ACTIVE_PLAYBACK_SESSION_TTL_MS / 1000,

@@ -1,12 +1,20 @@
-import type { DiagnosticFailureKind, PlaybackSessionState, PlaybackSessionType } from "@tv-dash/shared";
+import type {
+  DiagnosticFailureKind,
+  PlaybackPositionState,
+  PlaybackSessionState,
+  PlaybackSessionType,
+} from "@tv-dash/shared";
 import { prisma } from "../../db/prisma.js";
 
 const activePlaybackSessionSelect = {
   id: true,
+  surfaceId: true,
   userId: true,
   channelId: true,
   sessionType: true,
   playbackState: true,
+  playbackPositionState: true,
+  liveOffsetSeconds: true,
   selectedQuality: true,
   isMuted: true,
   tileIndex: true,
@@ -35,10 +43,13 @@ const activePlaybackSessionSelect = {
 
 const existingPlaybackSessionSelect = {
   id: true,
+  surfaceId: true,
   userId: true,
   channelId: true,
   sessionType: true,
   playbackState: true,
+  playbackPositionState: true,
+  liveOffsetSeconds: true,
   selectedQuality: true,
   isMuted: true,
   tileIndex: true,
@@ -50,10 +61,13 @@ const existingPlaybackSessionSelect = {
 
 interface UpsertPlaybackSessionInput {
   sessionId: string;
+  surfaceId: string;
   userId: string;
   channelId: string;
   sessionType: PlaybackSessionType;
   playbackState: PlaybackSessionState;
+  playbackPositionState: PlaybackPositionState;
+  liveOffsetSeconds: number;
   selectedQuality: string | null;
   isMuted: boolean;
   tileIndex: number | null;
@@ -64,9 +78,12 @@ interface UpsertPlaybackSessionInput {
 function mapPlaybackSessionPersistenceInput(input: UpsertPlaybackSessionInput) {
   return {
     userId: input.userId,
+    surfaceId: input.surfaceId,
     channelId: input.channelId,
     sessionType: input.sessionType,
     playbackState: input.playbackState,
+    playbackPositionState: input.playbackPositionState,
+    liveOffsetSeconds: input.liveOffsetSeconds,
     selectedQuality: input.selectedQuality,
     isMuted: input.isMuted,
     tileIndex: input.tileIndex,
@@ -96,8 +113,11 @@ export function upsertPlaybackSession(input: UpsertPlaybackSessionInput) {
     },
     update: {
       channelId: persisted.channelId,
+      surfaceId: persisted.surfaceId,
       sessionType: persisted.sessionType,
       playbackState: persisted.playbackState,
+      playbackPositionState: persisted.playbackPositionState,
+      liveOffsetSeconds: persisted.liveOffsetSeconds,
       selectedQuality: persisted.selectedQuality,
       isMuted: persisted.isMuted,
       tileIndex: persisted.tileIndex,

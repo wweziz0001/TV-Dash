@@ -49,9 +49,12 @@ describe("playback-session.service", () => {
       sessions: [
         {
           sessionId: "11111111-1111-1111-1111-111111111111",
+          surfaceId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
           channelId: "22222222-2222-2222-2222-222222222222",
           sessionType: "SINGLE_VIEW",
           playbackState: "playing",
+          playbackPositionState: "LIVE_EDGE",
+          liveOffsetSeconds: 0,
           selectedQuality: "AUTO",
           isMuted: false,
           tileIndex: null,
@@ -63,10 +66,13 @@ describe("playback-session.service", () => {
     mockFindPlaybackSessionsByIds.mockResolvedValueOnce([
       {
         id: "11111111-1111-1111-1111-111111111111",
+        surfaceId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         userId: "user-1",
         channelId: "22222222-2222-2222-2222-222222222222",
         sessionType: "SINGLE_VIEW",
         playbackState: "playing",
+        playbackPositionState: "LIVE_EDGE",
+        liveOffsetSeconds: 0,
         selectedQuality: "AUTO",
         isMuted: false,
         tileIndex: null,
@@ -81,9 +87,12 @@ describe("playback-session.service", () => {
       sessions: [
         {
           sessionId: "11111111-1111-1111-1111-111111111111",
+          surfaceId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
           channelId: "22222222-2222-2222-2222-222222222222",
           sessionType: "SINGLE_VIEW",
           playbackState: "error",
+          playbackPositionState: "BEHIND_LIVE",
+          liveOffsetSeconds: 42,
           selectedQuality: "AUTO",
           isMuted: false,
           tileIndex: null,
@@ -95,10 +104,13 @@ describe("playback-session.service", () => {
     mockFindPlaybackSessionsByIds.mockResolvedValueOnce([
       {
         id: "11111111-1111-1111-1111-111111111111",
+        surfaceId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         userId: "user-1",
         channelId: "22222222-2222-2222-2222-222222222222",
         sessionType: "SINGLE_VIEW",
         playbackState: "error",
+        playbackPositionState: "BEHIND_LIVE",
+        liveOffsetSeconds: 42,
         selectedQuality: "AUTO",
         isMuted: false,
         tileIndex: null,
@@ -113,9 +125,12 @@ describe("playback-session.service", () => {
       sessions: [
         {
           sessionId: "11111111-1111-1111-1111-111111111111",
+          surfaceId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
           channelId: "22222222-2222-2222-2222-222222222222",
           sessionType: "SINGLE_VIEW",
           playbackState: "playing",
+          playbackPositionState: "LIVE_EDGE",
+          liveOffsetSeconds: 0,
           selectedQuality: "AUTO",
           isMuted: false,
           tileIndex: null,
@@ -126,7 +141,9 @@ describe("playback-session.service", () => {
 
     expect(listStructuredLogs({ category: "playback" }).map((entry) => entry.event)).toEqual([
       "playback.session.recovered",
+      "playback.session.position.changed",
       "playback.session.failed",
+      "playback.session.position.changed",
       "playback.session.started",
     ]);
   });
@@ -135,10 +152,13 @@ describe("playback-session.service", () => {
     mockFindPlaybackSessionsByIds.mockResolvedValue([
       {
         id: "11111111-1111-1111-1111-111111111111",
+        surfaceId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
         userId: "user-1",
         channelId: "channel-1",
         sessionType: "MULTIVIEW",
         playbackState: "buffering",
+        playbackPositionState: "PAUSED",
+        liveOffsetSeconds: 18,
         selectedQuality: "LOWEST",
         isMuted: true,
         tileIndex: 2,

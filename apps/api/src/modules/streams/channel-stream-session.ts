@@ -1,6 +1,7 @@
 import { isSharedPlaybackMode, isTvDashManagedPlaybackMode, type ChannelSourceMode, type StreamPlaybackMode } from "@tv-dash/shared";
 import { env } from "../../config/env.js";
 import { getChannelStreamDetails } from "../channels/channel.service.js";
+import { ACTIVE_PLAYBACK_SESSION_TTL_MS } from "../diagnostics/playback-session.service.js";
 import { getChannelSharedStreamStatus, type SharedStreamStatus } from "./shared-stream-session.js";
 import { getChannelTimeshiftStatus, type TimeshiftStatus } from "./timeshift-buffer.js";
 
@@ -22,6 +23,10 @@ export interface ChannelStreamSessionStatus {
     bufferedPlaybackAvailable: boolean;
     defaultPlayback: ChannelViewerDefaultPlayback;
     returnToLiveSupported: boolean;
+    playbackPositionScope: "PER_VIEWER";
+    positionPersistence: "EPHEMERAL";
+    reconnectBehavior: "RESET_TO_LIVE_EDGE";
+    staleViewerStateTtlSeconds: number;
   };
   sharedSession: SharedStreamStatus | null;
   timeshift: TimeshiftStatus;
@@ -82,7 +87,7 @@ function buildSessionMessage(params: {
       return "TV-Dash is acting as a live relay only. There is no retained DVR window for this channel.";
     case "PROXY_DVR":
       return timeshift.available
-        ? "TV-Dash is serving a retained live DVR window on top of proxy-managed delivery."
+        ? "TV-Dash is serving a retained live DVR window on top of proxy-managed delivery. Each viewer keeps an independent playback position inside that shared window."
         : `TV-Dash is warming a retained live DVR window. ${timeshift.message}`;
     case "SHARED_RELAY":
       return sharedSession?.active
@@ -90,7 +95,7 @@ function buildSessionMessage(params: {
         : "The shared local channel session will start on the first live-edge viewer request.";
     case "SHARED_DVR":
       return timeshift.available
-        ? "The shared local channel session is backing both live-edge relay delivery and the retained DVR window."
+        ? "The shared local channel session is backing both live-edge relay delivery and the retained DVR window. Each viewer keeps an independent playback position inside that shared window."
         : `The shared local channel session is active, and the retained DVR window is still warming. ${timeshift.message}`;
   }
 }
@@ -130,6 +135,10 @@ export async function getChannelStreamSessionStatus(channelId: string): Promise<
       bufferedPlaybackAvailable: timeshiftStatus.available,
       defaultPlayback: bufferedPlaybackUrl && timeshiftStatus.available ? "BUFFERED" : "LIVE_EDGE",
       returnToLiveSupported: timeshiftStatus.supported,
+      playbackPositionScope: "PER_VIEWER",
+      positionPersistence: "EPHEMERAL",
+      reconnectBehavior: "RESET_TO_LIVE_EDGE",
+      staleViewerStateTtlSeconds: ACTIVE_PLAYBACK_SESSION_TTL_MS / 1000,
     },
     sharedSession: sharedSessionStatus,
     timeshift: timeshiftStatus,

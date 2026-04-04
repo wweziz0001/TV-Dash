@@ -43,10 +43,13 @@ export async function recordPlaybackSessionHeartbeat(userId: string, payload: Pl
 
     await upsertPlaybackSession({
       sessionId: session.sessionId,
+      surfaceId: session.surfaceId,
       userId,
       channelId: session.channelId,
       sessionType: session.sessionType,
       playbackState: session.playbackState,
+      playbackPositionState: session.playbackPositionState,
+      liveOffsetSeconds: session.liveOffsetSeconds,
       selectedQuality: session.selectedQuality,
       isMuted: session.isMuted,
       tileIndex: session.tileIndex,
@@ -61,8 +64,11 @@ export async function recordPlaybackSessionHeartbeat(userId: string, payload: Pl
         channelId: session.channelId,
         sessionId: session.sessionId,
         detail: {
+          surfaceId: session.surfaceId,
           sessionType: session.sessionType,
           playbackState: session.playbackState,
+          playbackPositionState: session.playbackPositionState,
+          liveOffsetSeconds: session.liveOffsetSeconds,
           tileIndex: session.tileIndex,
           quality: session.selectedQuality,
           isMuted: session.isMuted,
@@ -79,8 +85,30 @@ export async function recordPlaybackSessionHeartbeat(userId: string, payload: Pl
         sessionId: session.sessionId,
         detail: {
           previousChannelId: previous.channelId,
+          surfaceId: previous.surfaceId ?? session.surfaceId,
           sessionType: session.sessionType,
           tileIndex: session.tileIndex,
+        },
+      });
+    }
+
+    if (
+      previous.playbackPositionState !== session.playbackPositionState ||
+      previous.liveOffsetSeconds !== session.liveOffsetSeconds
+    ) {
+      writeStructuredLog("info", {
+        event: "playback.session.position.changed",
+        actorUserId: userId,
+        channelId: session.channelId,
+        sessionId: session.sessionId,
+        detail: {
+          surfaceId: previous.surfaceId ?? session.surfaceId,
+          sessionType: session.sessionType,
+          tileIndex: session.tileIndex,
+          previousPlaybackPositionState: previous.playbackPositionState,
+          playbackPositionState: session.playbackPositionState,
+          previousLiveOffsetSeconds: previous.liveOffsetSeconds,
+          liveOffsetSeconds: session.liveOffsetSeconds,
         },
       });
     }
@@ -96,6 +124,7 @@ export async function recordPlaybackSessionHeartbeat(userId: string, payload: Pl
         sessionId: session.sessionId,
         failureKind: session.failureKind ?? "unknown",
         detail: {
+          surfaceId: previous.surfaceId ?? session.surfaceId,
           sessionType: session.sessionType,
           tileIndex: session.tileIndex,
           quality: session.selectedQuality,
@@ -110,9 +139,12 @@ export async function recordPlaybackSessionHeartbeat(userId: string, payload: Pl
         channelId: session.channelId,
         sessionId: session.sessionId,
         detail: {
+          surfaceId: previous.surfaceId ?? session.surfaceId,
           sessionType: session.sessionType,
           tileIndex: session.tileIndex,
           previousFailureKind: previous.failureKind,
+          playbackPositionState: session.playbackPositionState,
+          liveOffsetSeconds: session.liveOffsetSeconds,
         },
       });
     }
@@ -138,12 +170,15 @@ export async function endPlaybackSessionsForUser(userId: string, payload: Playba
       actorUserId: userId,
       channelId: session.channelId ?? undefined,
       sessionId: session.id,
-      detail: {
-        sessionType: session.sessionType,
-        finalState: session.playbackState,
-        tileIndex: session.tileIndex,
-        durationSeconds: Math.max(0, Math.round((endedAt.getTime() - session.startedAt.getTime()) / 1000)),
-      },
+        detail: {
+          surfaceId: session.surfaceId ?? null,
+          sessionType: session.sessionType,
+          finalState: session.playbackState,
+          finalPlaybackPositionState: session.playbackPositionState,
+          liveOffsetSeconds: session.liveOffsetSeconds,
+          tileIndex: session.tileIndex,
+          durationSeconds: Math.max(0, Math.round((endedAt.getTime() - session.startedAt.getTime()) / 1000)),
+        },
     });
   });
 }

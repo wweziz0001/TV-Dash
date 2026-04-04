@@ -271,10 +271,13 @@ describe("diagnosticRoutes", () => {
     mockPrisma.playbackSession.findMany.mockResolvedValue([
       {
         id: "session-1",
+        surfaceId: "surface-1",
         userId: "user-1",
         channelId: "11111111-1111-1111-1111-111111111111",
         sessionType: "SINGLE_VIEW",
         playbackState: "playing",
+        playbackPositionState: "LIVE_EDGE",
+        liveOffsetSeconds: 0,
         selectedQuality: "AUTO",
         isMuted: false,
         tileIndex: null,
