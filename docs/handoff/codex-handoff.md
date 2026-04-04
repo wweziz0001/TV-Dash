@@ -156,6 +156,8 @@ Key relationship rules:
 ## Player Architecture Overview
 
 - `player/hls-player.tsx` owns one video element, one HLS.js instance, and the explicit in-player browser-control surface
+- `player/timeshift-ui.ts` owns the shared live-DVR capability/state model used by player chrome, watch-page summaries, and multiview tile status copy
+- `player/live-dvr-timeline.tsx` owns the compact retained-buffer rail used for both the always-visible DVR state rail and the expanded control overlay
 - `player/browser-media.ts` owns browser capability detection plus clamped live-DVR seek helpers
 - `player/media-session.ts` owns Media Session metadata/action wiring
 - `player/player-control-overlay.tsx` owns the compact playback-control chrome shared by single-view, multiview, and preview playback
@@ -190,6 +192,11 @@ Key relationship rules:
   - fullscreen
   - optional browser Picture-in-Picture
   - seek backward / seek forward only when the stream has a real retained live-timeshift window
+  - `Go Live` only when the viewer is actually behind the retained live edge
+- DVR-supported channels now keep a compact retained-window rail visible even before the expanded controls are opened, so the operator can immediately see:
+  - whether DVR is available
+  - whether playback is live, near live, behind live, or paused
+  - how much retained window is currently available
 - Single-view uses the same `HlsPlayer` overlay plus the existing sidebar controls for quality, fullscreen, and recording actions.
 - Multiview tiles now get a compact version of the same controls inside each tile without breaking the one-audio-owner rule.
 - Multiview control density now scales by layout density:
@@ -210,12 +217,13 @@ Key relationship rules:
   - not every live source is timeshift-enabled or capable of retained DVR
   - when no real retained window exists, TV-Dash intentionally shows `No DVR` and omits pause/seek buttons rather than faking VOD behavior
   - newly started timeshift buffers may report `DVR warming` until enough retained media exists to seek safely
+  - the retained-window rail is still a compact operator-first control; it does not yet expose bookmarks, thumbnails, or a long-horizon DVR history model
   - browser PiP richness still varies by browser even though TV-Dash exposes the same launch point and state handling
   - browser-native PiP does not allow TV-Dash to force its custom HTML controls into the PiP window
 - Recommended future enhancements:
-  - add focused-player keyboard shortcuts for play/pause, mute, PiP, and fullscreen that integrate cleanly with the existing multiview shortcut model
+  - add focused-player keyboard shortcuts for `Go Live`, jump back, jump forward, play/pause, mute, PiP, and fullscreen that integrate cleanly with the existing multiview shortcut model
   - add optional channel artwork to Media Session metadata once stable image URLs are available
-  - add richer behind-live timeline labels and bookmarks once the retained DVR window grows beyond the first compact operator controls
+  - add optional viewer bookmarks / resume points and richer behind-live markers once the retained DVR window grows beyond the first compact operator controls
 
 ## Live Timeshift And DVR Foundation
 
@@ -236,7 +244,7 @@ Key relationship rules:
   - the player uses that status to decide whether pause, seek, jump-to-live, and Media Session seek actions should exist
   - live channels without retained buffer stay honest and surface `No DVR`
   - channels with timeshift configured but not yet populated surface `DVR warming`
-  - channels with retained media expose live-edge vs behind-live state and `Go live`
+  - channels with retained media expose a persistent retained-window rail, exact live-edge vs near-live vs behind-live state, and `Go Live`
 - Current integrated viewer model:
   - shared channel session state owns upstream acquisition, shared relay/cache lifecycle, and the retained rolling DVR window
   - viewer session state owns playback position, live-edge vs behind-live state, paused-in-buffer state, and `Go live`
@@ -254,6 +262,8 @@ Key relationship rules:
   - this is a rolling pause/rewind window, not yet a full long-horizon DVR library or scheduled catch-up system
   - per-viewer playback position is only retained for active heartbeat-backed viewer sessions; there is no long-term resume bookmark yet across fresh reconnects
   - the shared-timeshift model is still single-process; API restart clears hot shared-session and retained-buffer state until viewers attach again
+- Recommended next task:
+  - add optional viewer resume/bookmark policy plus explicit focused-player keyboard shortcuts for `Go Live` / jump controls, then add route-level watch and multiview regression coverage around those flows
 
 ## Shared Channel Restream And Edge Cache Foundation
 

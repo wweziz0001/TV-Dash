@@ -23,6 +23,10 @@ That does not belong in:
 
 - `player/hls-player.tsx`
   - React wrapper around one `<video>` element, one HLS.js instance, explicit in-player controls, and browser media API integration
+- `player/timeshift-ui.ts`
+  - pure live-DVR state mapping for capability labels, live-edge vs behind-live status, retained-window copy, and `Go Live` affordance decisions
+- `player/live-dvr-timeline.tsx`
+  - compact retained-buffer rail shared by the persistent player chrome and the expanded control overlay
 - `player/browser-media.ts`
   - browser capability detection plus live-DVR/seek helpers for PiP, fullscreen, and clamped local seek actions
 - `player/media-session.ts`
@@ -69,6 +73,7 @@ That does not belong in:
 - Frontend service helpers may choose the playback URL contract (`DIRECT` upstream URL vs `PROXY` gateway path), but they do not own HLS lifecycle behavior.
 - Frontend service helpers may choose the playback URL contract (`DIRECT` upstream URL vs `PROXY` gateway path vs `SHARED` local-origin path), but they do not own HLS lifecycle behavior.
 - `HlsPlayer` owns playback lifecycle, explicit player controls, browser media API integration, and emits status, diagnostics, mute, and quality callbacks upward.
+- `HlsPlayer` also owns the player-facing timeshift UX model, including the persistent DVR rail and capability-gated `Go Live` / jump controls.
 - Multi-view pages own which tile is focused, reassigned, saved, or displayed.
 - Player-facing multiview UI components may live under `player/` when they wrap `HlsPlayer`, but pages still resolve playback URLs and persistence decisions.
 - Shared quality and tile decision logic lives in pure player helpers.
@@ -157,10 +162,15 @@ Do not add silent infinite retry loops. Any retry policy change must consider mu
   - volume
   - fullscreen
   - Picture-in-Picture
+- live channels with retained DVR should also keep a compact live-DVR rail visible even when the expanded controls are collapsed so the operator can still see:
+  - whether DVR exists
+  - whether playback is at the live edge or behind live
+  - how much retained window is currently available
 - seek backward and seek forward are only shown when the current media element exposes a real seekable window
 - live-only streams without DVR must surface honest state such as `No DVR` instead of fake VOD-style seek controls
 - backend-advertised timeshift availability is the source of truth for whether pause, rewind, and timeline controls should appear on live channels
 - live channels with timeshift configured but not yet populated should surface a warming state instead of exposing fake seek/pause behavior
+- `Go Live` should only be actionable when the viewer is actually behind live inside a retained window
 - player diagnostics may report paused, muted, PiP-active, fullscreen-active, and live-edge state so surrounding pages can explain the current browser/player state without reimplementing media APIs
 - player diagnostics should distinguish between normal in-page playback and native browser PiP so surrounding pages can explain the current mode without reimplementing media APIs
 - fullscreen and PiP capability detection belongs in player helpers, not route pages, because Chrome and Firefox diverge most in those browser-owned behaviors
@@ -186,9 +196,14 @@ Do not add silent infinite retry loops. Any retry policy change must consider mu
 - Shared-delivery channels with retained DVR now attach that retained buffer to the same underlying channel-local shared session model. The player still sees explicit live-edge vs buffered paths, but backend acquisition/cache reuse now comes from one shared session for that channel.
 - Live playback states now separate:
   - live edge
+  - near live but not yet at the exact edge
   - buffered live behind the edge
   - DVR warming
   - live-only with no DVR support
+- The player-owned DVR UX now keeps those states explicit through:
+  - a persistent retained-window rail
+  - a `DVR ready` / `DVR warming` / `No DVR` capability label
+  - a distinct `Go Live` action when the viewer is behind the edge
 - Multi-user DVR semantics now stay explicit:
   - upstream acquisition, shared relay/cache state, and the retained DVR window stay channel-scoped
   - playback position, live-edge vs behind-live state, paused-in-buffer state, and `Go live` behavior stay per viewer surface

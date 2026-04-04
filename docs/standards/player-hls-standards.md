@@ -110,7 +110,11 @@ Any change to retry timing or retry count must consider multi-view bandwidth pre
   - volume
   - fullscreen
   - Picture-in-Picture when supported
-- controls must stay keyboard-usable and visible without hover-only discovery
+- essential live-state UX must stay visible without hover-only discovery:
+  - DVR capability (`No DVR`, `DVR warming`, `DVR ready`)
+  - live-edge vs behind-live state
+  - retained-window rail when DVR is supported
+- transport controls must stay keyboard-usable even if the denser control row appears on pointer/focus reveal
 - compact multi-view controls are preferred over removing controls entirely
 
 ## Picture-In-Picture And Browser Media APIs
@@ -131,6 +135,11 @@ Any change to retry timing or retry count must consider multi-view bandwidth pre
 - Live-only streams without DVR must not show fake seek buttons or pause controls.
 - Channels with timeshift configured but not yet buffered must expose a `DVR warming` state instead of pretending the window already exists.
 - When a seekable live window exists, seek actions should clamp within the available range and preserve the live-edge concept for the operator.
+- `Go Live` should be visually distinct from the ordinary seek buttons and should only be enabled when the current viewer is actually behind the live edge.
+- The retained-window rail should look meaningfully different from ordinary VOD progress chrome and should identify:
+  - the retained window size
+  - the current playhead position within that window
+  - the live edge
 - Shared-delivery channels with DVR should still describe the session honestly:
   - shared relay only
   - shared relay + retained DVR window
@@ -170,6 +179,7 @@ Higher-risk player changes should add component or integration coverage for:
 - source replacement cleanup
 - autoplay and mute transitions
 - explicit player controls, PiP support, and disabled-browser fallbacks
+- live-DVR capability mapping, persistent rail rendering, and `Go Live` / jump-control visibility
 - Media Session handler wiring when browser/system playback integration changes
 - integrated live-edge vs buffered-path selection when the backend stream-session contract changes
 

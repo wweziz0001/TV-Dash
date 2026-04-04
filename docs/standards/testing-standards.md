@@ -16,6 +16,7 @@ Current automated coverage already exists for:
 - player diagnostics mapping for loading, retrying, buffering, failed, and recovered states
 - browser media capability detection and Media Session integration helpers
 - explicit player control rendering for pause, mute, volume, optional browser PiP, fullscreen, and live-state visibility
+- live-DVR capability mapping plus persistent retained-window rail rendering
 - multi-view tile defaulting and single-audio behavior
 
 Mandatory workspace verification remains:
@@ -149,6 +150,7 @@ These areas are release-critical and should gain or maintain automated coverage 
 - browser capability detection for PiP / fullscreen / media-session integration
 - live-only vs retained-timeshift control behavior so seek buttons are not faked on unsupported streams
 - live-edge vs behind-live state mapping when real timeshift is available
+- retained-window rail and `Go Live` state rendering for supported DVR streams
 
 ### Diagnostics
 

@@ -1,5 +1,62 @@
 # Codex Session Log
 
+## `2026-04-05T02:18:52+03:00`
+
+### Objective
+
+Polish the live DVR / timeshift playback UX so operators can immediately understand live-edge vs buffered playback, see the retained window clearly, and only get DVR controls when the channel really supports them.
+
+### Work Completed
+
+- created the requested branch `024-timeshift-ux-polish-and-dvr-timeline-ui`
+- added a player-owned live-DVR UI model in `apps/web/src/player/timeshift-ui.ts`
+  - centralizes honest DVR capability labels:
+    - `No DVR`
+    - `DVR warming`
+    - `DVR ready`
+  - centralizes viewer-position state:
+    - exact live edge
+    - near live
+    - behind live
+    - paused in buffer
+    - buffer issue
+- added `apps/web/src/player/live-dvr-timeline.tsx` so the retained-buffer rail is shared between:
+  - the always-visible player chrome
+  - the expanded control overlay
+- upgraded `HlsPlayer` and `player-control-overlay.tsx` so DVR-supported channels now show:
+  - a persistent retained-window rail even when the denser controls are collapsed
+  - distinct capability and viewer-position chips
+  - an explicit `Go Live` action that only enables when the viewer is actually behind live
+  - jump back / forward buttons only when the real seekable DVR window exists
+- kept unsupported channels honest:
+  - live-only channels now keep the DVR rail hidden
+  - live-only channels still show `No DVR`
+  - fake pause / timeline / jump controls remain hidden when the retained buffer does not really exist
+- improved surrounding operator copy:
+  - single-view status panel now reports DVR capability, retained window size, and viewer position explicitly
+  - multiview tiles and the focused-tile side panel now reuse the same DVR wording so dense walls still show honest live-vs-buffered state
+- added targeted frontend coverage for:
+  - pure live-DVR state mapping
+  - persistent/player overlay DVR rail behavior
+  - capability-gated `Go Live` and seek control rendering
+  - multiview tile DVR capability and viewer-position copy
+- updated durable player/testing/handoff docs for the polished DVR timeline milestone
+
+### Verification Run
+
+- `npm run test -w apps/web -- src/player/timeshift-ui.test.ts src/player/hls-player.test.tsx src/player/multiview-tile-card.test.tsx src/player/playback-diagnostics.test.ts`
+- `npm run lint -w apps/web`
+
+### Remaining Risk
+
+- The DVR rail is now explicit and honest, but there are still no viewer bookmarks, resume points, or timeline thumbnails for longer retained windows.
+- The player now distinguishes exact live edge vs near live vs behind live in the UI, but there are still no focused-player keyboard shortcuts for `Go Live` or DVR jump actions.
+- Route-level watch and multiview tests still do not exercise the full page orchestration around the new DVR wording; current coverage is player- and tile-focused.
+
+### Exact Suggested Next Task
+
+Add focused-player keyboard shortcuts plus optional viewer resume/bookmark policy for retained DVR playback, then add route-level watch and multiview regression coverage for those flows.
+
 ## `2026-04-05T02:10:00+03:00`
 
 ### Objective
