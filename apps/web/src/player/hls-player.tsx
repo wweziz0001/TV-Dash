@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type FocusEvent, type RefObject } from "react";
+import { useEffect, useRef, useState, type FocusEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import Hls from "hls.js";
-import { AlertTriangle, LoaderCircle, Pause, Play, RotateCcw, Signal } from "lucide-react";
+import { AlertTriangle, GripHorizontal, LoaderCircle, Pause, Play, RotateCcw, Signal, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -16,10 +17,17 @@ import {
   type PlayerSeekState,
 } from "./browser-media";
 import { syncPlayerMediaSession } from "./media-session";
-import { buildPlayerDiagnostics, type PlayerDiagnostics } from "./playback-diagnostics";
+import { buildPlayerDiagnostics, type PlayerDiagnostics, type PlayerPictureInPictureMode } from "./playback-diagnostics";
 import { PlayerControlOverlay } from "./player-control-overlay";
 import { getFatalRecoveryAction, type PlayerFailureKind, type PlayerStatus } from "./playback-recovery";
 import { buildQualityOptions, defaultQualityOptions, resolvePreferredQuality } from "./quality-options";
+import {
+  clampFloatingPlayerLayout,
+  countFloatingPlayers,
+  getDefaultFloatingPlayerLayout,
+  getNextFloatingPlayerZIndex,
+  type FloatingPlayerLayout,
+} from "./floating-player";
 
 interface HlsPlayerProps {
   src: string | null;
@@ -44,12 +52,16 @@ export type { PlayerDiagnostics } from "./playback-diagnostics";
 const defaultBrowserCapabilities: PlayerBrowserCapabilities = {
   canFullscreen: false,
   canPictureInPicture: false,
+  canNativePictureInPicture: false,
+  canFloatingPlayback: false,
   canDocumentPictureInPicture: false,
   canUseMediaSession: false,
   pictureInPictureUnavailableReason: "Picture-in-Picture is not supported in this browser.",
 };
 
 const SEEK_STEP_SECONDS = 10;
+const FLOATING_PLAYER_HOST_CLASS_NAME = "tv-dash-floating-player-host h-full w-full";
+
 function formatPlaybackTime(seconds: number | null) {
   if (seconds === null || !Number.isFinite(seconds)) {
     return "--:--";
@@ -94,6 +106,8 @@ export function HlsPlayer({
   const sessionIdRef = useRef(0);
   const hasStartedPlaybackRef = useRef(false);
   const wasRecoveringRef = useRef(false);
+  const floatingPlayerInteractionCleanupRef = useRef<(() => void) | null>(null);
+  const floatingLayoutRef = useRef<FloatingPlayerLayout | null>(null);
   const recoveryStateRef = useRef({
     networkAttempts: 0,
     mediaAttempts: 0,
@@ -123,9 +137,22 @@ export function HlsPlayer({
   const [seekState, setSeekState] = useState<PlayerSeekState>(defaultPlayerSeekState);
   const [currentTime, setCurrentTime] = useState(0);
   const [capabilities, setCapabilities] = useState<PlayerBrowserCapabilities>(defaultBrowserCapabilities);
-  const [isPictureInPictureMode, setIsPictureInPictureMode] = useState(false);
+  const [pictureInPictureMode, setPictureInPictureMode] = useState<PlayerPictureInPictureMode>("none");
   const [isFullscreenMode, setIsFullscreenMode] = useState(false);
   const [areControlsVisible, setAreControlsVisible] = useState(false);
+  const [surfacePortalHost] = useState<HTMLDivElement | null>(() => {
+    if (typeof document === "undefined") {
+      return null;
+    }
+
+    const host = document.createElement("div");
+    host.className = FLOATING_PLAYER_HOST_CLASS_NAME;
+    return host;
+  });
+  const [inlineSurfaceAnchor, setInlineSurfaceAnchor] = useState<HTMLDivElement | null>(null);
+  const [floatingLayout, setFloatingLayout] = useState<FloatingPlayerLayout | null>(null);
+  const isFloatingMode = floatingLayout !== null;
+  const isPictureInPictureMode = pictureInPictureMode !== "none";
 
   callbacksRef.current = {
     onMutedChange,
@@ -142,6 +169,11 @@ export function HlsPlayer({
 
   function getFullscreenTarget() {
     return fullscreenTargetRef?.current ?? playerFrameRef.current;
+  }
+
+  function setFloatingPlayerLayout(nextLayout: FloatingPlayerLayout | null) {
+    floatingLayoutRef.current = nextLayout;
+    setFloatingLayout(nextLayout);
   }
 
   function updateStatus(nextStatus: PlayerStatus) {
@@ -170,6 +202,11 @@ export function HlsPlayer({
     }
   }
 
+  function clearFloatingPlayerInteraction() {
+    floatingPlayerInteractionCleanupRef.current?.();
+    floatingPlayerInteractionCleanupRef.current = null;
+  }
+
   function showRecoveryNotice(message: string) {
     clearRecoveryNoticeTimeout();
     setRecoveryNotice(message);
@@ -195,6 +232,100 @@ export function HlsPlayer({
   function hideControls() {
     clearControlsVisibilityTimeout();
     setAreControlsVisible(false);
+  }
+
+  function bringFloatingPlayerToFront() {
+    const activeLayout = floatingLayoutRef.current;
+
+    if (!activeLayout) {
+      return;
+    }
+
+    setFloatingPlayerLayout({
+      ...activeLayout,
+      zIndex: getNextFloatingPlayerZIndex(),
+    });
+  }
+
+  function openFloatingPlayer(statusMessage: string) {
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const nextLayout = floatingLayoutRef.current
+      ? clampFloatingPlayerLayout(
+          {
+            ...floatingLayoutRef.current,
+            zIndex: getNextFloatingPlayerZIndex(),
+          },
+          viewportWidth,
+          viewportHeight,
+        )
+      : getDefaultFloatingPlayerLayout(countFloatingPlayers(document), viewportWidth, viewportHeight);
+
+    setFloatingPlayerLayout(nextLayout);
+    setStatusDetail(statusMessage);
+    showControls();
+  }
+
+  function closeFloatingPlayer(statusMessage = "Returned the floating player to the page.") {
+    setFloatingPlayerLayout(null);
+    setStatusDetail(statusMessage);
+    clearFloatingPlayerInteraction();
+    showControls();
+  }
+
+  function startFloatingPlayerInteraction(
+    mode: "drag" | "resize",
+    event: ReactPointerEvent<HTMLElement>,
+  ) {
+    const activeLayout = floatingLayoutRef.current;
+
+    if (!activeLayout) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    bringFloatingPlayerToFront();
+    showControls();
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startLayout = activeLayout;
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+      const nextLayout = clampFloatingPlayerLayout(
+        mode === "drag"
+          ? {
+              ...startLayout,
+              left: startLayout.left + deltaX,
+              top: startLayout.top + deltaY,
+            }
+          : {
+              ...startLayout,
+              width: startLayout.width + deltaX,
+              height: startLayout.height + deltaY,
+            },
+        window.innerWidth,
+        window.innerHeight,
+      );
+
+      setFloatingPlayerLayout(nextLayout);
+    };
+
+    const finishInteraction = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", finishInteraction);
+      window.removeEventListener("pointercancel", finishInteraction);
+      floatingPlayerInteractionCleanupRef.current = null;
+    };
+
+    clearFloatingPlayerInteraction();
+    floatingPlayerInteractionCleanupRef.current = finishInteraction;
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", finishInteraction);
+    window.addEventListener("pointercancel", finishInteraction);
   }
 
   function teardownVideo(video: HTMLVideoElement) {
@@ -252,7 +383,13 @@ export function HlsPlayer({
     );
 
     setCapabilities(nextCapabilities);
-    setIsPictureInPictureMode(isPictureInPictureActive(video, activeDocument));
+    setPictureInPictureMode(
+      floatingLayoutRef.current
+        ? "floating"
+        : isPictureInPictureActive(video, activeDocument)
+          ? "native"
+          : "none",
+    );
     setIsFullscreenMode(isFullscreenActive(fullscreenTarget, activeDocument));
     setSeekState(getPlayerSeekState(video));
 
@@ -386,6 +523,11 @@ export function HlsPlayer({
 
     void (async () => {
       try {
+        if (floatingLayoutRef.current) {
+          closeFloatingPlayer();
+          return;
+        }
+
         if (document.pictureInPictureElement === video) {
           await document.exitPictureInPicture?.();
           setStatusDetail("Returned the player to the tab.");
@@ -393,12 +535,28 @@ export function HlsPlayer({
           return;
         }
 
-        if (capabilities.canPictureInPicture) {
+        if (!capabilities.canNativePictureInPicture && capabilities.canFloatingPlayback) {
+          openFloatingPlayer("Opened a floating player because native Picture-in-Picture is unavailable in this browser.");
+          return;
+        }
+
+        if (document.pictureInPictureElement && document.pictureInPictureElement !== video) {
+          openFloatingPlayer("Native Picture-in-Picture is already in use, so TV-Dash opened a floating player instead.");
+          return;
+        }
+
+        if (capabilities.canNativePictureInPicture) {
           await video.requestPictureInPicture?.();
           setStatusDetail("Opened Picture-in-Picture. Playback now continues in the browser PiP window.");
           showControls();
+          return;
         }
       } catch {
+        if (capabilities.canFloatingPlayback) {
+          openFloatingPlayer("Native Picture-in-Picture could not be opened, so TV-Dash opened a floating player instead.");
+          return;
+        }
+
         setStatusDetail("Picture-in-Picture could not be opened in this browser session.");
       } finally {
         syncBrowserState();
@@ -466,6 +624,7 @@ export function HlsPlayer({
         isPaused,
         volume,
         isPictureInPictureActive: isPictureInPictureMode,
+        pictureInPictureMode,
         isFullscreenActive: isFullscreenMode,
         canPictureInPicture: capabilities.canPictureInPicture,
         canSeek: seekState.canSeek,
@@ -480,6 +639,7 @@ export function HlsPlayer({
     isFullscreenMode,
     isPaused,
     isPictureInPictureMode,
+    pictureInPictureMode,
     playerMuted,
     recoveryNotice,
     seekState.canSeek,
@@ -491,8 +651,67 @@ export function HlsPlayer({
   ]);
 
   useEffect(() => {
+    if (!surfacePortalHost) {
+      return;
+    }
+
+    const targetParent = floatingLayout ? document.body : inlineSurfaceAnchor;
+
+    if (!targetParent) {
+      return;
+    }
+
+    targetParent.appendChild(surfacePortalHost);
+    surfacePortalHost.dataset.tvDashFloatingPlayer = floatingLayout ? "true" : "false";
+
+    if (floatingLayout) {
+      surfacePortalHost.style.position = "fixed";
+      surfacePortalHost.style.left = `${floatingLayout.left}px`;
+      surfacePortalHost.style.top = `${floatingLayout.top}px`;
+      surfacePortalHost.style.width = `${floatingLayout.width}px`;
+      surfacePortalHost.style.height = `${floatingLayout.height}px`;
+      surfacePortalHost.style.zIndex = String(floatingLayout.zIndex);
+    } else {
+      surfacePortalHost.style.position = "";
+      surfacePortalHost.style.left = "";
+      surfacePortalHost.style.top = "";
+      surfacePortalHost.style.width = "";
+      surfacePortalHost.style.height = "";
+      surfacePortalHost.style.zIndex = "";
+    }
+
+    return () => {
+      if (surfacePortalHost.parentElement === targetParent) {
+        targetParent.removeChild(surfacePortalHost);
+      }
+    };
+  }, [floatingLayout, inlineSurfaceAnchor, surfacePortalHost]);
+
+  useEffect(() => {
+    if (!floatingLayout) {
+      return;
+    }
+
+    function handleViewportResize() {
+      if (!floatingLayoutRef.current) {
+        return;
+      }
+
+      setFloatingPlayerLayout(
+        clampFloatingPlayerLayout(floatingLayoutRef.current, window.innerWidth, window.innerHeight),
+      );
+    }
+
+    window.addEventListener("resize", handleViewportResize);
+
+    return () => {
+      window.removeEventListener("resize", handleViewportResize);
+    };
+  }, [floatingLayout]);
+
+  useEffect(() => {
     syncBrowserState();
-  }, []);
+  }, [floatingLayout]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -565,6 +784,14 @@ export function HlsPlayer({
       document.removeEventListener("fullscreenchange", handleFullscreenUpdated);
     };
   }, [fullscreenTargetRef, src]);
+
+  useEffect(() => {
+    if (src || !floatingLayoutRef.current) {
+      return;
+    }
+
+    setFloatingPlayerLayout(null);
+  }, [src]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -865,6 +1092,7 @@ export function HlsPlayer({
     clearReconnectTimeout();
     clearRecoveryNoticeTimeout();
     clearControlsVisibilityTimeout();
+    clearFloatingPlayerInteraction();
     stopPlayback();
   }, []);
 
@@ -878,6 +1106,7 @@ export function HlsPlayer({
     isPaused,
     volume,
     isPictureInPictureActive: isPictureInPictureMode,
+    pictureInPictureMode,
     isFullscreenActive: isFullscreenMode,
     canPictureInPicture: capabilities.canPictureInPicture,
     canSeek: seekState.canSeek,
@@ -910,12 +1139,46 @@ export function HlsPlayer({
         data-testid="player-surface"
         onBlur={handleBlurWithin}
         onFocus={handleFocusWithin}
+        onMouseDown={floatingLayout ? bringFloatingPlayerToFront : undefined}
         onMouseEnter={handlePointerEnter}
         onMouseLeave={handlePointerLeave}
         onMouseMove={handlePointerMove}
       >
         <video ref={videoRef} className="h-full w-full object-cover" playsInline muted={playerMuted} />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10" />
+
+        {floatingLayout ? (
+          <>
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-30 h-12 bg-gradient-to-b from-slate-950/85 via-slate-950/35 to-transparent" />
+            <div
+              className={cn(
+                "absolute inset-x-0 top-0 z-40 flex items-center justify-between gap-2 px-3 py-2 transition-opacity duration-200",
+                areControlsVisible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
+              )}
+            >
+              <button
+                aria-label="Drag floating player"
+                className="flex min-w-0 cursor-grab items-center gap-2 rounded-full border border-slate-700/80 bg-slate-950/80 px-3 py-1 text-[11px] font-medium text-slate-200 shadow-sm active:cursor-grabbing"
+                onPointerDown={(event) => startFloatingPlayerInteraction("drag", event)}
+                type="button"
+              >
+                <GripHorizontal className="h-3.5 w-3.5 text-slate-400" />
+                <span className="truncate">{title}</span>
+              </button>
+              <Button
+                aria-label="Return floating player to page"
+                className="h-8 w-8 rounded-full border border-slate-700/80 bg-slate-950/85"
+                onClick={() => closeFloatingPlayer()}
+                size="icon-sm"
+                title="Return floating player to page"
+                type="button"
+                variant="secondary"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </>
+        ) : null}
 
         <div
           data-testid="player-status-chrome"
@@ -944,7 +1207,8 @@ export function HlsPlayer({
             {liveStateLabel}
           </Badge>
           {playerMuted ? <Badge size="sm">Muted</Badge> : null}
-          {isPictureInPictureMode ? <Badge size="sm">PiP</Badge> : null}
+          {pictureInPictureMode === "native" ? <Badge size="sm">PiP</Badge> : null}
+          {pictureInPictureMode === "floating" ? <Badge size="sm">Floating</Badge> : null}
           {isFullscreenMode ? <Badge size="sm">Fullscreen</Badge> : null}
           {recoveryNotice ? (
             <Badge className="border-emerald-400/30 bg-emerald-500/10 text-emerald-200" size="sm">{recoveryNotice}</Badge>
@@ -998,6 +1262,7 @@ export function HlsPlayer({
         <PlayerControlOverlay
           canFullscreen={capabilities.canFullscreen}
           canPictureInPicture={capabilities.canPictureInPicture}
+          canNativePictureInPicture={capabilities.canNativePictureInPicture}
           canSeek={seekState.canSeek}
           currentTimeLabel={currentTimeLabel}
           density={controlDensity}
@@ -1006,6 +1271,7 @@ export function HlsPlayer({
           isFullscreenActive={isFullscreenMode}
           isMuted={playerMuted}
           isPictureInPictureActive={isPictureInPictureMode}
+          pictureInPictureMode={pictureInPictureMode}
           liveStateLabel={liveStateLabel}
           onJumpToLive={handleJumpToLive}
           onSeekBackward={() => handleSeek(-SEEK_STEP_SECONDS)}
@@ -1022,9 +1288,43 @@ export function HlsPlayer({
           visible={areControlsVisible}
           volume={volume}
         />
+        {floatingLayout ? (
+          <button
+            aria-label="Resize floating player"
+            className={cn(
+              "absolute bottom-2 right-2 z-40 h-4 w-4 cursor-se-resize rounded-sm border border-slate-700/80 bg-slate-950/75 transition-opacity duration-200",
+              areControlsVisible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
+            )}
+            onPointerDown={(event) => startFloatingPlayerInteraction("resize", event)}
+            type="button"
+          />
+        ) : null}
       </div>
     );
   }
 
-  return renderPlayerSurface();
+  return (
+    <>
+      {floatingLayout ? (
+        <div
+          className="flex h-full min-h-[160px] items-center justify-center rounded-[1rem] border border-dashed border-cyan-400/30 bg-slate-950/70 p-4 text-center"
+          data-testid="floating-player-placeholder"
+        >
+          <div>
+            <p className="text-sm font-semibold text-white">Playing in floating mode</p>
+            <p className="mt-1.5 text-[12px] text-slate-400">
+              Native PiP stayed available for other players, so this stream is floating inside TV-Dash.
+            </p>
+            <Button className="mt-3" onClick={() => closeFloatingPlayer()} size="sm" type="button" variant="secondary">
+              Return to page
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className={cn("h-full w-full", floatingLayout && "hidden")} ref={setInlineSurfaceAnchor} />
+
+      {surfacePortalHost ? createPortal(renderPlayerSurface(), surfacePortalHost) : null}
+    </>
+  );
 }

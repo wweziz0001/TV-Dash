@@ -24,9 +24,11 @@ interface PlayerControlOverlayProps {
   timelineMax: number;
   currentTimeLabel: string;
   durationLabel: string;
+  pictureInPictureMode: "none" | "native" | "floating";
   isPictureInPictureActive: boolean;
   isFullscreenActive: boolean;
   canPictureInPicture: boolean;
+  canNativePictureInPicture: boolean;
   pictureInPictureUnavailableReason: string | null;
   canFullscreen: boolean;
   onToggleMute: () => void;
@@ -52,9 +54,11 @@ export function PlayerControlOverlay({
   timelineMax,
   currentTimeLabel,
   durationLabel,
+  pictureInPictureMode,
   isPictureInPictureActive,
   isFullscreenActive,
   canPictureInPicture,
+  canNativePictureInPicture,
   pictureInPictureUnavailableReason,
   canFullscreen,
   onToggleMute,
@@ -71,6 +75,22 @@ export function PlayerControlOverlay({
   const buttonClassName = isMicro ? "h-7 min-h-7 rounded-md px-1.5 text-[10px]" : "";
   const iconButtonClassName = isMicro ? "h-7 w-7 rounded-md" : "";
   const timelineWrapperClassName = isMicro ? "mb-1 px-1 py-1" : "mb-1.5 px-1 py-1";
+  const pictureInPictureButtonLabel =
+    pictureInPictureMode === "native"
+      ? "Exit PiP"
+      : pictureInPictureMode === "floating"
+        ? "Dock"
+        : canNativePictureInPicture
+          ? "PiP"
+          : "Float";
+  const pictureInPictureButtonTitle =
+    pictureInPictureMode === "native"
+      ? "Exit browser Picture-in-Picture"
+      : pictureInPictureMode === "floating"
+        ? "Return the floating player to the page"
+        : canNativePictureInPicture
+          ? "Open browser Picture-in-Picture"
+          : pictureInPictureUnavailableReason ?? "Open a floating player";
 
   return (
     <div
@@ -113,16 +133,24 @@ export function PlayerControlOverlay({
             {liveStateLabel}
           </span>
           <Button
-            aria-label={isPictureInPictureActive ? "Exit Picture-in-Picture" : "Open Picture-in-Picture"}
+            aria-label={
+              pictureInPictureMode === "native"
+                ? "Exit Picture-in-Picture"
+                : pictureInPictureMode === "floating"
+                  ? "Return floating player to page"
+                  : canNativePictureInPicture
+                    ? "Open Picture-in-Picture"
+                    : "Open floating player"
+            }
             disabled={!canPictureInPicture || !hasSource}
             className={buttonClassName}
             onClick={onTogglePictureInPicture}
             size="sm"
-            title={pictureInPictureUnavailableReason ?? (isPictureInPictureActive ? "Exit Picture-in-Picture" : "Open Picture-in-Picture")}
+            title={pictureInPictureButtonTitle}
             type="button"
             variant={isPictureInPictureActive ? "primary" : "secondary"}
           >
-            {isPictureInPictureActive ? "Exit PiP" : "PiP"}
+            {pictureInPictureButtonLabel}
           </Button>
           <Button
             aria-label={isFullscreenActive ? "Exit fullscreen" : "Enter fullscreen"}

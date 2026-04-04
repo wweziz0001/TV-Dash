@@ -1,6 +1,8 @@
 export interface PlayerBrowserCapabilities {
   canFullscreen: boolean;
   canPictureInPicture: boolean;
+  canNativePictureInPicture: boolean;
+  canFloatingPlayback: boolean;
   canDocumentPictureInPicture: boolean;
   canUseMediaSession: boolean;
   pictureInPictureUnavailableReason: string | null;
@@ -48,50 +50,69 @@ export function getPlayerBrowserCapabilities(
   const canUseMediaSession = "mediaSession" in nav && typeof nav.mediaSession !== "undefined";
   const canFullscreen = Boolean(fullscreenTarget?.requestFullscreen) && doc.fullscreenEnabled !== false;
   const canDocumentPictureInPicture = false;
+  const canFloatingPlayback = typeof doc.createElement === "function";
 
   if (!video) {
     return {
       canFullscreen,
-      canPictureInPicture: false,
+      canPictureInPicture: canFloatingPlayback,
+      canNativePictureInPicture: false,
+      canFloatingPlayback,
       canDocumentPictureInPicture,
       canUseMediaSession,
-      pictureInPictureUnavailableReason: "Picture-in-Picture is unavailable until playback is ready.",
+      pictureInPictureUnavailableReason: canFloatingPlayback
+        ? "Picture-in-Picture is unavailable until playback is ready."
+        : "Picture-in-Picture is not supported in this browser.",
     };
   }
 
   if (video.disablePictureInPicture) {
     return {
       canFullscreen,
-      canPictureInPicture: false,
+      canPictureInPicture: canFloatingPlayback,
+      canNativePictureInPicture: false,
+      canFloatingPlayback,
       canDocumentPictureInPicture,
       canUseMediaSession,
-      pictureInPictureUnavailableReason: "Picture-in-Picture is disabled for this player.",
+      pictureInPictureUnavailableReason: canFloatingPlayback
+        ? "Native Picture-in-Picture is disabled for this player. TV-Dash can still open a floating player."
+        : "Picture-in-Picture is disabled for this player.",
     };
   }
 
   if (typeof video.requestPictureInPicture !== "function") {
     return {
       canFullscreen,
-      canPictureInPicture: false,
+      canPictureInPicture: canFloatingPlayback,
+      canNativePictureInPicture: false,
+      canFloatingPlayback,
       canDocumentPictureInPicture,
       canUseMediaSession,
-      pictureInPictureUnavailableReason: "Picture-in-Picture is not supported in this browser.",
+      pictureInPictureUnavailableReason: canFloatingPlayback
+        ? "Native Picture-in-Picture is not supported in this browser. TV-Dash can use a floating player instead."
+        : "Picture-in-Picture is not supported in this browser.",
     };
   }
 
   if (doc.pictureInPictureEnabled === false) {
     return {
       canFullscreen,
-      canPictureInPicture: false,
+      canPictureInPicture: canFloatingPlayback,
+      canNativePictureInPicture: false,
+      canFloatingPlayback,
       canDocumentPictureInPicture,
       canUseMediaSession,
-      pictureInPictureUnavailableReason: "Picture-in-Picture is disabled in this browser.",
+      pictureInPictureUnavailableReason: canFloatingPlayback
+        ? "Native Picture-in-Picture is disabled in this browser. TV-Dash can use a floating player instead."
+        : "Picture-in-Picture is disabled in this browser.",
     };
   }
 
   return {
     canFullscreen,
     canPictureInPicture: true,
+    canNativePictureInPicture: true,
+    canFloatingPlayback,
     canDocumentPictureInPicture,
     canUseMediaSession,
     pictureInPictureUnavailableReason: null,

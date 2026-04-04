@@ -116,7 +116,10 @@ Any change to retry timing or retry count must consider multi-view bandwidth pre
 ## Picture-In-Picture And Browser Media APIs
 
 - PiP support must be capability-detected inside `player/`, not guessed from browser family names.
-- When PiP is unsupported, the control must be disabled or hidden with an operator-facing explanation.
+- Native browser PiP should be preferred when it can open successfully because that is the only mode that stays above other apps.
+- When native PiP is unavailable, already occupied, or rejected, TV-Dash may open an in-page floating player instead as a real fallback.
+- Multiple fallback floating players are acceptable because they stay inside the page and do not depend on browser PiP slot limits.
+- When neither native PiP nor floating fallback is possible, the control must be disabled or hidden with an operator-facing explanation.
 - Firefox may provide richer native PiP chrome than Chrome; do not let that reduce TV-Dash's own in-page controls.
 - Fullscreen and PiP toggles should call the browser APIs directly from player-owned actions and keep state reflected in player diagnostics.
 - Media Session metadata and handlers belong in `player/` so browser/system media controls stay aligned with TV-Dash playback state.

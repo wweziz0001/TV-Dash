@@ -150,6 +150,7 @@ Key relationship rules:
 
 - `player/hls-player.tsx` owns one video element, one HLS.js instance, and the explicit in-player browser-control surface
 - `player/browser-media.ts` owns browser capability detection plus live-DVR seek window helpers
+- `player/floating-player.ts` owns the layout and stacking helpers for TV-Dash-managed floating fallback players
 - `player/media-session.ts` owns Media Session metadata/action wiring
 - `player/player-control-overlay.tsx` owns the compact playback-control chrome shared by single-view, multiview, and preview playback
 - `player/playback-recovery.ts` owns bounded fatal error recovery decisions
@@ -188,6 +189,8 @@ Key relationship rules:
 - PiP support is now explicit rather than browser-default-only:
   - supported browsers get an explicit PiP button
   - TV-Dash now prefers native video PiP for live-playback stability instead of moving the whole player into a separate PiP document
+  - when native PiP is already in use, unavailable, or rejected, TV-Dash falls back to an in-page floating player that keeps the same live video element and control overlay alive
+  - fallback floating players are draggable, resizable, and can exist more than once at the same time
   - the browser-managed PiP window stays above the tab and other apps, but its in-window controls remain browser-limited
   - unsupported browsers keep the control disabled with a reason instead of exposing a broken UX
 - Cross-browser expectations:
@@ -198,6 +201,7 @@ Key relationship rules:
   - when no real seek window exists, TV-Dash intentionally shows `No DVR` and omits seek buttons rather than faking VOD behavior
   - PiP richness still varies by browser even though TV-Dash now exposes the same launch point and state handling
   - browser-native PiP does not allow TV-Dash to force its custom HTML controls into the floating window
+  - TV-Dash floating fallback stays inside the browser tab; it is not an operating-system-level always-on-top window
 - Recommended future enhancements:
   - add focused-player keyboard shortcuts for play/pause, mute, PiP, and fullscreen that integrate cleanly with the existing multiview shortcut model
   - add optional channel artwork to Media Session metadata once stable image URLs are available

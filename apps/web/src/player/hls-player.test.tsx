@@ -385,6 +385,7 @@ describe("HlsPlayer", () => {
       expect.objectContaining({
         isPaused: true,
         canPictureInPicture: true,
+        pictureInPictureMode: "none",
         isFullscreenActive: true,
       }),
     );
@@ -445,5 +446,72 @@ describe("HlsPlayer", () => {
 
     expect(HTMLVideoElement.prototype.requestPictureInPicture).toHaveBeenCalledTimes(1);
     expect(document.pictureInPictureElement).toBeTruthy();
+  });
+
+  it("falls back to a floating player when another native PiP session is already active", async () => {
+    Object.defineProperty(document, "pictureInPictureElement", {
+      configurable: true,
+      value: document.createElement("video"),
+      writable: true,
+    });
+
+    render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
+
+    act(() => {
+      MockHls.instances[0].emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 1080 }, { height: 720 }],
+      });
+    });
+
+    const playerRoot = screen.getByTestId("player-surface");
+    fireEvent.mouseOver(playerRoot);
+    fireEvent.mouseMove(playerRoot);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Open Picture-in-Picture" }));
+      await Promise.resolve();
+    });
+
+    expect(HTMLVideoElement.prototype.requestPictureInPicture).not.toHaveBeenCalled();
+    expect(screen.getByTestId("floating-player-placeholder")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Return to page" })).toBeInTheDocument();
+  });
+
+  it("supports more than one TV-Dash floating player when native PiP is unavailable", async () => {
+    Object.defineProperty(HTMLVideoElement.prototype, "requestPictureInPicture", {
+      configurable: true,
+      value: undefined,
+    });
+
+    render(
+      <>
+        <HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />
+        <HlsPlayer src="https://example.com/b.m3u8" title="Channel B" />
+      </>,
+    );
+
+    act(() => {
+      MockHls.instances[0].emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 1080 }],
+      });
+      MockHls.instances[1].emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 720 }],
+      });
+    });
+
+    const playerRoots = screen.getAllByTestId("player-surface");
+    fireEvent.mouseOver(playerRoots[0]);
+    fireEvent.mouseMove(playerRoots[0]);
+    fireEvent.mouseOver(playerRoots[1]);
+    fireEvent.mouseMove(playerRoots[1]);
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Open floating player" })[0]);
+      fireEvent.click(screen.getAllByRole("button", { name: "Open floating player" })[1]);
+      await Promise.resolve();
+    });
+
+    expect(screen.getAllByTestId("floating-player-placeholder")).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Return to page" })).toHaveLength(2);
   });
 });

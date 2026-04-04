@@ -458,10 +458,12 @@ export function ChannelWatchPage() {
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">
                   Picture-in-Picture:{" "}
-                  {playerDiagnostics.isPictureInPictureActive
-                    ? "active now"
+                  {playerDiagnostics.pictureInPictureMode === "native"
+                    ? "active now in the browser PiP window"
+                    : playerDiagnostics.pictureInPictureMode === "floating"
+                      ? "running in a TV-Dash floating player"
                     : playerDiagnostics.canPictureInPicture
-                      ? "available from the in-player controls"
+                      ? "available from the in-player controls with native-or-floating fallback"
                       : "not available in this browser"}
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">

@@ -23,15 +23,18 @@ describe("browser-media", () => {
       requestFullscreen: vi.fn(),
     } as unknown as Element;
     const doc = {
+      createElement: () => document.createElement("div"),
       pictureInPictureEnabled: true,
       fullscreenEnabled: true,
-    } as Document;
+    } as unknown as Document;
     const nav = {
       mediaSession: {},
     } as Navigator;
     expect(getPlayerBrowserCapabilities(video, fullscreenTarget, doc, nav)).toEqual({
       canFullscreen: true,
       canPictureInPicture: true,
+      canNativePictureInPicture: true,
+      canFloatingPlayback: true,
       canDocumentPictureInPicture: false,
       canUseMediaSession: true,
       pictureInPictureUnavailableReason: null,
@@ -44,11 +47,22 @@ describe("browser-media", () => {
     } as HTMLVideoElement;
 
     expect(
-      getPlayerBrowserCapabilities(video, null, { pictureInPictureEnabled: true } as Document, {} as Navigator),
+      getPlayerBrowserCapabilities(
+        video,
+        null,
+        {
+          createElement: () => document.createElement("div"),
+          pictureInPictureEnabled: true,
+        } as unknown as Document,
+        {} as Navigator,
+      ),
     ).toMatchObject({
-      canPictureInPicture: false,
+      canPictureInPicture: true,
+      canNativePictureInPicture: false,
+      canFloatingPlayback: true,
       canDocumentPictureInPicture: false,
-      pictureInPictureUnavailableReason: "Picture-in-Picture is not supported in this browser.",
+      pictureInPictureUnavailableReason:
+        "Native Picture-in-Picture is not supported in this browser. TV-Dash can use a floating player instead.",
     });
   });
 
