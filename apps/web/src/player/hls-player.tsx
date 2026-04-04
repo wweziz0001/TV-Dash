@@ -1,11 +1,23 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import Hls from "hls.js";
 import { AlertTriangle, LoaderCircle, RotateCcw, Signal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { QualityOption } from "@/types/api";
 import { cn } from "@/lib/utils";
+import type { QualityOption } from "@/types/api";
+import {
+  defaultPlayerSeekState,
+  getPlayerBrowserCapabilities,
+  getPlayerSeekState,
+  isFullscreenActive,
+  isPictureInPictureActive,
+  seekVideoByOffset,
+  type PlayerBrowserCapabilities,
+  type PlayerSeekState,
+} from "./browser-media";
+import { syncPlayerMediaSession } from "./media-session";
 import { buildPlayerDiagnostics, type PlayerDiagnostics } from "./playback-diagnostics";
+import { PlayerControlOverlay } from "./player-control-overlay";
 import { getFatalRecoveryAction, type PlayerFailureKind, type PlayerStatus } from "./playback-recovery";
 import { buildQualityOptions, defaultQualityOptions, resolvePreferredQuality } from "./quality-options";
 
@@ -17,6 +29,9 @@ interface HlsPlayerProps {
   preferredQuality?: string | null;
   initialBias?: "AUTO" | "LOWEST";
   className?: string;
+  controlDensity?: "compact" | "full";
+  fullscreenTargetRef?: RefObject<HTMLElement | null>;
+  onMutedChange?: (muted: boolean) => void;
   onQualityOptionsChange?: (options: QualityOption[]) => void;
   onSelectedQualityChange?: (value: string) => void;
   onStatusChange?: (status: PlayerStatus) => void;
@@ -26,6 +41,15 @@ interface HlsPlayerProps {
 export type { PlayerStatus } from "./playback-recovery";
 export type { PlayerDiagnostics } from "./playback-diagnostics";
 
+const defaultBrowserCapabilities: PlayerBrowserCapabilities = {
+  canFullscreen: false,
+  canPictureInPicture: false,
+  canUseMediaSession: false,
+  pictureInPictureUnavailableReason: "Picture-in-Picture is not supported in this browser.",
+};
+
+const SEEK_STEP_SECONDS = 10;
+
 export function HlsPlayer({
   src,
   title,
@@ -34,11 +58,15 @@ export function HlsPlayer({
   preferredQuality = "AUTO",
   initialBias = "AUTO",
   className,
+  controlDensity = "full",
+  fullscreenTargetRef,
+  onMutedChange,
   onQualityOptionsChange,
   onSelectedQualityChange,
   onStatusChange,
   onDiagnosticsChange,
 }: HlsPlayerProps) {
+  const playerFrameRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
@@ -53,6 +81,7 @@ export function HlsPlayer({
     mediaAttempts: 0,
   });
   const callbacksRef = useRef({
+    onMutedChange,
     onQualityOptionsChange,
     onSelectedQualityChange,
     onStatusChange,
@@ -70,8 +99,16 @@ export function HlsPlayer({
   const [statusDetail, setStatusDetail] = useState<string | null>(null);
   const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [playerMuted, setPlayerMuted] = useState(muted);
+  const [volume, setVolume] = useState(1);
+  const [isPaused, setIsPaused] = useState(false);
+  const [seekState, setSeekState] = useState<PlayerSeekState>(defaultPlayerSeekState);
+  const [capabilities, setCapabilities] = useState<PlayerBrowserCapabilities>(defaultBrowserCapabilities);
+  const [isPictureInPictureMode, setIsPictureInPictureMode] = useState(false);
+  const [isFullscreenMode, setIsFullscreenMode] = useState(false);
 
   callbacksRef.current = {
+    onMutedChange,
     onQualityOptionsChange,
     onSelectedQualityChange,
     onStatusChange,
@@ -82,6 +119,10 @@ export function HlsPlayer({
     initialBias,
     preferredQuality,
   };
+
+  function getFullscreenTarget() {
+    return fullscreenTargetRef?.current ?? playerFrameRef.current;
+  }
 
   function updateStatus(nextStatus: PlayerStatus) {
     setStatus(nextStatus);
@@ -154,6 +195,154 @@ export function HlsPlayer({
       : currentPreferredQuality;
   }
 
+  function syncBrowserState() {
+    const video = videoRef.current;
+    const fullscreenTarget = getFullscreenTarget();
+
+    setCapabilities(getPlayerBrowserCapabilities(video, fullscreenTarget));
+    setIsPictureInPictureMode(isPictureInPictureActive(video));
+    setIsFullscreenMode(isFullscreenActive(fullscreenTarget));
+    setSeekState(getPlayerSeekState(video));
+
+    if (!video) {
+      return;
+    }
+
+    setVolume(video.volume);
+    setIsPaused(Boolean(video.currentSrc || src) && video.paused && !video.ended);
+  }
+
+  function applyMutedState(nextMuted: boolean) {
+    setPlayerMuted(nextMuted);
+    callbacksRef.current.onMutedChange?.(nextMuted);
+  }
+
+  async function resumePlayback() {
+    const video = videoRef.current;
+
+    if (!video || !src) {
+      return;
+    }
+
+    setStatusDetail(hasStartedPlaybackRef.current ? "Resuming live playback..." : "Starting playback...");
+
+    try {
+      await video.play();
+      setIsPaused(false);
+    } catch {
+      setStatusDetail("Playback start was blocked by the browser. Use the in-player controls to try again.");
+      updateStatus("playing");
+      setIsPaused(true);
+    }
+  }
+
+  function pausePlayback(detail = "Playback paused by the operator.") {
+    const video = videoRef.current;
+
+    if (!video) {
+      return;
+    }
+
+    video.pause();
+    setStatusDetail(detail);
+    updateStatus("playing");
+    setIsPaused(true);
+  }
+
+  function handleTogglePlayback() {
+    const video = videoRef.current;
+
+    if (!video || !src) {
+      return;
+    }
+
+    if (video.paused || video.ended) {
+      void resumePlayback();
+      return;
+    }
+
+    pausePlayback();
+  }
+
+  function handleToggleMute() {
+    applyMutedState(!playerMuted);
+  }
+
+  function handleVolumeChange(nextVolume: number) {
+    const video = videoRef.current;
+
+    if (!video) {
+      return;
+    }
+
+    video.volume = nextVolume;
+    setVolume(nextVolume);
+
+    if (nextVolume <= 0 && !playerMuted) {
+      applyMutedState(true);
+      return;
+    }
+
+    if (nextVolume > 0 && playerMuted) {
+      applyMutedState(false);
+    }
+  }
+
+  function handleSeek(offsetSeconds: number) {
+    const video = videoRef.current;
+
+    if (!seekVideoByOffset(video, offsetSeconds)) {
+      return;
+    }
+
+    setStatusDetail(offsetSeconds < 0 ? "Stepped backward inside the live DVR window." : "Stepped forward toward live.");
+    syncBrowserState();
+  }
+
+  async function handleTogglePictureInPicture() {
+    const video = videoRef.current;
+
+    if (!video) {
+      return;
+    }
+
+    try {
+      if (document.pictureInPictureElement === video) {
+        await document.exitPictureInPicture?.();
+      } else if (capabilities.canPictureInPicture) {
+        await video.requestPictureInPicture?.();
+      }
+    } catch {
+      setStatusDetail("Picture-in-Picture could not be opened in this browser session.");
+    } finally {
+      syncBrowserState();
+    }
+  }
+
+  async function handleToggleFullscreen() {
+    const fullscreenTarget = getFullscreenTarget();
+
+    if (!fullscreenTarget) {
+      return;
+    }
+
+    try {
+      if (document.fullscreenElement === fullscreenTarget) {
+        await document.exitFullscreen?.();
+      } else {
+        await fullscreenTarget.requestFullscreen?.();
+      }
+    } catch {
+      setStatusDetail("Fullscreen could not be changed in this browser session.");
+    } finally {
+      syncBrowserState();
+    }
+  }
+
+  useEffect(() => {
+    setPlayerMuted(muted);
+  }, [muted]);
+
   useEffect(() => {
     callbacksRef.current.onDiagnosticsChange?.(
       buildPlayerDiagnostics({
@@ -162,22 +351,108 @@ export function HlsPlayer({
         error,
         failureKind,
         recoveryNotice,
-        muted,
+        muted: playerMuted,
+        isPaused,
+        volume,
+        isPictureInPictureActive: isPictureInPictureMode,
+        isFullscreenActive: isFullscreenMode,
+        canPictureInPicture: capabilities.canPictureInPicture,
+        canSeek: seekState.canSeek,
+        isAtLiveEdge: seekState.isAtLiveEdge,
+        liveLatencySeconds: seekState.liveLatencySeconds,
       }),
     );
-  }, [error, failureKind, muted, recoveryNotice, status, statusDetail]);
+  }, [
+    capabilities.canPictureInPicture,
+    error,
+    failureKind,
+    isFullscreenMode,
+    isPaused,
+    isPictureInPictureMode,
+    playerMuted,
+    recoveryNotice,
+    seekState.canSeek,
+    seekState.isAtLiveEdge,
+    seekState.liveLatencySeconds,
+    status,
+    statusDetail,
+    volume,
+  ]);
 
   useEffect(() => {
     const video = videoRef.current;
+
     if (!video) {
       return;
     }
 
-    video.muted = muted;
-  }, [muted]);
+    video.muted = playerMuted;
+    syncBrowserState();
+  }, [playerMuted]);
 
   useEffect(() => {
     const video = videoRef.current;
+
+    if (!video) {
+      return;
+    }
+
+    syncBrowserState();
+
+    const handlePlaybackStarted = () => {
+      setIsPaused(false);
+      syncBrowserState();
+    };
+    const handlePlaybackPaused = () => {
+      setIsPaused(Boolean(video.currentSrc) && video.paused && !video.ended);
+      syncBrowserState();
+    };
+    const handleVolumeUpdated = () => {
+      setVolume(video.volume);
+      setPlayerMuted(video.muted);
+    };
+    const handleTimeRangeUpdated = () => {
+      setSeekState(getPlayerSeekState(video));
+    };
+    const handlePictureInPictureUpdated = () => {
+      syncBrowserState();
+    };
+    const handleFullscreenUpdated = () => {
+      syncBrowserState();
+    };
+
+    video.addEventListener("play", handlePlaybackStarted);
+    video.addEventListener("pause", handlePlaybackPaused);
+    video.addEventListener("volumechange", handleVolumeUpdated);
+    video.addEventListener("timeupdate", handleTimeRangeUpdated);
+    video.addEventListener("progress", handleTimeRangeUpdated);
+    video.addEventListener("durationchange", handleTimeRangeUpdated);
+    video.addEventListener("loadedmetadata", handleTimeRangeUpdated);
+    video.addEventListener("seeking", handleTimeRangeUpdated);
+    video.addEventListener("seeked", handleTimeRangeUpdated);
+    video.addEventListener("enterpictureinpicture", handlePictureInPictureUpdated);
+    video.addEventListener("leavepictureinpicture", handlePictureInPictureUpdated);
+    document.addEventListener("fullscreenchange", handleFullscreenUpdated);
+
+    return () => {
+      video.removeEventListener("play", handlePlaybackStarted);
+      video.removeEventListener("pause", handlePlaybackPaused);
+      video.removeEventListener("volumechange", handleVolumeUpdated);
+      video.removeEventListener("timeupdate", handleTimeRangeUpdated);
+      video.removeEventListener("progress", handleTimeRangeUpdated);
+      video.removeEventListener("durationchange", handleTimeRangeUpdated);
+      video.removeEventListener("loadedmetadata", handleTimeRangeUpdated);
+      video.removeEventListener("seeking", handleTimeRangeUpdated);
+      video.removeEventListener("seeked", handleTimeRangeUpdated);
+      video.removeEventListener("enterpictureinpicture", handlePictureInPictureUpdated);
+      video.removeEventListener("leavepictureinpicture", handlePictureInPictureUpdated);
+      document.removeEventListener("fullscreenchange", handleFullscreenUpdated);
+    };
+  }, [fullscreenTargetRef, src]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+
     if (!video) {
       return;
     }
@@ -197,12 +472,15 @@ export function HlsPlayer({
     setError(null);
     setFailureKind(null);
     setStatusDetail(null);
+    setIsPaused(false);
+    setSeekState(defaultPlayerSeekState);
     publishQualityOptions([...defaultQualityOptions]);
     stopPlayback();
     teardownVideo(video);
 
     if (!src) {
       updateStatus("idle");
+      syncBrowserState();
       return;
     }
 
@@ -228,7 +506,9 @@ export function HlsPlayer({
       setError(null);
       setFailureKind(null);
       setStatusDetail(null);
+      setIsPaused(false);
       updateStatus("playing");
+      syncBrowserState();
 
       if (recovered) {
         showRecoveryNotice("Stream recovered");
@@ -244,6 +524,16 @@ export function HlsPlayer({
       updateStatus(hasStartedPlaybackRef.current ? "buffering" : "loading");
     };
 
+    const handleVideoPause = () => {
+      if (!isCurrentSession() || video.ended) {
+        return;
+      }
+
+      setStatusDetail("Playback paused.");
+      updateStatus("playing");
+      setIsPaused(true);
+    };
+
     const handleVideoError = () => {
       if (!isCurrentSession()) {
         return;
@@ -254,12 +544,14 @@ export function HlsPlayer({
       setStatusDetail(null);
       setError("The browser reported a media playback failure.");
       setFailureKind("media-playback");
+      setIsPaused(false);
       updateStatus("error");
     };
 
     video.addEventListener("playing", handlePlaying);
     video.addEventListener("waiting", handleWaiting);
     video.addEventListener("stalled", handleWaiting);
+    video.addEventListener("pause", handleVideoPause);
     video.addEventListener("error", handleVideoError);
 
     let hls: Hls | null = null;
@@ -297,11 +589,17 @@ export function HlsPlayer({
 
         syncManifestLevels(data.levels);
         setStatusDetail("Starting playback...");
+        syncBrowserState();
 
         if (playbackSettingsRef.current.autoPlay) {
           void video.play().catch(() => {
-            setStatusDetail("Autoplay was blocked by the browser.");
+            setStatusDetail("Autoplay was blocked by the browser. Use play to start the stream.");
+            updateStatus("playing");
+            setIsPaused(true);
           });
+        } else {
+          updateStatus("playing");
+          setIsPaused(true);
         }
       });
 
@@ -338,6 +636,7 @@ export function HlsPlayer({
           setError(null);
           setFailureKind(action.failureKind);
           setStatusDetail(action.message);
+          setIsPaused(false);
           updateStatus("retrying");
           reconnectTimeoutRef.current = window.setTimeout(() => {
             if (!isCurrentSession() || hlsRef.current !== activeHls) {
@@ -356,6 +655,7 @@ export function HlsPlayer({
           setError(null);
           setFailureKind(action.failureKind);
           setStatusDetail(action.message);
+          setIsPaused(false);
           updateStatus("retrying");
           hls.recoverMediaError();
           return;
@@ -365,22 +665,30 @@ export function HlsPlayer({
         setStatusDetail(null);
         setError(action.message);
         setFailureKind(action.failureKind);
+        setIsPaused(false);
         updateStatus("error");
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       callbacksRef.current.onSelectedQualityChange?.("AUTO");
       video.src = src;
       video.load();
+      syncBrowserState();
 
       if (playbackSettingsRef.current.autoPlay) {
         void video.play().catch(() => {
-          setStatusDetail("Autoplay was blocked by the browser.");
+          setStatusDetail("Autoplay was blocked by the browser. Use play to start the stream.");
+          updateStatus("playing");
+          setIsPaused(true);
         });
+      } else {
+        updateStatus("playing");
+        setIsPaused(true);
       }
     } else {
       setStatusDetail(null);
       setError("HLS playback is not supported in this browser.");
       setFailureKind("unsupported-stream");
+      setIsPaused(false);
       updateStatus("error");
     }
 
@@ -388,6 +696,7 @@ export function HlsPlayer({
       video.removeEventListener("playing", handlePlaying);
       video.removeEventListener("waiting", handleWaiting);
       video.removeEventListener("stalled", handleWaiting);
+      video.removeEventListener("pause", handleVideoPause);
       video.removeEventListener("error", handleVideoError);
       clearReconnectTimeout();
 
@@ -409,6 +718,32 @@ export function HlsPlayer({
     applyPreferredQuality(preferredQuality);
   }, [preferredQuality]);
 
+  useEffect(() => {
+    if (!capabilities.canUseMediaSession || !src) {
+      return;
+    }
+
+    return syncPlayerMediaSession(
+      navigator.mediaSession,
+      typeof MediaMetadata === "undefined" ? undefined : MediaMetadata,
+      {
+        title,
+        playbackState: isPaused ? "paused" : status === "playing" || status === "buffering" || status === "retrying" ? "playing" : "none",
+        canSeek: seekState.canSeek,
+        seekOffsetSeconds: SEEK_STEP_SECONDS,
+        onPlay: resumePlayback,
+        onPause: () => pausePlayback("Playback paused from a browser media control."),
+        onStop: () => pausePlayback("Playback stopped from a browser media control."),
+        onSeekBackward: (seekOffsetSeconds) => {
+          handleSeek(-seekOffsetSeconds);
+        },
+        onSeekForward: (seekOffsetSeconds) => {
+          handleSeek(seekOffsetSeconds);
+        },
+      },
+    );
+  }, [capabilities.canUseMediaSession, isPaused, seekState.canSeek, src, status, title]);
+
   useEffect(() => () => {
     clearReconnectTimeout();
     clearRecoveryNoticeTimeout();
@@ -421,13 +756,29 @@ export function HlsPlayer({
     error,
     failureKind,
     recoveryNotice,
-    muted,
+    muted: playerMuted,
+    isPaused,
+    volume,
+    isPictureInPictureActive: isPictureInPictureMode,
+    isFullscreenActive: isFullscreenMode,
+    canPictureInPicture: capabilities.canPictureInPicture,
+    canSeek: seekState.canSeek,
+    isAtLiveEdge: seekState.isAtLiveEdge,
+    liveLatencySeconds: seekState.liveLatencySeconds,
   });
+  const liveStateLabel = seekState.canSeek
+    ? seekState.isAtLiveEdge
+      ? "Live"
+      : `-${Math.round(seekState.liveLatencySeconds ?? 0)}s`
+    : "No DVR";
 
   return (
-    <div className={cn("relative h-full overflow-hidden rounded-[1.1rem] bg-black", className)}>
-      <video ref={videoRef} className="h-full w-full object-cover" playsInline muted={muted} />
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/10" />
+    <div
+      ref={playerFrameRef}
+      className={cn("relative h-full overflow-hidden rounded-[1.1rem] bg-black", className)}
+    >
+      <video ref={videoRef} className="h-full w-full object-cover" playsInline muted={playerMuted} />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10" />
 
       <div className="pointer-events-none absolute left-2.5 top-2.5 flex flex-wrap items-center gap-1.5">
         <Badge className="border-cyan-400/30 bg-slate-950/80 text-cyan-100" size="sm">
@@ -437,7 +788,8 @@ export function HlsPlayer({
         <Badge
           size="sm"
           className={cn(
-            status === "playing" && "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
+            diagnostics.isPaused && "border-slate-700/80 bg-slate-950/80 text-slate-100",
+            status === "playing" && !diagnostics.isPaused && "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
             (status === "loading" || status === "buffering") && "border-amber-400/30 bg-amber-500/10 text-amber-100",
             status === "retrying" && "border-amber-400/30 bg-amber-500/10 text-amber-100",
             status === "error" && "border-rose-400/30 bg-rose-500/10 text-rose-100",
@@ -445,6 +797,12 @@ export function HlsPlayer({
         >
           {diagnostics.label}
         </Badge>
+        <Badge className="border-slate-700/80 bg-slate-950/80 text-slate-200" size="sm">
+          {liveStateLabel}
+        </Badge>
+        {playerMuted ? <Badge size="sm">Muted</Badge> : null}
+        {isPictureInPictureMode ? <Badge size="sm">PiP</Badge> : null}
+        {isFullscreenMode ? <Badge size="sm">Fullscreen</Badge> : null}
         {recoveryNotice ? (
           <Badge className="border-emerald-400/30 bg-emerald-500/10 text-emerald-200" size="sm">{recoveryNotice}</Badge>
         ) : null}
@@ -470,13 +828,35 @@ export function HlsPlayer({
             {diagnostics.technicalDetail ? (
               <p className="mt-1.5 text-[11px] uppercase tracking-[0.14em] text-slate-500">{diagnostics.technicalDetail}</p>
             ) : null}
-            <Button className="mt-3" onClick={() => setReloadKey((value) => value + 1)} size="sm" variant="secondary">
+            <Button className="mt-3" onClick={() => setReloadKey((value) => value + 1)} size="sm" type="button" variant="secondary">
               <RotateCcw className="h-4 w-4" />
               Retry
             </Button>
           </div>
         </div>
       ) : null}
+
+      <PlayerControlOverlay
+        canFullscreen={capabilities.canFullscreen}
+        canPictureInPicture={capabilities.canPictureInPicture}
+        canSeek={seekState.canSeek}
+        density={controlDensity}
+        hasSource={Boolean(src)}
+        isFullscreenActive={isFullscreenMode}
+        isMuted={playerMuted}
+        isPaused={isPaused}
+        isPictureInPictureActive={isPictureInPictureMode}
+        liveStateLabel={liveStateLabel}
+        onSeekBackward={() => handleSeek(-SEEK_STEP_SECONDS)}
+        onSeekForward={() => handleSeek(SEEK_STEP_SECONDS)}
+        onToggleFullscreen={() => void handleToggleFullscreen()}
+        onToggleMute={handleToggleMute}
+        onTogglePictureInPicture={() => void handleTogglePictureInPicture()}
+        onTogglePlayback={handleTogglePlayback}
+        onVolumeChange={handleVolumeChange}
+        pictureInPictureUnavailableReason={capabilities.pictureInPictureUnavailableReason}
+        volume={volume}
+      />
     </div>
   );
 }

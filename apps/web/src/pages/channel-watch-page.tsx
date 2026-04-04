@@ -28,6 +28,7 @@ export function ChannelWatchPage() {
   const [qualities, setQualities] = useState<QualityOption[]>([...defaultQualityOptions]);
   const [selectedQuality, setSelectedQuality] = useState("AUTO");
   const [recordingQuality, setRecordingQuality] = useState("AUTO");
+  const [isPlayerMuted, setIsPlayerMuted] = useState(false);
   const [playerDiagnostics, setPlayerDiagnostics] = useState<PlayerDiagnostics>(() =>
     buildPlayerDiagnostics({
       status: "idle",
@@ -235,6 +236,7 @@ export function ChannelWatchPage() {
     setQualities([...defaultQualityOptions]);
     setSelectedQuality("AUTO");
     setRecordingQuality("AUTO");
+    setIsPlayerMuted(false);
     setPlayerDiagnostics(
       buildPlayerDiagnostics({
         status: "idle",
@@ -368,7 +370,9 @@ export function ChannelWatchPage() {
           >
             <HlsPlayer
               autoPlay
-              muted={false}
+              fullscreenTargetRef={playerFrameRef}
+              muted={isPlayerMuted}
+              onMutedChange={setIsPlayerMuted}
               onQualityOptionsChange={setQualities}
               onSelectedQualityChange={setSelectedQuality}
               onDiagnosticsChange={setPlayerDiagnostics}
@@ -450,10 +454,26 @@ export function ChannelWatchPage() {
                     : "Playback uses the channel's direct upstream HLS URL."}
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">
-                  Audio: {playerDiagnostics.isMuted ? "Muted by player" : "Live audio enabled"}
+                  Audio: {playerDiagnostics.isMuted ? "Muted by player" : `Live audio enabled at ${Math.round(playerDiagnostics.volume * 100)}%`}
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">
-                  {isPlayerFullscreen
+                  Picture-in-Picture:{" "}
+                  {playerDiagnostics.isPictureInPictureActive
+                    ? "active now"
+                    : playerDiagnostics.canPictureInPicture
+                      ? "available from the in-player controls"
+                      : "not available in this browser"}
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Live window:{" "}
+                  {playerDiagnostics.canSeek
+                    ? playerDiagnostics.isAtLiveEdge
+                      ? "at the live edge"
+                      : `${Math.round(playerDiagnostics.liveLatencySeconds ?? 0)} seconds behind live`
+                    : "this stream does not expose a seekable DVR window"}
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {isPlayerFullscreen || playerDiagnostics.isFullscreenActive
                     ? "Fullscreen keeps the operator overlays visible and returns to the same state when you exit."
                     : "Use fullscreen for cleaner mobile viewing or large-screen monitoring without losing playback state."}
                 </p>

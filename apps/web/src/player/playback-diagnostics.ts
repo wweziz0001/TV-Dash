@@ -8,6 +8,14 @@ export interface PlayerDiagnostics {
   failureKind: PlayerFailureKind | null;
   recoveryState: "none" | "recovering" | "recovered";
   isMuted: boolean;
+  isPaused: boolean;
+  volume: number;
+  isPictureInPictureActive: boolean;
+  isFullscreenActive: boolean;
+  canPictureInPicture: boolean;
+  canSeek: boolean;
+  isAtLiveEdge: boolean;
+  liveLatencySeconds: number | null;
 }
 
 interface BuildPlayerDiagnosticsOptions {
@@ -17,9 +25,21 @@ interface BuildPlayerDiagnosticsOptions {
   failureKind?: PlayerFailureKind | null;
   recoveryNotice?: string | null;
   muted?: boolean;
+  isPaused?: boolean;
+  volume?: number;
+  isPictureInPictureActive?: boolean;
+  isFullscreenActive?: boolean;
+  canPictureInPicture?: boolean;
+  canSeek?: boolean;
+  isAtLiveEdge?: boolean;
+  liveLatencySeconds?: number | null;
 }
 
-function getStatusLabel(status: PlayerStatus, recoveryNotice: string | null) {
+function getStatusLabel(status: PlayerStatus, recoveryNotice: string | null, isPaused: boolean) {
+  if (isPaused) {
+    return "Paused";
+  }
+
   if (status === "playing" && recoveryNotice) {
     return "Recovered";
   }
@@ -49,8 +69,16 @@ export function buildPlayerDiagnostics({
   failureKind = null,
   recoveryNotice = null,
   muted = true,
+  isPaused = false,
+  volume = 1,
+  isPictureInPictureActive = false,
+  isFullscreenActive = false,
+  canPictureInPicture = false,
+  canSeek = false,
+  isAtLiveEdge = true,
+  liveLatencySeconds = null,
 }: BuildPlayerDiagnosticsOptions): PlayerDiagnostics {
-  const label = getStatusLabel(status, recoveryNotice);
+  const label = getStatusLabel(status, recoveryNotice, isPaused);
   const recoveryState =
     recoveryNotice ? "recovered" : status === "retrying" ? "recovering" : "none";
 
@@ -63,6 +91,34 @@ export function buildPlayerDiagnostics({
       failureKind,
       recoveryState,
       isMuted: muted,
+      isPaused,
+      volume,
+      isPictureInPictureActive,
+      isFullscreenActive,
+      canPictureInPicture,
+      canSeek,
+      isAtLiveEdge,
+      liveLatencySeconds,
+    };
+  }
+
+  if (isPaused) {
+    return {
+      status,
+      label,
+      summary: "Playback is paused. Resume when you want to return to the live edge.",
+      technicalDetail: canSeek ? "Seek controls are available while paused." : null,
+      failureKind,
+      recoveryState,
+      isMuted: muted,
+      isPaused,
+      volume,
+      isPictureInPictureActive,
+      isFullscreenActive,
+      canPictureInPicture,
+      canSeek,
+      isAtLiveEdge,
+      liveLatencySeconds,
     };
   }
 
@@ -75,6 +131,14 @@ export function buildPlayerDiagnostics({
       failureKind,
       recoveryState,
       isMuted: muted,
+      isPaused,
+      volume,
+      isPictureInPictureActive,
+      isFullscreenActive,
+      canPictureInPicture,
+      canSeek,
+      isAtLiveEdge,
+      liveLatencySeconds,
     };
   }
 
@@ -94,10 +158,22 @@ export function buildPlayerDiagnostics({
     failureKind,
     recoveryState,
     isMuted: muted,
+    isPaused,
+    volume,
+    isPictureInPictureActive,
+    isFullscreenActive,
+    canPictureInPicture,
+    canSeek,
+    isAtLiveEdge,
+    liveLatencySeconds,
   };
 }
 
-export function getPlaybackTone(diagnostics: Pick<PlayerDiagnostics, "status" | "recoveryState">) {
+export function getPlaybackTone(diagnostics: Pick<PlayerDiagnostics, "status" | "recoveryState" | "isPaused">) {
+  if (diagnostics.isPaused) {
+    return "neutral";
+  }
+
   if (diagnostics.recoveryState === "recovered") {
     return "success";
   }
