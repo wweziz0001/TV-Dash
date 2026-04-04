@@ -529,6 +529,60 @@ describe("HlsPlayer", () => {
     expect(addEventListener).toHaveBeenCalledWith("pagehide", expect.any(Function), { once: true });
   });
 
+  it("uses document picture-in-picture for the first floating window and popup fallback for additional windows", async () => {
+    const requestWindow = vi.fn(async () => ({
+      document: document.implementation.createHTMLDocument("Floating"),
+      addEventListener: vi.fn(),
+      close: vi.fn(),
+      focus: vi.fn(),
+    }));
+
+    Object.defineProperty(window, "documentPictureInPicture", {
+      configurable: true,
+      value: {
+        requestWindow,
+      },
+      writable: true,
+    });
+
+    render(
+      <>
+        <HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />
+        <HlsPlayer src="https://example.com/b.m3u8" title="Channel B" />
+      </>,
+    );
+
+    act(() => {
+      MockHls.instances[0].emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 1080 }],
+      });
+      MockHls.instances[1].emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 720 }],
+      });
+    });
+
+    const playerRoots = screen.getAllByTestId("player-surface");
+    fireEvent.mouseOver(playerRoots[0]);
+    fireEvent.mouseMove(playerRoots[0]);
+    fireEvent.mouseOver(playerRoots[1]);
+    fireEvent.mouseMove(playerRoots[1]);
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Open floating player" })[0]);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Open floating player" })[0]);
+      await Promise.resolve();
+    });
+
+    expect(requestWindow).toHaveBeenCalledTimes(1);
+    expect(window.open).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("document-picture-in-picture-placeholder")).toBeInTheDocument();
+    expect(screen.getByTestId("detached-player-placeholder")).toBeInTheDocument();
+  });
+
   it("falls back to an in-page floating player when popup launch is blocked", async () => {
     vi.mocked(window.open).mockReturnValue(null);
 

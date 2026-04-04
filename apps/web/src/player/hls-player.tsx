@@ -84,6 +84,8 @@ interface DocumentPictureInPictureApi {
   requestWindow?: (options?: { width?: number; height?: number }) => Promise<DocumentPictureInPictureWindow>;
 }
 
+let activeDocumentPictureInPictureWindowCount = 0;
+
 function getDocumentPictureInPictureApi(win: Window) {
   return (win as Window & { documentPictureInPicture?: DocumentPictureInPictureApi }).documentPictureInPicture;
 }
@@ -328,6 +330,10 @@ export function HlsPlayer({
   }
 
   function cleanupDocumentPictureInPictureWindow() {
+    if (documentPictureInPictureWindowRef.current) {
+      activeDocumentPictureInPictureWindowCount = Math.max(0, activeDocumentPictureInPictureWindowCount - 1);
+    }
+
     documentPictureInPictureWindowRef.current = null;
     setDocumentPictureInPictureMode(false);
   }
@@ -644,11 +650,16 @@ export function HlsPlayer({
       return;
     }
 
-    const floatingWindowLayout = getDefaultFloatingPlayerLayout(
+  const floatingWindowLayout = getDefaultFloatingPlayerLayout(
       listFloatingPlayerSessions().length,
       window.innerWidth,
       window.innerHeight,
     );
+    const shouldPreferDocumentPictureInPicture =
+      capabilities.canDocumentPictureInPicture &&
+      activeDocumentPictureInPictureWindowCount === 0 &&
+      countFloatingPlayers(document) === 0 &&
+      listFloatingPlayerSessions().length === 0;
     const session = createFloatingPlayerSession({
       title,
       src,
@@ -663,7 +674,7 @@ export function HlsPlayer({
       },
     });
 
-    if (capabilities.canDocumentPictureInPicture) {
+    if (shouldPreferDocumentPictureInPicture) {
       const documentPictureInPictureApi = getDocumentPictureInPictureApi(window);
 
       if (typeof documentPictureInPictureApi?.requestWindow === "function") {
@@ -689,6 +700,7 @@ export function HlsPlayer({
               { once: true },
             );
 
+            activeDocumentPictureInPictureWindowCount += 1;
             documentPictureInPictureWindowRef.current = documentPictureInPictureWindow;
             setDocumentPictureInPictureMode(true);
             setStatusDetail("Opened the floating player in a compact TV-Dash window.");
@@ -1394,7 +1406,11 @@ export function HlsPlayer({
     clearRecoveryNoticeTimeout();
     clearControlsVisibilityTimeout();
     clearFloatingPlayerInteraction();
-    documentPictureInPictureWindowRef.current?.close();
+
+    const activeDocumentPictureInPictureWindow = documentPictureInPictureWindowRef.current;
+    cleanupDocumentPictureInPictureWindow();
+    activeDocumentPictureInPictureWindow?.close();
+
     stopPlayback();
   }, []);
 
