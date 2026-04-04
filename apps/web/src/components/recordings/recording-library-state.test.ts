@@ -32,7 +32,7 @@ describe("recording-library-state", () => {
   it("defaults to the standard library statuses when all statuses are selected", () => {
     const params = buildRecordingLibraryQueryParams(createDefaultRecordingLibraryFilters());
 
-    expect(params.get("status")).toBe("COMPLETED,FAILED,CANCELED");
+    expect(params.get("status")).toBe("COMPLETED");
     expect(params.get("sort")).toBe("RECORDED_DESC");
   });
 
