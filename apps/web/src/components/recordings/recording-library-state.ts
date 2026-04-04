@@ -32,12 +32,12 @@ export interface RecordingLibrarySummary {
   protectedCount: number;
 }
 
-export const DEFAULT_LIBRARY_STATUSES: RecordingJobStatus[] = ["COMPLETED", "FAILED", "CANCELED"];
+export const DEFAULT_LIBRARY_STATUSES: RecordingJobStatus[] = ["COMPLETED"];
 
 export function createDefaultRecordingLibraryFilters(): RecordingLibraryFilters {
   return {
     search: "",
-    status: "ALL",
+    status: "COMPLETED",
     channelId: "",
     mode: "ALL",
     protection: "ALL",

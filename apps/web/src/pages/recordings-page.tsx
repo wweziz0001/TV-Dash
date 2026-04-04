@@ -1,7 +1,19 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RecordingRuleInput, RecordingWeekday } from "@tv-dash/shared";
-import { PauseCircle, PlayCircle, RefreshCw, ShieldCheck, ShieldOff, Square, Trash2 } from "lucide-react";
+import {
+  CalendarClock,
+  CircleDotDashed,
+  PauseCircle,
+  PlayCircle,
+  Plus,
+  RefreshCw,
+  ShieldCheck,
+  ShieldOff,
+  Square,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { PageHeader } from "@/components/layout/page-header";
@@ -28,14 +40,20 @@ import {
   type RecordingLibraryModeFilter,
   type RecordingLibraryProtectionFilter,
   type RecordingLibrarySortOption,
-  type RecordingLibraryStatusFilter,
 } from "@/components/recordings/recording-library-state";
 import { RecordingRetentionBadge } from "@/components/recordings/recording-retention-badge";
 import { RecordingStatusBadge } from "@/components/recordings/recording-status-badge";
+import {
+  buildRecordingActivityEvents,
+  splitRecordingWorkspaceJobs,
+  type RecordingActivityEvent,
+  type RecordingActivityTone,
+} from "@/components/recordings/recording-workspace-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/features/auth/auth-context";
 import { api, resolveApiUrl } from "@/services/api";
 import type {
@@ -46,6 +64,14 @@ import type {
 } from "@/types/api";
 
 const ACTIVE_RECORDING_STATUSES: RecordingJobStatus[] = ["PENDING", "SCHEDULED", "RECORDING"];
+const RECORDING_ACTIVITY_STATUSES: RecordingJobStatus[] = [
+  "RECORDING",
+  "PENDING",
+  "SCHEDULED",
+  "COMPLETED",
+  "FAILED",
+  "CANCELED",
+];
 const RULE_WEEKDAYS: RecordingWeekday[] = [
   "MONDAY",
   "TUESDAY",
@@ -62,8 +88,10 @@ export function RecordingsPage() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const [now, setNow] = useState(() => Date.now());
+  const [activeDialog, setActiveDialog] = useState<"JOB" | "RULE" | null>(null);
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [didApplyWorkflowPrefill, setDidApplyWorkflowPrefill] = useState(false);
   const [showJobValidation, setShowJobValidation] = useState(false);
   const [showRuleValidation, setShowRuleValidation] = useState(false);
   const [libraryFilters, setLibraryFilters] = useState<RecordingLibraryFilters>(() => createDefaultRecordingLibraryFilters());
@@ -157,6 +185,25 @@ export function RecordingsPage() {
     enabled: Boolean(token),
   });
 
+  const recentActivityQuery = useQuery({
+    queryKey: ["recordings-activity", token],
+    queryFn: async () => {
+      if (!token) {
+        throw new Error("Missing session");
+      }
+
+      const params = new URLSearchParams({
+        status: RECORDING_ACTIVITY_STATUSES.join(","),
+        sort: "RECORDED_DESC",
+      });
+
+      return (await api.listRecordingJobs(token, params)).jobs;
+    },
+    enabled: Boolean(token),
+    refetchInterval: 4000,
+    refetchIntervalInBackground: true,
+  });
+
   const jobValidation = validateRecordingForm(jobForm, {
     mode: editingJobId ? "update" : "create",
     qualityOptions: jobQualityOptionsQuery.data,
@@ -188,6 +235,7 @@ export function RecordingsPage() {
     onSuccess: async (job) => {
       toast.success(editingJobId ? "Recording schedule updated" : job.status === "RECORDING" ? "Recording started" : "Recording saved");
       resetJobEditor();
+      setActiveDialog(null);
       await invalidateRecordingQueries(queryClient, token, job.id);
     },
     onError: (error) => {
@@ -215,6 +263,7 @@ export function RecordingsPage() {
     onSuccess: async (rule) => {
       toast.success(editingRuleId ? "Recurring rule updated" : "Recurring rule created");
       resetRuleEditor();
+      setActiveDialog(null);
       await invalidateRecordingQueries(queryClient, token, rule.nextUpcomingJob?.id ?? null);
     },
     onError: (error) => {
@@ -311,6 +360,7 @@ export function RecordingsPage() {
       toast.success("Recurring rule deleted");
       if (editingRuleId === rule.id) {
         resetRuleEditor();
+        setActiveDialog(null);
       }
       await invalidateRecordingQueries(queryClient, token, rule.nextUpcomingJob?.id ?? null);
     },
@@ -345,9 +395,22 @@ export function RecordingsPage() {
   });
 
   const activeJobs = useMemo(() => sortActiveRecordingJobs(activeJobsQuery.data ?? []), [activeJobsQuery.data]);
+  const { activeJobs: currentlyRecordingJobs, upcomingJobs } = useMemo(
+    () => splitRecordingWorkspaceJobs(activeJobs),
+    [activeJobs],
+  );
   const libraryJobs = libraryJobsQuery.data ?? [];
   const librarySummary = useMemo(() => buildRecordingLibrarySummary(libraryJobs), [libraryJobs]);
+  const activityEvents = useMemo(
+    () => buildRecordingActivityEvents(recentActivityQuery.data ?? [], 18),
+    [recentActivityQuery.data],
+  );
   const recordingRules = recordingRulesQuery.data ?? [];
+  const activeRuleCount = useMemo(() => recordingRules.filter((rule) => rule.isActive).length, [recordingRules]);
+  const thumbnailReadyCount = useMemo(
+    () => libraryJobs.filter((job) => Boolean(job.asset?.thumbnailGeneratedAt)).length,
+    [libraryJobs],
+  );
   const ruleProgramPrefill = useMemo(() => buildRulePrefillFromSearchParams(searchParams), [searchParams]);
 
   useEffect(() => {
@@ -381,6 +444,26 @@ export function RecordingsPage() {
       };
     });
   }, [editingRuleId, ruleProgramPrefill]);
+
+  useEffect(() => {
+    if (didApplyWorkflowPrefill) {
+      return;
+    }
+
+    const workflow = searchParams.get("workflow");
+    const hasJobPrefill = Boolean(searchParams.get("channelId") || searchParams.get("mode"));
+
+    if (workflow === "rule") {
+      setActiveDialog("RULE");
+      setDidApplyWorkflowPrefill(true);
+      return;
+    }
+
+    if (hasJobPrefill) {
+      setActiveDialog("JOB");
+      setDidApplyWorkflowPrefill(true);
+    }
+  }, [didApplyWorkflowPrefill, searchParams]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -452,12 +535,14 @@ export function RecordingsPage() {
     setEditingJobId(job.id);
     setShowJobValidation(false);
     setJobForm(buildRecordingForm(job));
+    setActiveDialog("JOB");
   }
 
   function handleRuleEdit(rule: RecordingRule) {
     setEditingRuleId(rule.id);
     setShowRuleValidation(false);
     setRuleForm(buildRecordingRuleForm(rule));
+    setActiveDialog("RULE");
   }
 
   function handleModeChange(nextMode: "IMMEDIATE" | "TIMED" | "SCHEDULED") {
@@ -475,12 +560,46 @@ export function RecordingsPage() {
     }));
   }
 
+  function openCreateJobDialog(mode: "IMMEDIATE" | "TIMED" | "SCHEDULED") {
+    setEditingJobId(null);
+    setShowJobValidation(false);
+    setJobForm(
+      createEmptyRecordingForm({
+        channelId: searchParams.get("channelId") ?? "",
+        mode,
+        ...buildDefaultWindow(mode),
+      }),
+    );
+    setActiveDialog("JOB");
+  }
+
+  function openCreateRuleDialog() {
+    resetRuleEditor();
+    setActiveDialog("RULE");
+  }
+
+  function closeJobDialog() {
+    setShowJobValidation(false);
+    if (editingJobId) {
+      resetJobEditor();
+    }
+    setActiveDialog(null);
+  }
+
+  function closeRuleDialog() {
+    setShowRuleValidation(false);
+    if (editingRuleId) {
+      resetRuleEditor();
+    }
+    setActiveDialog(null);
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Recordings"
-        title="Guide-driven recordings and recurring rules"
-        description="Run one-off recordings, create guide-linked programme captures, manage daily or weekly recurring rules, and keep the resulting jobs and library in one operator-facing workspace."
+        title="Recording operations workspace"
+        description="Run recording jobs from the header, keep the library centered on playable media, and monitor recent execution events without mixing workflows together."
         actions={
           <Button
             onClick={() => {
@@ -495,24 +614,331 @@ export function RecordingsPage() {
         }
       />
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <Panel className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-                {editingJobId ? "Edit Recording Job" : "One-Off Recording"}
-              </p>
-              <p className="mt-1.5 text-sm text-slate-400">
-                Start an immediate capture, save a timed window, or schedule a one-off recording ahead of time. Guide-program recordings show up here with their linked programme context after you create them from the watch page.
-              </p>
+      <Panel className="overflow-hidden" density="flush">
+        <div className="border-b border-slate-800/80 px-4 py-4">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div className="space-y-2">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Active and upcoming jobs</p>
+                <p className="mt-1.5 text-sm text-slate-400">
+                  Launch recording tasks from here, keep active jobs in view, and scan the next scheduled captures without losing library context.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
+                <LibrarySummaryCard label="Recording now" value={String(currentlyRecordingJobs.length)} />
+                <LibrarySummaryCard label="Upcoming" value={String(upcomingJobs.length)} />
+                <LibrarySummaryCard label="Active rules" value={String(activeRuleCount)} />
+              </div>
             </div>
-            {editingJobId ? (
-              <Button onClick={resetJobEditor} size="sm" variant="secondary">
-                Clear edit
+
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => openCreateJobDialog("IMMEDIATE")} size="sm">
+                <Plus className="h-4 w-4" />
+                Record now
               </Button>
-            ) : null}
+              <Button onClick={() => openCreateJobDialog("TIMED")} size="sm" variant="secondary">
+                <CalendarClock className="h-4 w-4" />
+                Create timed
+              </Button>
+              <Button onClick={() => openCreateJobDialog("SCHEDULED")} size="sm" variant="secondary">
+                <CalendarClock className="h-4 w-4" />
+                Schedule recording
+              </Button>
+              <Button onClick={openCreateRuleDialog} size="sm" variant="secondary">
+                <CircleDotDashed className="h-4 w-4" />
+                Add recurring
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 px-4 py-4 xl:grid-cols-2">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-[12px] font-semibold text-white">Recording now</p>
+                <p className="text-[12px] text-slate-500">Live captures that need active monitoring and stop controls.</p>
+              </div>
+              <RecordingStatusBadge status="RECORDING" />
+            </div>
+
+            {activeJobsQuery.isLoading && !currentlyRecordingJobs.length ? (
+              <EmptyState label="Loading active jobs..." />
+            ) : !currentlyRecordingJobs.length ? (
+              <EmptyState label="No recordings are running right now." />
+            ) : (
+              <div className="space-y-2">
+                {currentlyRecordingJobs.map((job) => (
+                  <OperationalJobCard
+                    actions={
+                      <Button onClick={() => stopMutation.mutate(job)} size="sm" variant="secondary">
+                        <Square className="h-4 w-4" />
+                        Stop
+                      </Button>
+                    }
+                    job={job}
+                    key={job.id}
+                    now={now}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-[12px] font-semibold text-white">Upcoming jobs</p>
+                <p className="text-[12px] text-slate-500">Queued and scheduled work, including occurrences generated by recurring rules.</p>
+              </div>
+              <RecordingStatusBadge status="SCHEDULED" />
+            </div>
+
+            {activeJobsQuery.isLoading && !upcomingJobs.length ? (
+              <EmptyState label="Loading upcoming jobs..." />
+            ) : !upcomingJobs.length ? (
+              <EmptyState label="No queued or scheduled jobs yet." />
+            ) : (
+              <div className="space-y-2">
+                {upcomingJobs.map((job) => (
+                  <OperationalJobCard
+                    actions={
+                      <>
+                        {!job.recordingRule?.id ? (
+                          <Button onClick={() => handleJobEdit(job)} size="sm" variant="secondary">
+                            Edit
+                          </Button>
+                        ) : (
+                          <Button
+                            onClick={() => {
+                              const rule = recordingRules.find((item) => item.id === job.recordingRule?.id);
+
+                              if (rule) {
+                                handleRuleEdit(rule);
+                              }
+                            }}
+                            size="sm"
+                            variant="secondary"
+                          >
+                            Open rule
+                          </Button>
+                        )}
+                        <Button onClick={() => cancelMutation.mutate(job)} size="sm" variant="ghost">
+                          Cancel
+                        </Button>
+                      </>
+                    }
+                    job={job}
+                    key={job.id}
+                    now={now}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </Panel>
+
+      <Panel className="overflow-hidden" density="flush">
+        <div className="border-b border-slate-800/80 px-4 py-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Recordings library</p>
+              <p className="mt-1.5 text-sm text-slate-400">
+                Browse completed recording media only. Filters stay compact so the grid remains the visual priority and more thumbnails fit on screen.
+              </p>
+            </div>
+            <div className="text-[12px] text-slate-500">
+              Retention defaults: {libraryJobs[0]?.retention.maxAgeDays ?? 30} days, newest{" "}
+              {libraryJobs[0]?.retention.maxRecordingsPerChannel ?? 25} per channel, failed cleanup after{" "}
+              {libraryJobs[0]?.retention.failedCleanupHours ?? 24} hours.
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <LibrarySummaryCard label="Visible media" value={String(librarySummary.total)} />
+            <LibrarySummaryCard label="Protected" value={String(librarySummary.protectedCount)} />
+            <LibrarySummaryCard label="Preview ready" value={String(thumbnailReadyCount)} />
+            <LibrarySummaryCard label="Channels" value={String(new Set(libraryJobs.map((job) => job.channelId)).size)} />
+          </div>
+        </div>
+
+        <div className="grid gap-3 border-b border-slate-800/80 px-4 py-4 lg:grid-cols-5">
+          <Input
+            onChange={(event) => updateLibraryFilters({ search: event.target.value })}
+            placeholder="Search title, programme, channel, or filename"
+            value={libraryFilters.search}
+          />
+          <Select
+            onChange={(event) => updateLibraryFilters({ channelId: event.target.value })}
+            value={libraryFilters.channelId}
+          >
+            <option value="">All channels</option>
+            {(channelsQuery.data ?? []).map((channel) => (
+              <option key={channel.id} value={channel.id}>
+                {channel.name}
+              </option>
+            ))}
+          </Select>
+          <Select
+            onChange={(event) => updateLibraryFilters({ mode: event.target.value as RecordingLibraryModeFilter })}
+            value={libraryFilters.mode}
+          >
+            <option value="ALL">All origins</option>
+            <option value="IMMEDIATE">Immediate</option>
+            <option value="TIMED">Timed</option>
+            <option value="SCHEDULED">Scheduled</option>
+            <option value="EPG_PROGRAM">Guide programme</option>
+            <option value="RECURRING_RULE">Recurring</option>
+          </Select>
+          <Select
+            onChange={(event) =>
+              updateLibraryFilters({ protection: event.target.value as RecordingLibraryProtectionFilter })
+            }
+            value={libraryFilters.protection}
+          >
+            <option value="ALL">All retention states</option>
+            <option value="PROTECTED">Protected only</option>
+            <option value="UNPROTECTED">Auto-retained only</option>
+          </Select>
+          <Select
+            onChange={(event) => updateLibraryFilters({ sort: event.target.value as RecordingLibrarySortOption })}
+            value={libraryFilters.sort}
+          >
+            <option value="RECORDED_DESC">Newest first</option>
+            <option value="RECORDED_ASC">Oldest first</option>
+            <option value="TITLE_ASC">Title A-Z</option>
+            <option value="TITLE_DESC">Title Z-A</option>
+            <option value="CHANNEL_ASC">Channel A-Z</option>
+          </Select>
+        </div>
+
+        <div className="grid gap-3 border-b border-slate-800/80 px-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <Input
+            onChange={(event) => updateLibraryFilters({ recordedFrom: event.target.value })}
+            type="date"
+            value={libraryFilters.recordedFrom}
+          />
+          <Input
+            onChange={(event) => updateLibraryFilters({ recordedTo: event.target.value })}
+            type="date"
+            value={libraryFilters.recordedTo}
+          />
+          <Button onClick={() => setLibraryFilters(createDefaultRecordingLibraryFilters())} size="sm" variant="secondary">
+            Clear filters
+          </Button>
+        </div>
+
+        {libraryJobsQuery.isLoading && !libraryJobs.length ? (
+          <EmptyState label="Loading recordings library..." />
+        ) : !libraryJobs.length ? (
+          <EmptyState label="No completed recordings match the current library filter." />
+        ) : (
+          <div className="grid gap-3 px-4 py-4 lg:grid-cols-2">
+            {libraryJobs.map((job) => (
+              <RecordingCard
+                actions={
+                  <>
+                    {job.asset ? (
+                      <Link to={`/recordings/${job.id}`}>
+                        <Button size="sm" variant="secondary">
+                          <PlayCircle className="h-4 w-4" />
+                          Play
+                        </Button>
+                      </Link>
+                    ) : null}
+                    <Button onClick={() => toggleProtectionMutation.mutate(job)} size="sm" variant="secondary">
+                      {job.isProtected ? <ShieldOff className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+                      {job.isProtected ? "Auto retain" : "Keep forever"}
+                    </Button>
+                    <Button onClick={() => deleteMutation.mutate(job)} size="sm" variant="ghost">
+                      <Trash2 className="h-4 w-4" />
+                      Delete
+                    </Button>
+                  </>
+                }
+                job={job}
+                now={now}
+                key={job.id}
+                compact
+              />
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <Panel className="overflow-hidden" density="flush">
+        <div className="border-b border-slate-800/80 px-4 py-4">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Recording activity log</p>
+              <p className="mt-1.5 text-sm text-slate-400">
+                Recent recording lifecycle events across scheduled, in-progress, completed, failed, and canceled jobs.
+              </p>
+            </div>
+            <p className="text-[12px] text-slate-500">Newest activity first. This feed stays compact and scrollable.</p>
+          </div>
+        </div>
+
+        {recentActivityQuery.isLoading && !activityEvents.length ? (
+          <EmptyState label="Loading recording activity..." />
+        ) : !activityEvents.length ? (
+          <EmptyState label="No recording events yet." />
+        ) : (
+          <div className="max-h-[22rem] space-y-2 overflow-y-auto px-4 py-4">
+            {activityEvents.map((event) => {
+              const eventJob = recentActivityQuery.data?.find((job) => job.id === event.jobId) ?? null;
+
+              return (
+                <RecordingActivityEventCard
+                  actions={
+                    eventJob?.status === "COMPLETED" && eventJob.asset ? (
+                      <Link to={`/recordings/${event.jobId}`}>
+                        <Button size="sm" variant="secondary">
+                          <PlayCircle className="h-4 w-4" />
+                          Open
+                        </Button>
+                      </Link>
+                    ) : eventJob?.recordingRule?.id ? (
+                      <Button
+                        onClick={() => {
+                          const rule = recordingRules.find((item) => item.id === eventJob.recordingRule?.id);
+
+                          if (rule) {
+                            handleRuleEdit(rule);
+                          }
+                        }}
+                        size="sm"
+                        variant="secondary"
+                      >
+                        Open rule
+                      </Button>
+                    ) : null
+                  }
+                  event={event}
+                  key={event.id}
+                />
+              );
+            })}
+          </div>
+        )}
+      </Panel>
+
+      <RecordingDialogShell
+        description={
+          editingJobId
+            ? "Update the selected recording job without leaving the workspace."
+            : jobForm.mode === "IMMEDIATE"
+              ? "Start a live recording capture now."
+              : jobForm.mode === "TIMED"
+                ? "Create a timed one-off recording window."
+                : "Schedule a recording ahead of time."
+        }
+        onClose={closeJobDialog}
+        open={activeDialog === "JOB"}
+        title={editingJobId ? "Edit recording job" : jobForm.mode === "IMMEDIATE" ? "Record now" : jobForm.mode === "TIMED" ? "Create timed recording" : "Schedule recording"}
+      >
+        <div className="space-y-4">
           <Field error={getFieldError(jobValidation.issues, "channelId", showJobValidation)} label="Channel" required>
             <Select
               onChange={(event) =>
@@ -535,7 +961,10 @@ export function RecordingsPage() {
 
           <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)]">
             <Field label="Mode">
-              <Select onChange={(event) => handleModeChange(event.target.value as "IMMEDIATE" | "TIMED" | "SCHEDULED")} value={jobForm.mode}>
+              <Select
+                onChange={(event) => handleModeChange(event.target.value as "IMMEDIATE" | "TIMED" | "SCHEDULED")}
+                value={jobForm.mode}
+              >
                 <option value="IMMEDIATE">Record now</option>
                 <option value="TIMED">Timed recording</option>
                 <option value="SCHEDULED">Scheduled recording</option>
@@ -612,7 +1041,7 @@ export function RecordingsPage() {
             </div>
           ) : (
             <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 px-4 py-3 text-sm text-slate-400">
-              Record-now mode starts capture as soon as the backend scheduler picks up the new job and keeps recording until you stop it from this page, the watch page, or a multi-view tile.
+              Record-now mode starts capture as soon as the backend scheduler picks up the new job and keeps recording until you stop it from this workspace, the watch page, or a multiview tile.
             </div>
           )}
 
@@ -632,31 +1061,20 @@ export function RecordingsPage() {
             >
               {editingJobId ? "Save recording job" : jobForm.mode === "IMMEDIATE" ? "Start recording" : "Save recording"}
             </Button>
-            {editingJobId ? (
-              <Button onClick={resetJobEditor} size="sm" variant="secondary">
-                Cancel edit
-              </Button>
-            ) : null}
+            <Button onClick={closeJobDialog} size="sm" variant="secondary">
+              Cancel
+            </Button>
           </div>
-        </Panel>
+        </div>
+      </RecordingDialogShell>
 
-        <Panel className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-                {editingRuleId ? "Edit Recurring Rule" : "Recurring Recording Rule"}
-              </p>
-              <p className="mt-1.5 text-sm text-slate-400">
-                Create daily, weekly, or selected-weekday rules that generate real upcoming recording jobs. When you come from a guide programme, the rule keeps that originating programme and title match as its series-like foundation.
-              </p>
-            </div>
-            {editingRuleId ? (
-              <Button onClick={resetRuleEditor} size="sm" variant="secondary">
-                Clear edit
-              </Button>
-            ) : null}
-          </div>
-
+      <RecordingDialogShell
+        description="Create or maintain recurring recording automation without leaving the recordings workspace."
+        onClose={closeRuleDialog}
+        open={activeDialog === "RULE"}
+        title={editingRuleId ? "Edit recurring rule" : "Add recurring recording"}
+      >
+        <div className="space-y-5">
           {ruleForm.originProgramEntryId ? (
             <div className="rounded-2xl border border-fuchsia-400/20 bg-fuchsia-500/10 px-4 py-3 text-sm text-fuchsia-100">
               Prefilled from guide programme{ruleForm.matchProgramTitle ? `: ${ruleForm.matchProgramTitle}` : ""}. Save this rule to keep generating future occurrences from the same channel and schedule pattern.
@@ -849,250 +1267,57 @@ export function RecordingsPage() {
             >
               {editingRuleId ? "Save recurring rule" : "Create recurring rule"}
             </Button>
-            {editingRuleId ? (
-              <Button onClick={resetRuleEditor} size="sm" variant="secondary">
-                Cancel edit
-              </Button>
-            ) : null}
+            <Button onClick={closeRuleDialog} size="sm" variant="secondary">
+              Cancel
+            </Button>
           </div>
-        </Panel>
-      </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.12fr_0.88fr]">
-        <Panel className="overflow-hidden" density="flush">
-          <div className="border-b border-slate-800/80 px-4 py-4">
-            <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Active and upcoming jobs</p>
-            <p className="mt-1.5 text-sm text-slate-400">
-              Immediate recordings, guide-program captures, and recurring-rule occurrences stay visible here with stop, cancel, and contextual actions.
-            </p>
-          </div>
-          {activeJobsQuery.isLoading && !activeJobs.length ? (
-            <EmptyState label="Loading recording activity..." />
-          ) : !activeJobs.length ? (
-            <EmptyState label="No active or upcoming recording jobs yet." />
-          ) : (
-            <div className="space-y-3 px-4 py-4">
-              {activeJobs.map((job) => (
-                <RecordingCard
-                  actions={
-                    <>
-                      {job.status === "RECORDING" ? (
-                        <Button onClick={() => stopMutation.mutate(job)} size="sm" variant="secondary">
-                          <Square className="h-4 w-4" />
-                          Stop
+          <div className="border-t border-slate-800/80 pt-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Recurring rules</p>
+                <p className="mt-1 text-[12px] text-slate-500">Edit, pause, or delete automation rules from the same dialog.</p>
+              </div>
+              {editingRuleId ? (
+                <Button onClick={resetRuleEditor} size="sm" variant="secondary">
+                  Reset form
+                </Button>
+              ) : null}
+            </div>
+
+            {recordingRulesQuery.isLoading && !recordingRules.length ? (
+              <EmptyState label="Loading recurring rules..." />
+            ) : !recordingRules.length ? (
+              <EmptyState label="No recurring rules yet." />
+            ) : (
+              <div className="max-h-[18rem] space-y-2 overflow-y-auto pr-1">
+                {recordingRules.map((rule) => (
+                  <RecordingRuleCard
+                    actions={
+                      <>
+                        <Button onClick={() => handleRuleEdit(rule)} size="sm" variant="secondary">
+                          Edit
                         </Button>
-                      ) : (
-                        <>
-                          {!job.recordingRule?.id ? (
-                            <Button onClick={() => handleJobEdit(job)} size="sm" variant="secondary">
-                              Edit
-                            </Button>
-                          ) : (
-                            <Button
-                              onClick={() => {
-                                const rule = recordingRules.find((item) => item.id === job.recordingRule?.id);
-
-                                if (rule) {
-                                  handleRuleEdit(rule);
-                                }
-                              }}
-                              size="sm"
-                              variant="secondary"
-                            >
-                              Open rule
-                            </Button>
-                          )}
-                          <Button onClick={() => cancelMutation.mutate(job)} size="sm" variant="ghost">
-                            Cancel
-                          </Button>
-                        </>
-                      )}
-                    </>
-                  }
-                  job={job}
-                  now={now}
-                  key={job.id}
-                />
-              ))}
-            </div>
-          )}
-        </Panel>
-
-        <Panel className="overflow-hidden" density="flush">
-          <div className="border-b border-slate-800/80 px-4 py-4">
-            <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Recurring rules</p>
-            <p className="mt-1.5 text-sm text-slate-400">
-              Daily, weekly, and selected-weekday rules generate real upcoming jobs. Pause a rule to stop future job generation without deleting its recording history.
-            </p>
-          </div>
-          {recordingRulesQuery.isLoading && !recordingRules.length ? (
-            <EmptyState label="Loading recurring rules..." />
-          ) : !recordingRules.length ? (
-            <EmptyState label="No recurring recording rules yet." />
-          ) : (
-            <div className="space-y-3 px-4 py-4">
-              {recordingRules.map((rule) => (
-                <RecordingRuleCard
-                  actions={
-                    <>
-                      <Button onClick={() => handleRuleEdit(rule)} size="sm" variant="secondary">
-                        Edit
-                      </Button>
-                      <Button onClick={() => toggleRuleMutation.mutate(rule)} size="sm" variant="secondary">
-                        {rule.isActive ? <PauseCircle className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}
-                        {rule.isActive ? "Pause" : "Enable"}
-                      </Button>
-                      <Button onClick={() => deleteRuleMutation.mutate(rule)} size="sm" variant="ghost">
-                        <Trash2 className="h-4 w-4" />
-                        Delete
-                      </Button>
-                    </>
-                  }
-                  key={rule.id}
-                  rule={rule}
-                />
-              ))}
-            </div>
-          )}
-        </Panel>
-      </div>
-
-      <Panel className="overflow-hidden" density="flush">
-        <div className="border-b border-slate-800/80 px-4 py-4">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Recordings library</p>
-              <p className="mt-1.5 text-sm text-slate-400">
-                Search by title, programme, or channel, filter by origin and retention state, and jump straight into playback or cleanup actions without digging through a raw file list.
-              </p>
-            </div>
-            <div className="text-[12px] text-slate-500">
-              Retention defaults: {libraryJobs[0]?.retention.maxAgeDays ?? 30} days, newest{" "}
-              {libraryJobs[0]?.retention.maxRecordingsPerChannel ?? 25} per channel, failed cleanup after{" "}
-              {libraryJobs[0]?.retention.failedCleanupHours ?? 24} hours.
-            </div>
-          </div>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <LibrarySummaryCard label="Visible recordings" value={String(librarySummary.total)} />
-            <LibrarySummaryCard label="Completed" value={String(librarySummary.completed)} />
-            <LibrarySummaryCard label="Failed" value={String(librarySummary.failed)} />
-            <LibrarySummaryCard label="Protected" value={String(librarySummary.protectedCount)} />
-          </div>
-        </div>
-
-        <div className="grid gap-3 border-b border-slate-800/80 px-4 py-4 xl:grid-cols-6">
-          <Input
-            onChange={(event) => updateLibraryFilters({ search: event.target.value })}
-            placeholder="Search title, programme, channel, or filename"
-            value={libraryFilters.search}
-          />
-          <Select
-            onChange={(event) => updateLibraryFilters({ channelId: event.target.value })}
-            value={libraryFilters.channelId}
-          >
-            <option value="">All channels</option>
-            {(channelsQuery.data ?? []).map((channel) => (
-              <option key={channel.id} value={channel.id}>
-                {channel.name}
-              </option>
-            ))}
-          </Select>
-          <Select
-            onChange={(event) => updateLibraryFilters({ mode: event.target.value as RecordingLibraryModeFilter })}
-            value={libraryFilters.mode}
-          >
-            <option value="ALL">All origins</option>
-            <option value="IMMEDIATE">Immediate</option>
-            <option value="TIMED">Timed</option>
-            <option value="SCHEDULED">Scheduled</option>
-            <option value="EPG_PROGRAM">Guide programme</option>
-            <option value="RECURRING_RULE">Recurring</option>
-          </Select>
-          <Select
-            onChange={(event) => updateLibraryFilters({ status: event.target.value as RecordingLibraryStatusFilter })}
-            value={libraryFilters.status}
-          >
-            <option value="ALL">All library statuses</option>
-            <option value="COMPLETED">Completed</option>
-            <option value="FAILED">Failed</option>
-            <option value="CANCELED">Canceled</option>
-          </Select>
-          <Select
-            onChange={(event) =>
-              updateLibraryFilters({ protection: event.target.value as RecordingLibraryProtectionFilter })
-            }
-            value={libraryFilters.protection}
-          >
-            <option value="ALL">All retention states</option>
-            <option value="PROTECTED">Protected only</option>
-            <option value="UNPROTECTED">Auto-retained only</option>
-          </Select>
-          <Select
-            onChange={(event) => updateLibraryFilters({ sort: event.target.value as RecordingLibrarySortOption })}
-            value={libraryFilters.sort}
-          >
-            <option value="RECORDED_DESC">Newest first</option>
-            <option value="RECORDED_ASC">Oldest first</option>
-            <option value="TITLE_ASC">Title A-Z</option>
-            <option value="TITLE_DESC">Title Z-A</option>
-            <option value="CHANNEL_ASC">Channel A-Z</option>
-            <option value="STATUS_ASC">Status</option>
-          </Select>
-        </div>
-
-        <div className="grid gap-3 border-b border-slate-800/80 px-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-          <Input
-            onChange={(event) => updateLibraryFilters({ recordedFrom: event.target.value })}
-            type="date"
-            value={libraryFilters.recordedFrom}
-          />
-          <Input
-            onChange={(event) => updateLibraryFilters({ recordedTo: event.target.value })}
-            type="date"
-            value={libraryFilters.recordedTo}
-          />
-          <Button onClick={() => setLibraryFilters(createDefaultRecordingLibraryFilters())} size="sm" variant="secondary">
-            Clear filters
-          </Button>
-        </div>
-
-        {libraryJobsQuery.isLoading && !libraryJobs.length ? (
-          <EmptyState label="Loading recordings library..." />
-        ) : !libraryJobs.length ? (
-          <EmptyState label="No recordings match the current library filter." />
-        ) : (
-          <div className="space-y-3 px-4 py-4">
-            {libraryJobs.map((job) => (
-              <RecordingCard
-                actions={
-                  <>
-                    {job.asset ? (
-                      <Link to={`/recordings/${job.id}`}>
-                        <Button size="sm" variant="secondary">
-                          <PlayCircle className="h-4 w-4" />
-                          Play
+                        <Button onClick={() => toggleRuleMutation.mutate(rule)} size="sm" variant="secondary">
+                          {rule.isActive ? <PauseCircle className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}
+                          {rule.isActive ? "Pause" : "Enable"}
                         </Button>
-                      </Link>
-                    ) : null}
-                    <Button onClick={() => toggleProtectionMutation.mutate(job)} size="sm" variant="secondary">
-                      {job.isProtected ? <ShieldOff className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
-                      {job.isProtected ? "Auto retain" : "Keep forever"}
-                    </Button>
-                    <Button onClick={() => deleteMutation.mutate(job)} size="sm" variant="ghost">
-                      <Trash2 className="h-4 w-4" />
-                      Delete
-                    </Button>
-                  </>
-                }
-                job={job}
-                now={now}
-                key={job.id}
-              />
-            ))}
+                        <Button onClick={() => deleteRuleMutation.mutate(rule)} size="sm" variant="ghost">
+                          <Trash2 className="h-4 w-4" />
+                          Delete
+                        </Button>
+                      </>
+                    }
+                    highlighted={editingRuleId === rule.id}
+                    key={rule.id}
+                    rule={rule}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </Panel>
+        </div>
+      </RecordingDialogShell>
     </div>
   );
 }
@@ -1101,10 +1326,12 @@ function RecordingCard({
   job,
   actions,
   now,
+  compact = false,
 }: {
   job: RecordingJob;
   actions?: ReactNode;
   now: number;
+  compact?: boolean;
 }) {
   const startedAt = job.actualStartAt ?? job.startAt;
   const endedAt = job.actualEndAt ?? job.endAt;
@@ -1122,8 +1349,8 @@ function RecordingCard({
   const deleteAfterLabel = job.retention.deleteAfter ? formatDateTime(job.retention.deleteAfter) : null;
 
   return (
-    <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
-      <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)_auto]">
+    <div className={cn("rounded-2xl border border-slate-800/80 bg-slate-950/70", compact ? "p-3" : "p-4")}>
+      <div className={cn("grid gap-3", compact ? "xl:grid-cols-[160px_minmax(0,1fr)]" : "xl:grid-cols-[220px_minmax(0,1fr)_auto]")}>
         <div className="overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/80">
           {thumbnailUrl ? (
             <img alt={`${job.title} preview`} className="aspect-video h-full w-full object-cover" src={thumbnailUrl} />
@@ -1146,11 +1373,17 @@ function RecordingCard({
             {job.endAt ? ` · Ends ${formatDateTime(job.endAt)}` : ""}
           </p>
 
-          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-            <MetadataPill label={isRecording ? "Elapsed" : "Duration"} value={displayDurationSeconds !== null ? formatDuration(displayDurationSeconds) : "Pending"} />
-            <MetadataPill label={isRecording ? "Captured" : "File size"} value={displayFileSizeBytes !== null ? formatFileSize(displayFileSizeBytes) : "Pending"} />
+          <div className={cn("mt-3 grid gap-2", compact ? "sm:grid-cols-3" : "md:grid-cols-2 xl:grid-cols-4")}>
+            <MetadataPill
+              label={isRecording ? "Elapsed" : "Duration"}
+              value={displayDurationSeconds !== null ? formatDuration(displayDurationSeconds) : "Pending"}
+            />
+            <MetadataPill
+              label={isRecording ? "Captured" : "File size"}
+              value={displayFileSizeBytes !== null ? formatFileSize(displayFileSizeBytes) : "Pending"}
+            />
             <MetadataPill label="Recorded" value={formatDateTime(startedAt)} />
-            <MetadataPill label="Quality" value={job.requestedQualityLabel ?? "Source default"} />
+            {!compact ? <MetadataPill label="Quality" value={job.requestedQualityLabel ?? "Source default"} /> : null}
           </div>
 
           {job.program?.title ? (
@@ -1160,7 +1393,7 @@ function RecordingCard({
               {job.program.startAt ? ` · ${formatDateTime(job.program.startAt)}` : ""}
             </p>
           ) : null}
-          {job.program?.description ? <p className="mt-1 text-[12px] text-slate-400">{job.program.description}</p> : null}
+          {!compact && job.program?.description ? <p className="mt-1 text-[12px] text-slate-400">{job.program.description}</p> : null}
           {job.recordingRule?.titleTemplate ? (
             <p className="mt-1 text-[12px] text-amber-100">
               Recurring rule: {job.recordingRule.titleTemplate}
@@ -1168,7 +1401,7 @@ function RecordingCard({
             </p>
           ) : null}
           <p className="mt-2 text-[12px] text-slate-500">
-            Padding: start {job.paddingBeforeMinutes} min early · end {job.paddingAfterMinutes} min late
+            Quality: {job.requestedQualityLabel ?? "Source default"} · padding {job.paddingBeforeMinutes}/{job.paddingAfterMinutes} min
           </p>
           {job.asset?.storagePath ? <p className="mt-1 text-[12px] text-slate-500">Storage: {job.asset.storagePath}</p> : null}
           {deleteAfterLabel ? (
@@ -1176,14 +1409,12 @@ function RecordingCard({
               {job.isProtected ? "Protected from cleanup" : `Eligible for cleanup after ${deleteAfterLabel}`}
             </p>
           ) : null}
-          {job.failureReason ? <p className="mt-2 text-[13px] text-amber-200">Failure: {job.failureReason}</p> : null}
-          {job.cancellationReason ? <p className="mt-2 text-[13px] text-slate-400">Canceled: {job.cancellationReason}</p> : null}
           {endedAt && job.status === "COMPLETED" ? (
             <p className="mt-2 text-[12px] text-slate-500">Completed at {formatDateTime(endedAt)}</p>
           ) : null}
+          {compact && actions ? <div className="mt-3 flex flex-wrap gap-2">{actions}</div> : null}
         </div>
-
-        {actions ? <div className="flex flex-wrap content-start gap-2">{actions}</div> : null}
+        {!compact && actions ? <div className="flex flex-wrap content-start gap-2">{actions}</div> : null}
       </div>
     </div>
   );
@@ -1191,9 +1422,9 @@ function RecordingCard({
 
 function LibrarySummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 px-4 py-3">
+    <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 px-3 py-2.5">
       <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{label}</p>
-      <p className="mt-1.5 text-lg font-semibold text-white">{value}</p>
+      <p className="mt-1 text-base font-semibold text-white">{value}</p>
     </div>
   );
 }
@@ -1210,12 +1441,19 @@ function MetadataPill({ label, value }: { label: string; value: string }) {
 function RecordingRuleCard({
   rule,
   actions,
+  highlighted = false,
 }: {
   rule: RecordingRule;
   actions?: ReactNode;
+  highlighted?: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
+    <div
+      className={cn(
+        "rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4",
+        highlighted && "border-cyan-300/40 bg-cyan-500/5",
+      )}
+    >
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -1261,6 +1499,141 @@ function RecordingRuleCard({
   );
 }
 
+function RecordingDialogShell({
+  open,
+  title,
+  description,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  description: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose, open]);
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/75 p-3 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="flex max-h-[min(92vh,56rem)] w-full max-w-[1100px] flex-col rounded-[1.5rem] border border-slate-800/90 bg-slate-900/95 p-4 shadow-glow sm:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.24em] text-accent/80">Recording setup</p>
+            <h2 className="mt-1.5 text-xl font-semibold text-white">{title}</h2>
+            <p className="mt-1.5 text-[13px] text-slate-400">{description}</p>
+          </div>
+          <Button className="shrink-0" onClick={onClose} size="sm" variant="ghost">
+            <X className="h-4 w-4" />
+            Close
+          </Button>
+        </div>
+
+        <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function OperationalJobCard({
+  job,
+  now,
+  actions,
+}: {
+  job: RecordingJob;
+  now: number;
+  actions?: ReactNode;
+}) {
+  const startedAt = job.actualStartAt ?? job.startAt;
+  const durationSeconds =
+    job.status === "RECORDING" && startedAt
+      ? Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000))
+      : job.asset?.durationSeconds ?? job.latestRun?.durationSeconds ?? null;
+
+  return (
+    <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 px-3 py-3">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-sm font-semibold text-white">{job.title}</p>
+            <RecordingStatusBadge status={job.status} />
+            <RecordingOriginBadge mode={job.mode} />
+          </div>
+          <p className="mt-1 text-[12px] text-slate-400">
+            {job.channelNameSnapshot} · {formatJobWindowLabel(job)}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2 text-[12px] text-slate-500">
+            {durationSeconds !== null ? <span>Duration {formatDuration(durationSeconds)}</span> : null}
+            {job.program?.title ? <span>Programme {job.program.title}</span> : null}
+            {job.recordingRule?.titleTemplate ? <span>Rule {job.recordingRule.titleTemplate}</span> : null}
+          </div>
+        </div>
+        {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function RecordingActivityEventCard({
+  event,
+  actions,
+}: {
+  event: RecordingActivityEvent;
+  actions?: ReactNode;
+}) {
+  const toneClasses = getRecordingActivityToneClasses(event.tone);
+
+  return (
+    <div className={cn("rounded-2xl border px-3 py-3", toneClasses.container)}>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={cn("inline-flex rounded-full px-2 py-1 text-[11px] font-medium", toneClasses.badge)}>
+              {event.label}
+            </span>
+            <RecordingOriginBadge mode={event.mode} />
+            {event.isProtected ? (
+              <span className="rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-[11px] text-cyan-100">
+                Protected
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 text-sm font-semibold text-white">{event.title}</p>
+          <p className="mt-1 text-[12px] text-slate-400">
+            {event.channelName} · {formatDateTime(event.timestamp)}
+          </p>
+          <p className="mt-1 text-[12px] text-slate-500">{event.detail}</p>
+        </div>
+        {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+      </div>
+    </div>
+  );
+}
+
 function Field({
   label,
   error,
@@ -1285,6 +1658,40 @@ function Field({
 
 function EmptyState({ label }: { label: string }) {
   return <div className="px-4 py-8 text-center text-sm text-slate-400">{label}</div>;
+}
+
+function getRecordingActivityToneClasses(tone: RecordingActivityTone) {
+  switch (tone) {
+    case "success":
+      return {
+        container: "border-emerald-400/20 bg-emerald-500/5",
+        badge: "bg-emerald-500/10 text-emerald-100",
+      };
+    case "failure":
+      return {
+        container: "border-amber-400/20 bg-amber-500/5",
+        badge: "bg-amber-500/10 text-amber-100",
+      };
+    case "active":
+      return {
+        container: "border-cyan-300/20 bg-cyan-500/5",
+        badge: "bg-cyan-500/10 text-cyan-100",
+      };
+    case "scheduled":
+    default:
+      return {
+        container: "border-slate-700/80 bg-slate-950/70",
+        badge: "bg-slate-800/90 text-slate-200",
+      };
+  }
+}
+
+function formatJobWindowLabel(job: RecordingJob) {
+  if (job.status === "RECORDING") {
+    return `Started ${formatDateTime(job.actualStartAt ?? job.startAt)}${job.endAt ? ` · Ends ${formatDateTime(job.endAt)}` : ""}`;
+  }
+
+  return `Starts ${formatDateTime(job.startAt)}${job.endAt ? ` · Ends ${formatDateTime(job.endAt)}` : ""}`;
 }
 
 function getFieldError(
@@ -1464,6 +1871,7 @@ async function invalidateRecordingQueries(
 ) {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ["recordings-active", token] }),
+    queryClient.invalidateQueries({ queryKey: ["recordings-activity", token] }),
     queryClient.invalidateQueries({ queryKey: ["recordings-library", token] }),
     queryClient.invalidateQueries({ queryKey: ["recording", recordingJobId, token] }),
     queryClient.invalidateQueries({ queryKey: ["recording-rules", token] }),
