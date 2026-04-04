@@ -24,7 +24,7 @@ That does not belong in:
 - `player/hls-player.tsx`
   - React wrapper around one `<video>` element, one HLS.js instance, explicit in-player controls, and browser media API integration
 - `player/browser-media.ts`
-  - browser capability detection plus live-DVR/seek window helpers for PiP, fullscreen, and seek realism
+  - browser capability detection plus live-DVR/seek helpers for PiP, fullscreen, and clamped local seek actions
 - `player/media-session.ts`
   - Media Session metadata/action wiring for browser and system media controls
 - `player/player-control-overlay.tsx`
@@ -78,6 +78,7 @@ That does not belong in:
 - Public channel payloads may intentionally omit `masterHlsUrl` when `playbackMode` is `PROXY`.
 - Manual-variant channels should resolve playback through the backend stream path so HLS.js receives the generated synthetic master playlist.
 - Page code should resolve playback URLs through a small service/helper seam rather than hard-coding `/api/streams/...` paths inline.
+- Timeshift-enabled proxy channels should resolve playback through the backend timeshift master path so the player is attached to the retained DVR manifest instead of the upstream live edge.
 - The player should receive a final URL or `null`; it should not know how channel proxy mode is decided.
 - Admin-only flows may still use the raw upstream URL for diagnostics and preview/testing.
 
@@ -150,6 +151,8 @@ Do not add silent infinite retry loops. Any retry policy change must consider mu
   - Picture-in-Picture
 - seek backward and seek forward are only shown when the current media element exposes a real seekable window
 - live-only streams without DVR must surface honest state such as `No DVR` instead of fake VOD-style seek controls
+- backend-advertised timeshift availability is the source of truth for whether pause, rewind, and timeline controls should appear on live channels
+- live channels with timeshift configured but not yet populated should surface a warming state instead of exposing fake seek/pause behavior
 - player diagnostics may report paused, muted, PiP-active, fullscreen-active, and live-edge state so surrounding pages can explain the current browser/player state without reimplementing media APIs
 - player diagnostics should distinguish between normal in-page playback and native browser PiP so surrounding pages can explain the current mode without reimplementing media APIs
 - fullscreen and PiP capability detection belongs in player helpers, not route pages, because Chrome and Firefox diverge most in those browser-owned behaviors
@@ -165,8 +168,20 @@ Do not add silent infinite retry loops. Any retry policy change must consider mu
   - play
   - pause
   - stop
-  - seekbackward/seekforward only when a real seekable live window exists
+  - seekbackward/seekforward only when a real retained timeshift window exists and the current player surface is allowed to seek within it
 - Media Session handlers must call back into the same player-owned actions as the visible controls so browser/system controls stay consistent with the page UI
+
+## Live Timeshift Foundation
+
+- Real live timeshift now depends on a backend-retained HLS buffer, not browser seekability alone.
+- The player consumes a proxy-served timeshift master playlist when a channel is configured for retained DVR.
+- Live playback states now separate:
+  - live edge
+  - buffered live behind the edge
+  - DVR warming
+  - live-only with no DVR support
+- Player pages may query backend timeshift status and pass that snapshot into `HlsPlayer`, but buffer retention, eviction, and manifest generation stay outside the player boundary.
+- The player may still clamp local seek actions against the browser-reported range, but it must not invent DVR controls when the backend says timeshift is unavailable.
 
 ## Performance Safeguards
 

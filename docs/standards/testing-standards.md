@@ -92,6 +92,7 @@ These areas are release-critical and should gain or maintain automated coverage 
 - multi-view layout resizing and audio ownership
 - device-aware multi-view layout fallback and viewport policy
 - player error and retry behavior
+- live timeshift capability detection, rolling-window policy, and honest seek-control behavior
 - schema validation boundaries
 
 ## Staged Enforcement Strategy
@@ -146,7 +147,8 @@ These areas are release-critical and should gain or maintain automated coverage 
 - operator-facing diagnostics state mapping for failed, retrying, buffering, and recovered playback
 - explicit playback controls for pause, mute, volume, optional browser PiP, and fullscreen
 - browser capability detection for PiP / fullscreen / media-session integration
-- live-only vs seekable-DVR control behavior so seek buttons are not faked on unsupported streams
+- live-only vs retained-timeshift control behavior so seek buttons are not faked on unsupported streams
+- live-edge vs behind-live state mapping when real timeshift is available
 
 ### Diagnostics
 
@@ -176,6 +178,14 @@ These areas are release-critical and should gain or maintain automated coverage 
 - library filtering/search behavior when recording list contracts change
 - retention-rule evaluation plus protected-recording exclusion behavior
 - thumbnail path/offset or generation-orchestration helpers when preview support changes
+
+### Streams And Timeshift
+
+- retained segment playlist parsing and window-duration calculation
+- rolling-window eviction behavior
+- channel timeshift enablement validation
+- timeshift status and manifest route behavior
+- player-facing honest capability handling so pause/rewind only appear when a real retained buffer exists
 
 ### Auth And Governance
 

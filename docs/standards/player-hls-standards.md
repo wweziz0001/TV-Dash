@@ -124,10 +124,17 @@ Any change to retry timing or retry count must consider multi-view bandwidth pre
 
 ## Live DVR And Seek Realism
 
-- Seek controls are only valid when the media element exposes a real seekable range.
-- Live-only streams without DVR must not show fake seek buttons.
+- Seek controls are only valid when TV-Dash has both:
+  - a real backend-retained live buffer / DVR window
+  - a current media-element seekable range that matches that retained window
+- Live-only streams without DVR must not show fake seek buttons or pause controls.
+- Channels with timeshift configured but not yet buffered must expose a `DVR warming` state instead of pretending the window already exists.
 - When a seekable live window exists, seek actions should clamp within the available range and preserve the live-edge concept for the operator.
-- Player UI should make it clear whether the viewer is at the live edge, behind live, or on a stream with no DVR window.
+- Player UI should make it clear whether the viewer is:
+  - at the live edge
+  - behind live inside the retained buffer
+  - paused inside the retained buffer
+  - on a stream with no DVR window
 
 ## Separation Of Engine And UI
 

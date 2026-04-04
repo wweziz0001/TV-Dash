@@ -94,7 +94,7 @@ Repositories must not:
 - `diagnostics`
   - runtime observability snapshots, structured log retention, playback session tracking, channel/EPG health summaries, and admin inspection endpoints
 - `streams`
-  - stream inspection, proxy master/asset delivery, and upstream request behavior
+  - stream inspection, proxy master/asset delivery, upstream request behavior, and retained live-timeshift/DVR window delivery
 - `health`
   - operational readiness endpoint
 
@@ -109,9 +109,15 @@ Repositories must not:
   - upstream request header/referrer/user-agent application
   - playlist rewriting for nested playlists, key URIs, and segments
   - short-lived signed asset tokens
+- Timeshift routes currently own:
+  - retained live segment polling and local buffer storage
+  - per-channel rolling DVR window retention and eviction
+  - synthetic timeshift master and variant-manifest delivery
+  - timeshift capability/status reporting for the frontend
 - Stream routes must not embed channel query logic inline; they depend on the channel service for stream configuration lookup.
 - Invalid or expired proxy asset tokens should fail with `400`, not a fake upstream error.
 - This milestone uses buffered upstream responses as a practical foundation. If future work adds streaming passthrough, that belongs inside the `streams` module rather than pages or generic app utilities.
+- First-version timeshift state is process-local orchestration backed by disk-retained HLS assets under the configured storage root. If future work adds multi-process leasing or durable manifest indexes, that still belongs inside `streams`.
 
 ## EPG Foundation Rules
 

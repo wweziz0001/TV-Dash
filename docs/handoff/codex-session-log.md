@@ -1,5 +1,64 @@
 # Codex Session Log
 
+## `2026-04-04T22:05:00+03:00`
+
+### Objective
+
+Add a real live-timeshift / DVR buffer foundation so TV-Dash only exposes live pause, rewind, and seek when a retained proxy-backed buffer actually exists.
+
+### Work Completed
+
+- created the requested branch `020-live-timeshift-and-dvr-buffer-foundation`
+- extended the shared channel contract and Prisma channel model with:
+  - `timeshiftEnabled`
+  - `timeshiftWindowMinutes`
+  - validation that retained timeshift is only allowed with `PROXY` playback
+- added explicit timeshift env/config support for:
+  - global enable/disable
+  - storage root
+  - default window minutes
+  - minimum available window threshold
+  - polling interval
+  - idle cleanup timing
+- implemented a new stream-timeshift foundation in `apps/api/src/modules/streams`:
+  - media-playlist parsing for retained segment metadata
+  - safe on-disk timeshift storage helpers
+  - rolling-window duration and eviction helpers
+  - a channel-local timeshift buffer manager that polls upstream playlists, stores new segments, evicts old ones, and serves retained manifests/assets
+- added backend routes for:
+  - `/api/streams/channels/:channelId/timeshift/status`
+  - `/api/streams/channels/:channelId/timeshift/master`
+  - `/api/streams/channels/:channelId/timeshift/variants/:variantId/index.m3u8`
+  - `/api/streams/channels/:channelId/timeshift/assets/:assetId`
+- updated frontend playback URL selection so timeshift-enabled proxy channels use the retained timeshift master instead of the plain proxy/live path
+- updated `HlsPlayer`, single-view, and multiview flows so:
+  - pause/seek/jump-to-live only appear when backend timeshift status says a real retained window is available
+  - live-only channels show `No DVR`
+  - timeshift-enabled channels without enough retained media show `DVR warming`
+  - live-edge vs behind-live state is visible in the player diagnostics and watch-page status panels
+- updated the admin channel form so operators can enable retained timeshift and set a per-channel DVR window without allowing invalid `DIRECT`-mode combinations
+- added targeted tests for:
+  - timeshift playlist parsing
+  - rolling-window eviction logic
+  - channel validation rules
+  - timeshift status/master routes
+  - timeshift playback URL selection
+  - honest player controls for live-only vs retained-buffer playback
+
+### Verification Run
+
+- `npm run db:generate -w apps/api`
+- `npm run lint -w apps/api`
+- `npm run lint -w apps/web`
+- `npm run test -w apps/api`
+- `npm run test -w apps/web`
+
+### Remaining Risk
+
+- The first-version retained buffer is disk-backed but process-local in its active manifest index, so API restart clears the hot in-memory buffer map until requests repopulate it.
+- Timeshift polling is lazy and starts when a retained channel is requested; there is no always-on prewarming or multi-process coordination yet.
+- Admin preview/testing flows still focus on honest playback and do not yet surface a dedicated timeshift-status panel.
+
 ## `2026-04-04T20:20:00+03:00`
 
 ### Objective

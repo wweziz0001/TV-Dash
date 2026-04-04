@@ -89,7 +89,7 @@ Current stable module ownership:
 - `layouts`: per-user saved multiview walls
 - `recordings`: immediate/timed/scheduled jobs, guide-program recording, recurring rules, execution runs, library listing, playback access, and storage-backed media lifecycle
 - `diagnostics`: runtime observability snapshots, playback session tracking, and admin inspection endpoints
-- `streams`: stream inspection, metadata, and upstream test behavior
+- `streams`: stream inspection, metadata, upstream test behavior, proxy delivery, and retained live-timeshift window management
 - `health`: readiness endpoint
 
 If a new backend capability does not fit one of these modules, create a new domain module instead of expanding an unrelated one.
@@ -204,6 +204,20 @@ Recording additions:
   - global/default storage policy in env/config for now
   - per-recording operator override via a protected/keep-forever flag
   - cleanup logic in recording services/runtime helpers rather than ad-hoc route handlers
+
+## Live Timeshift Rules
+
+- Proxy playback alone does not count as DVR or timeshift.
+- Live pause, rewind, timeline seek, and jump-to-live behavior must only be exposed when the backend owns a real retained live buffer.
+- Timeshift retention, eviction, manifest generation, and asset storage belong in the `streams` module, not in pages or generic helpers.
+- Channel-level timeshift enablement must stay explicit in the channel contract and must reject unsupported combinations such as direct-playback-only live rewind.
+- Timeshift env/config must stay explicit and centralized in `config/env.ts`, including:
+  - global enable/disable
+  - storage root
+  - default retention window
+  - minimum available window threshold
+  - polling cadence and idle cleanup timing
+- First-version timeshift implementations may be single-process and channel-local, but the limitation must be documented instead of hidden behind a fake DVR UI.
 
 ## Observability Rules
 

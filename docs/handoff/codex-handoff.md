@@ -20,6 +20,7 @@ The current operator milestone also adds:
 - a hardened auth/access baseline with session-version invalidation, explicit permission guards, admin-only stream inspection, and a durable admin audit trail
 - a device-ux pass that makes mobile browsing practical, improves tablet watch/multiview behavior, and gives large-screen walls clearer layout policy
 - a stronger cross-browser player UX pass with explicit in-player controls, PiP handling, Media Session integration, and honest live-DVR behavior
+- a first real live-timeshift foundation with retained proxy-backed HLS buffers, rolling DVR windows, honest live-vs-buffered state, and per-channel timeshift enablement
 
 ## Current Architecture Summary
 
@@ -29,6 +30,7 @@ The current operator milestone also adds:
 - Backend observability now includes a dedicated `diagnostics` module for admin inspection endpoints plus shared structured-log helpers
 - Backend governance now also includes an `audit` module for durable admin action records with sanitized detail fields
 - Backend now also includes a `recordings` module for real ffmpeg-backed capture, guide/recurrence-aware scheduling, storage-backed media assets, and playback access tokens
+- Backend stream handling now also includes a real first-version live-timeshift path that retains rolling HLS buffers on disk for eligible proxy channels and serves DVR manifests from the `streams` module
 - Playback session tracking now persists real active player heartbeats in PostgreSQL so admin monitoring pages can show who is watching what now
 - Guide source imports, source-channel discovery, channel mappings, and persisted programme rows now also live in PostgreSQL
 - Frontend keeps app bootstrap in `app`, route screens in `pages`, shared UI in `components`, auth in `features`, request logic in `services`, and player-specific code in `player`
@@ -100,7 +102,7 @@ tests/
 - `layouts`: saved multi-view walls
 - `recordings`: recording jobs, guide-program recording, recurring rules, execution runs, storage-backed assets, playback access, and recordings-library responses
 - `diagnostics`: runtime observability snapshots, playback session tracking, structured log retention, and admin monitoring endpoints
-- `streams`: HLS metadata, stream test endpoints, and proxy gateway foundation
+- `streams`: HLS metadata, stream test endpoints, proxy gateway foundation, and retained live-timeshift manifests/assets
 - `health`: readiness endpoint
 
 ## Database Overview
@@ -141,6 +143,7 @@ Key relationship rules:
 - recording runs store one concrete ffmpeg execution attempt with process/result metadata
 - recording assets store finalized playable media metadata and relative storage keys under the configured recordings root
 - channels may play either in `DIRECT` or `PROXY` mode
+- channels may independently enable retained live timeshift when they are served through `PROXY` mode
 - favorites are per-user per-channel
 - saved layouts are per-user and contain ordered tile items
 - each logical channel resolves to one player-facing master source plus optional upstream request metadata
@@ -149,13 +152,14 @@ Key relationship rules:
 ## Player Architecture Overview
 
 - `player/hls-player.tsx` owns one video element, one HLS.js instance, and the explicit in-player browser-control surface
-- `player/browser-media.ts` owns browser capability detection plus live-DVR seek window helpers
+- `player/browser-media.ts` owns browser capability detection plus clamped live-DVR seek helpers
 - `player/media-session.ts` owns Media Session metadata/action wiring
 - `player/player-control-overlay.tsx` owns the compact playback-control chrome shared by single-view, multiview, and preview playback
 - `player/playback-recovery.ts` owns bounded fatal error recovery decisions
 - `player/playback-diagnostics.ts` maps raw lifecycle state into operator-facing labels, summaries, recovery state, failure-class hints, and browser-control state such as paused/PiP/fullscreen/live-edge
 - quality options and preference resolution live in `player/quality-options.ts`
 - manual-variant channels reach the player through a backend-generated synthetic master playlist, not duplicated channel rows
+- timeshift-enabled proxy channels reach the player through `/api/streams/channels/:id/timeshift/master`, with player controls gated by backend-reported timeshift availability
 - supported multi-view layouts live in `player/layouts.ts`
 - tile defaults and one-active-audio rules live in `player/multiview-layout.ts`
 - saved multi-view serialization/hydration helpers live in `player/multiview-state.ts`
@@ -175,7 +179,7 @@ Key relationship rules:
   - volume slider
   - fullscreen
   - optional browser Picture-in-Picture
-  - seek backward / seek forward only when the stream exposes a real seekable live window
+  - seek backward / seek forward only when the stream has a real retained live-timeshift window
 - Single-view uses the same `HlsPlayer` overlay plus the existing sidebar controls for quality, fullscreen, and recording actions.
 - Multiview tiles now get a compact version of the same controls inside each tile without breaking the one-audio-owner rule.
 - Multiview control density now scales by layout density:
@@ -184,7 +188,7 @@ Key relationship rules:
 - Media Session support now exists where the browser exposes it:
   - metadata is published as `TV-Dash / Live playback`
   - play, pause, and stop route back into the same player-owned actions
-  - seekbackward/seekforward are only registered when the active stream exposes a real DVR window
+  - seekbackward/seekforward are only registered when the active stream exposes a real retained DVR window
 - Browser media behavior now stays intentionally simple:
   - TV-Dash keeps playback inside the page by default
   - supported browsers still expose a Picture-in-Picture button from the in-player controls
@@ -193,14 +197,39 @@ Key relationship rules:
   - Firefox may still feel richer in native PiP chrome
   - Chrome and other browsers still depend on browser-owned PiP behavior when PiP is used
 - Live-stream limitations that still remain:
-  - not every live source exposes a seekable DVR window
-  - when no real seek window exists, TV-Dash intentionally shows `No DVR` and omits seek buttons rather than faking VOD behavior
+  - not every live source is timeshift-enabled or capable of retained DVR
+  - when no real retained window exists, TV-Dash intentionally shows `No DVR` and omits pause/seek buttons rather than faking VOD behavior
+  - newly started timeshift buffers may report `DVR warming` until enough retained media exists to seek safely
   - browser PiP richness still varies by browser even though TV-Dash exposes the same launch point and state handling
   - browser-native PiP does not allow TV-Dash to force its custom HTML controls into the PiP window
 - Recommended future enhancements:
   - add focused-player keyboard shortcuts for play/pause, mute, PiP, and fullscreen that integrate cleanly with the existing multiview shortcut model
   - add optional channel artwork to Media Session metadata once stable image URLs are available
-  - add a clearer operator hint for `behind live` vs `paused` when DVR windows are large
+  - add richer behind-live timeline labels and bookmarks once the retained DVR window grows beyond the first compact operator controls
+
+## Live Timeshift And DVR Foundation
+
+- Timeshift is now a real backend feature, not a UI-only interpretation of proxy playback.
+- Channel config now supports:
+  - `timeshiftEnabled`
+  - `timeshiftWindowMinutes`
+- Current first-version enablement rule:
+  - retained timeshift is only allowed for `PROXY` playback channels
+- Backend timeshift flow:
+  - the `streams` module polls the upstream live playlists for enabled channels on demand
+  - newly observed segments are stored under `TIMESHIFT_STORAGE_DIR`
+  - retained manifests are rebuilt from locally retained segments
+  - old segments are evicted once they fall outside the configured rolling window
+- Frontend/player contract:
+  - pages fetch `/api/streams/channels/:id/timeshift/status`
+  - the player uses that status to decide whether pause, seek, jump-to-live, and Media Session seek actions should exist
+  - live channels without retained buffer stay honest and surface `No DVR`
+  - channels with timeshift configured but not yet populated surface `DVR warming`
+  - channels with retained media expose live-edge vs behind-live state and `Go live`
+- Current first-version limitations:
+  - timeshift retention is disk-backed, but the in-memory manifest index is rebuilt per process and does not survive restart
+  - polling/retention is started lazily when a timeshift channel is requested, not pre-warmed for every enabled channel
+  - this is a rolling pause/rewind window, not yet a full long-horizon DVR library or scheduled catch-up system
 
 ## Device Experience Overview
 
@@ -238,6 +267,7 @@ Key relationship rules:
 - Saved layout config is now modeled as real JSON in shared contracts, not as an unbounded `any` record.
 - Proxy playback URL selection happens in frontend service helpers, not inside the player lifecycle code.
 - Manual-variant channels must resolve through the backend stream master path so HLS.js receives one logical manifest.
+- Timeshift-enabled proxy channels must resolve through the backend timeshift master path so DVR controls are backed by retained buffer behavior instead of plain live proxying.
 - Public channel responses may intentionally hide raw upstream stream URLs when proxy mode is enabled.
 - Guide mapping and manual programme management belong to the `epg` module and admin EPG screen, not to channel CRUD routes.
 - Guide resolution follows one practical precedence rule:
@@ -255,6 +285,7 @@ Key relationship rules:
 - Stream inspection endpoints (`/api/streams/test` and `/api/streams/metadata`) are now explicitly admin-only because they accept arbitrary upstream URLs plus request-header overrides.
 - Important admin mutations now create durable `AuditEvent` rows with sanitized details such as mode changes, booleans, ids, and counts instead of raw sensitive config values.
 - Recording capture now uses the existing `/api/streams/channels/:id/master` path internally so request headers, proxy mode, and manual-variant synthetic masters stay owned by the stream/channel foundation instead of being reimplemented in the recorder.
+- Live pause/rewind must never be inferred from proxy mode alone; the frontend now treats `/api/streams/channels/:id/timeshift/status` as the source of truth for real timeshift capability.
 - Recorded media is stored under `RECORDINGS_STORAGE_DIR` as relative dated paths and served back through signed playback URLs plus byte-range support for browser playback.
 - Guide-driven recording now works from real `ProgramEntry` rows:
   - watch-page now/next and upcoming-guide surfaces can create one-off programme recordings directly
@@ -349,6 +380,7 @@ Current automated coverage includes:
 - Fastify inject coverage for channels, groups, favorites, layouts, streams, and EPG route contracts
 - Fastify inject coverage for auth login/me/logout session-version behavior and admin audit-event listing
 - HLS master playlist parsing and synthetic master generation tests
+- retained timeshift playlist parsing, rolling-window math, and stream-route coverage
 - HLS playlist rewrite and proxy token tests
 - XMLTV parser, guide resolver, manual-program validation, and now/next lookup tests
 - HlsPlayer component coverage for bounded retry timers and source replacement cleanup
@@ -367,6 +399,7 @@ Current automated coverage includes:
 - guide-state display logic and channel-picker component tests
 - channel admin form and playback URL helper tests
 - compact manual quality-variant admin workflow coverage for presets, duplication, sorting, normalization, and inline validation
+- honest player-control coverage for live-only vs timeshift-enabled channels plus playback-URL selection tests for timeshift masters
 
 Mandatory verification commands:
 
@@ -387,6 +420,10 @@ Optional but recommended for risky changes:
 - Admin reorder remains sort-order based rather than drag-and-drop.
 - Manual variant rows now support presets, duplication, and auto-sort, but they still use button-driven ordering rather than drag-and-drop.
 - The proxy foundation currently buffers upstream asset bodies in memory instead of true streaming passthrough.
+- Live timeshift retention is first-version and single-process:
+  - retained segments live on disk, but active buffer state is still maintained in process memory
+  - API restart clears the active retained-manifest index until playback requests repopulate it
+  - multi-process lease coordination does not exist yet
 - There is still no background import scheduler yet; XMLTV URL and file ingestion currently run from explicit admin actions.
 - There is no full time-grid guide UI yet; the current milestone focuses on source management, mapping, manual entry, and now/next foundations.
 - Imported programme rows are replaced per source import rather than versioned historically, so rollback and audit-by-program are still future work.
@@ -404,7 +441,7 @@ Optional but recommended for risky changes:
 
 ## Recommended Next Task
 
-Add a shared-worker or lease-based recording scheduler plus richer series matching so recurring rules can safely scale beyond one API process and match future programmes more intelligently than exact title reuse.
+Add durable multi-process coordination for live timeshift so retained DVR windows can survive API restarts cleanly and scale beyond one process without duplicate upstream polling.
 
 ## Observability Milestone Summary
 
