@@ -150,13 +150,10 @@ Key relationship rules:
 
 - `player/hls-player.tsx` owns one video element, one HLS.js instance, and the explicit in-player browser-control surface
 - `player/browser-media.ts` owns browser capability detection plus live-DVR seek window helpers
-- `player/floating-player.ts` owns the layout, stacking, and popup-window feature helpers for TV-Dash-managed floating playback
-- `player/floating-player-session.ts` owns detached floating-player session persistence and runtime state synchronization across windows
 - `player/media-session.ts` owns Media Session metadata/action wiring
 - `player/player-control-overlay.tsx` owns the compact playback-control chrome shared by single-view, multiview, and preview playback
 - `player/playback-recovery.ts` owns bounded fatal error recovery decisions
 - `player/playback-diagnostics.ts` maps raw lifecycle state into operator-facing labels, summaries, recovery state, failure-class hints, and browser-control state such as paused/PiP/fullscreen/live-edge
-- `pages/floating-player-page.tsx` owns the detached floating-player window shell that wraps `HlsPlayer` in a compact operator-focused chrome
 - quality options and preference resolution live in `player/quality-options.ts`
 - manual-variant channels reach the player through a backend-generated synthetic master playlist, not duplicated channel rows
 - supported multi-view layouts live in `player/layouts.ts`
@@ -177,7 +174,6 @@ Key relationship rules:
   - mute/unmute
   - volume slider
   - fullscreen
-  - TV-Dash floating player launch / return
   - optional browser Picture-in-Picture
   - seek backward / seek forward only when the stream exposes a real seekable live window
 - Single-view uses the same `HlsPlayer` overlay plus the existing sidebar controls for quality, fullscreen, and recording actions.
@@ -189,26 +185,20 @@ Key relationship rules:
   - metadata is published as `TV-Dash / Live playback`
   - play, pause, and stop route back into the same player-owned actions
   - seekbackward/seekforward are only registered when the active stream exposes a real DVR window
-- Floating playback is now TV-Dash-managed first rather than browser-PiP-first:
-  - Chromium-class browsers that expose `Document Picture-in-Picture` now open a compact TV-Dash floating window without the normal address bar chrome
-  - the primary in-player action opens a detached TV-Dash floating window when popup launch succeeds
-  - popup-blocked or popup-unavailable environments fall back to the in-page floating mini-player
-  - in-page floating players remain draggable, resizable, and able to coexist more than once
-  - detached floating windows persist a per-window session in local storage so the main app and popup can hand playback back cleanly
-  - detached windows include return-to-app and close actions while still using the same `HlsPlayer` control surface for playback, mute, volume, seek, fullscreen, and optional browser PiP
-  - supported browsers still expose a separate browser PiP button, but that is now explicitly secondary to TV-Dash-managed floating playback
-  - unsupported browsers keep the control disabled with a reason instead of exposing a broken UX
+- Browser media behavior now stays intentionally simple:
+  - TV-Dash keeps playback inside the page by default
+  - supported browsers still expose a Picture-in-Picture button from the in-player controls
+  - unsupported browsers keep the PiP control disabled with a reason instead of exposing a broken UX
 - Cross-browser expectations:
   - Firefox may still feel richer in native PiP chrome
-  - Chrome and other browsers now get a stronger app-owned floating workflow instead of depending on browser-default PiP UX alone
+  - Chrome and other browsers still depend on browser-owned PiP behavior when PiP is used
 - Live-stream limitations that still remain:
   - not every live source exposes a seekable DVR window
   - when no real seek window exists, TV-Dash intentionally shows `No DVR` and omits seek buttons rather than faking VOD behavior
-  - browser PiP richness still varies by browser even though TV-Dash now exposes the same launch point and state handling
-  - browser-native PiP does not allow TV-Dash to force its custom HTML controls into the floating window
-  - detached popup windows and in-page floating players are application-managed, but the web platform still does not let TV-Dash guarantee true operating-system always-on-top behavior
+  - browser PiP richness still varies by browser even though TV-Dash exposes the same launch point and state handling
+  - browser-native PiP does not allow TV-Dash to force its custom HTML controls into the PiP window
 - Recommended future enhancements:
-  - add focused-player keyboard shortcuts for play/pause, mute, float, PiP, and fullscreen that integrate cleanly with the existing multiview shortcut model
+  - add focused-player keyboard shortcuts for play/pause, mute, PiP, and fullscreen that integrate cleanly with the existing multiview shortcut model
   - add optional channel artwork to Media Session metadata once stable image URLs are available
   - add a clearer operator hint for `behind live` vs `paused` when DVR windows are large
 

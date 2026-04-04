@@ -23,36 +23,18 @@ describe("browser-media", () => {
       requestFullscreen: vi.fn(),
     } as unknown as Element;
     const doc = {
-      createElement: () => document.createElement("div"),
       pictureInPictureEnabled: true,
       fullscreenEnabled: true,
-    } as unknown as Document;
+    } as Document;
     const nav = {
       mediaSession: {},
     } as Navigator;
-    expect(
-      getPlayerBrowserCapabilities(
-        video,
-        fullscreenTarget,
-        doc,
-        nav,
-        {
-          documentPictureInPicture: {
-            requestWindow: vi.fn(),
-          },
-          open: vi.fn(),
-        } as unknown as Window,
-      ),
-    ).toEqual({
+
+    expect(getPlayerBrowserCapabilities(video, fullscreenTarget, doc, nav)).toEqual({
       canFullscreen: true,
       canPictureInPicture: true,
-      canNativePictureInPicture: true,
-      canFloatingPlayback: true,
-      canDetachedFloatingPlayback: true,
-      canDocumentPictureInPicture: true,
       canUseMediaSession: true,
       pictureInPictureUnavailableReason: null,
-      floatingPlaybackUnavailableReason: null,
     });
   });
 
@@ -65,27 +47,12 @@ describe("browser-media", () => {
       getPlayerBrowserCapabilities(
         video,
         null,
-        {
-          createElement: () => document.createElement("div"),
-          pictureInPictureEnabled: true,
-        } as unknown as Document,
+        { pictureInPictureEnabled: true } as Document,
         {} as Navigator,
-        {
-          documentPictureInPicture: {
-            requestWindow: vi.fn(),
-          },
-          open: vi.fn(),
-        } as unknown as Window,
       ),
     ).toMatchObject({
-      canPictureInPicture: true,
-      canNativePictureInPicture: false,
-      canFloatingPlayback: true,
-      canDetachedFloatingPlayback: true,
-      canDocumentPictureInPicture: true,
-      pictureInPictureUnavailableReason:
-        "Native Picture-in-Picture is not supported in this browser. TV-Dash can use a floating player instead.",
-      floatingPlaybackUnavailableReason: null,
+      canPictureInPicture: false,
+      pictureInPictureUnavailableReason: "Picture-in-Picture is not supported in this browser.",
     });
   });
 

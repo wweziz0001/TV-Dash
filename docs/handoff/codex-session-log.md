@@ -1954,3 +1954,47 @@ Reduce visible browser chrome in TV-Dash floating mode so the floating experienc
 - `npm run lint -w apps/web`
 
 Both passed on `2026-04-04`.
+## 2026-04-04 21:14:12 +03:00
+
+Remove the TV-Dash floating-player workflow completely and return the web player to an in-page playback model with optional native browser Picture-in-Picture only.
+
+### What changed
+
+- removed the detached/in-page floating-player implementation and its route, helpers, storage session layer, and tests
+- simplified browser capability detection back down to fullscreen, native PiP, and Media Session support
+- restored player/watch-page messaging so operator diagnostics describe only normal playback vs native browser PiP
+- rewrote player tests to cover the non-floating behavior again instead of detached/document-PiP workflows
+- updated architecture, standards, and handoff docs so they no longer describe TV-Dash-managed floating playback as a current feature
+
+### Files changed
+
+- removed:
+  - `apps/web/src/pages/floating-player-page.tsx`
+  - `apps/web/src/pages/floating-player-page.test.tsx`
+  - `apps/web/src/player/floating-player.ts`
+  - `apps/web/src/player/floating-player.test.ts`
+  - `apps/web/src/player/floating-player-session.ts`
+  - `apps/web/src/player/floating-player-session.test.ts`
+- updated:
+  - `apps/web/src/app/router.tsx`
+  - `apps/web/src/pages/channel-watch-page.tsx`
+  - `apps/web/src/player/browser-media.ts`
+  - `apps/web/src/player/browser-media.test.ts`
+  - `apps/web/src/player/hls-player.tsx`
+  - `apps/web/src/player/hls-player.test.tsx`
+  - `apps/web/src/player/playback-diagnostics.ts`
+  - `apps/web/src/player/player-control-overlay.tsx`
+  - `docs/architecture/player-architecture.md`
+  - `docs/handoff/codex-handoff.md`
+  - `docs/standards/player-hls-standards.md`
+  - `docs/standards/testing-standards.md`
+
+### Verification
+
+- `npm run test -w apps/web -- browser-media.test.ts hls-player.test.tsx`
+- `npm run lint -w apps/web`
+
+### Notes
+
+- TV-Dash no longer supports app-managed floating windows in this branch after this change.
+- Browser-native PiP remains optional and still depends on browser support and browser-owned UI.

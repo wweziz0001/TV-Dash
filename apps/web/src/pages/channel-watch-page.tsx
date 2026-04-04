@@ -457,15 +457,11 @@ export function ChannelWatchPage() {
                   Audio: {playerDiagnostics.isMuted ? "Muted by player" : `Live audio enabled at ${Math.round(playerDiagnostics.volume * 100)}%`}
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">
-                  Floating playback:{" "}
-                  {playerDiagnostics.pictureInPictureMode === "native"
-                    ? "active now in the browser PiP window"
-                    : playerDiagnostics.pictureInPictureMode === "detached"
-                      ? "running in a detached TV-Dash floating window"
-                    : playerDiagnostics.pictureInPictureMode === "floating"
-                      ? "running in a TV-Dash in-page floating player"
+                  Picture-in-Picture:{" "}
+                  {playerDiagnostics.isPictureInPictureActive
+                    ? "active now"
                     : playerDiagnostics.canPictureInPicture
-                      ? "available from the in-player controls with TV-Dash floating first and browser PiP second"
+                      ? "available from the in-player controls"
                       : "not available in this browser"}
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">

@@ -24,23 +24,18 @@ interface PlayerControlOverlayProps {
   timelineMax: number;
   currentTimeLabel: string;
   durationLabel: string;
-  floatingPlaybackMode: "none" | "overlay" | "detached";
-  canOpenFloatingPlayback: boolean;
-  floatingPlaybackUnavailableReason: string | null;
-  showFloatingPlaybackButton?: boolean;
-  isNativePictureInPictureActive: boolean;
+  isPictureInPictureActive: boolean;
   isFullscreenActive: boolean;
-  canNativePictureInPicture: boolean;
-  nativePictureInPictureUnavailableReason: string | null;
+  canPictureInPicture: boolean;
+  pictureInPictureUnavailableReason: string | null;
   canFullscreen: boolean;
-  onToggleFloatingPlayback: () => void;
   onToggleMute: () => void;
   onVolumeChange: (value: number) => void;
   onSeekBackward: () => void;
   onJumpToLive: () => void;
   onSeekForward: () => void;
   onTimelineChange: (value: number) => void;
-  onToggleNativePictureInPicture: () => void;
+  onTogglePictureInPicture: () => void;
   onToggleFullscreen: () => void;
 }
 
@@ -57,23 +52,18 @@ export function PlayerControlOverlay({
   timelineMax,
   currentTimeLabel,
   durationLabel,
-  floatingPlaybackMode,
-  canOpenFloatingPlayback,
-  floatingPlaybackUnavailableReason,
-  showFloatingPlaybackButton = true,
-  isNativePictureInPictureActive,
+  isPictureInPictureActive,
   isFullscreenActive,
-  canNativePictureInPicture,
-  nativePictureInPictureUnavailableReason,
+  canPictureInPicture,
+  pictureInPictureUnavailableReason,
   canFullscreen,
-  onToggleFloatingPlayback,
   onToggleMute,
   onVolumeChange,
   onSeekBackward,
   onJumpToLive,
   onSeekForward,
   onTimelineChange,
-  onToggleNativePictureInPicture,
+  onTogglePictureInPicture,
   onToggleFullscreen,
 }: PlayerControlOverlayProps) {
   const isCompact = density === "compact";
@@ -81,18 +71,6 @@ export function PlayerControlOverlay({
   const buttonClassName = isMicro ? "h-7 min-h-7 rounded-md px-1.5 text-[10px]" : "";
   const iconButtonClassName = isMicro ? "h-7 w-7 rounded-md" : "";
   const timelineWrapperClassName = isMicro ? "mb-1 px-1 py-1" : "mb-1.5 px-1 py-1";
-  const floatingPlaybackButtonLabel =
-    floatingPlaybackMode === "overlay"
-      ? "Dock"
-      : floatingPlaybackMode === "detached"
-        ? "Return"
-        : "Float";
-  const floatingPlaybackButtonTitle =
-    floatingPlaybackMode === "overlay"
-      ? "Return the floating player to the page"
-      : floatingPlaybackMode === "detached"
-        ? "Return playback to the page"
-        : floatingPlaybackUnavailableReason ?? "Open a TV-Dash floating player";
 
   return (
     <div
@@ -104,7 +82,7 @@ export function PlayerControlOverlay({
       )}
     >
       <div className={timelineWrapperClassName}>
-        <div className={cn("flex items-center justify-between gap-2 text-slate-300", isMicro ? "mb-1 text-[8px]" : "mb-1 text-[10px]")}>
+        <div className={cn("mb-1 flex items-center justify-between gap-2 text-slate-300", isMicro ? "text-[8px]" : "text-[10px]")}>
           <span>{currentTimeLabel}</span>
           <span>{durationLabel}</span>
         </div>
@@ -124,7 +102,7 @@ export function PlayerControlOverlay({
         />
       </div>
 
-      <div className={cn("flex justify-between items-center gap-1", isMicro || isCompact ? "flex-wrap" : "flex-wrap lg:flex-nowrap")}>
+      <div className={cn("flex items-center justify-between gap-1", isMicro || isCompact ? "flex-wrap" : "flex-wrap lg:flex-nowrap")}>
         <div className="flex items-center gap-1.5">
           <span
             className={cn(
@@ -134,44 +112,18 @@ export function PlayerControlOverlay({
           >
             {liveStateLabel}
           </span>
-          {showFloatingPlaybackButton ? (
-            <Button
-              aria-label={
-                floatingPlaybackMode === "overlay"
-                  ? "Return floating player to page"
-                  : floatingPlaybackMode === "detached"
-                    ? "Return detached player to page"
-                    : "Open floating player"
-              }
-              disabled={!canOpenFloatingPlayback || !hasSource}
-              className={buttonClassName}
-              onClick={onToggleFloatingPlayback}
-              size="sm"
-              title={floatingPlaybackButtonTitle}
-              type="button"
-              variant={floatingPlaybackMode === "none" ? "secondary" : "primary"}
-            >
-              {floatingPlaybackButtonLabel}
-            </Button>
-          ) : null}
-          {canNativePictureInPicture || isNativePictureInPictureActive ? (
-            <Button
-              aria-label={isNativePictureInPictureActive ? "Exit browser Picture-in-Picture" : "Open browser Picture-in-Picture"}
-              disabled={!canNativePictureInPicture || !hasSource}
-              className={buttonClassName}
-              onClick={onToggleNativePictureInPicture}
-              size="sm"
-              title={
-                isNativePictureInPictureActive
-                  ? "Exit browser Picture-in-Picture"
-                  : nativePictureInPictureUnavailableReason ?? "Open browser Picture-in-Picture"
-              }
-              type="button"
-              variant={isNativePictureInPictureActive ? "primary" : "secondary"}
-            >
-              {isNativePictureInPictureActive ? "Exit PiP" : "PiP"}
-            </Button>
-          ) : null}
+          <Button
+            aria-label={isPictureInPictureActive ? "Exit Picture-in-Picture" : "Open Picture-in-Picture"}
+            disabled={!canPictureInPicture || !hasSource}
+            className={buttonClassName}
+            onClick={onTogglePictureInPicture}
+            size="sm"
+            title={pictureInPictureUnavailableReason ?? (isPictureInPictureActive ? "Exit Picture-in-Picture" : "Open Picture-in-Picture")}
+            type="button"
+            variant={isPictureInPictureActive ? "primary" : "secondary"}
+          >
+            {isPictureInPictureActive ? "Exit PiP" : "PiP"}
+          </Button>
           <Button
             aria-label={isFullscreenActive ? "Exit fullscreen" : "Enter fullscreen"}
             disabled={!canFullscreen}
@@ -256,7 +208,9 @@ export function PlayerControlOverlay({
               type="range"
               value={Number.isFinite(volume) ? volume : 1}
             />
-            <span className={cn("text-right text-slate-400", isMicro ? "w-7 text-[9px]" : "w-9 text-[11px]")}>{Math.round(volume * 100)}%</span>
+            <span className={cn("text-right text-slate-400", isMicro ? "w-7 text-[9px]" : "w-9 text-[11px]")}>
+              {Math.round(volume * 100)}%
+            </span>
           </label>
         </div>
       </div>

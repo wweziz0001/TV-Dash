@@ -8,7 +8,6 @@ import { AdminObservabilityPage } from "@/pages/admin-observability-page";
 import { ChannelWatchPage } from "@/pages/channel-watch-page";
 import { DashboardPage } from "@/pages/dashboard-page";
 import { ForbiddenPage } from "@/pages/forbidden-page";
-import { FloatingPlayerPage } from "@/pages/floating-player-page";
 import { LoginPage } from "@/pages/login-page";
 import { MultiViewPage } from "@/pages/multiview-page";
 import { NotFoundPage } from "@/pages/not-found-page";
@@ -20,14 +19,6 @@ export function AppRouter() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route
-          path="/floating-player/:sessionId"
-          element={
-            <RequireAuth>
-              <FloatingPlayerPage />
-            </RequireAuth>
-          }
-        />
         <Route
           path="/"
           element={
