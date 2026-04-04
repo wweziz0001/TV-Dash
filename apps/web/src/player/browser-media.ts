@@ -44,11 +44,11 @@ export function getPlayerBrowserCapabilities(
   fullscreenTarget: Element | null = null,
   doc: PictureInPictureDocument & FullscreenDocument = document,
   nav: Navigator = navigator,
-  win: DocumentPictureInPictureWindow = window,
+  _win: DocumentPictureInPictureWindow = window,
 ): PlayerBrowserCapabilities {
   const canUseMediaSession = "mediaSession" in nav && typeof nav.mediaSession !== "undefined";
   const canFullscreen = Boolean(fullscreenTarget?.requestFullscreen) && doc.fullscreenEnabled !== false;
-  const canDocumentPictureInPicture = typeof win.documentPictureInPicture?.requestWindow === "function";
+  const canDocumentPictureInPicture = false;
 
   if (!video) {
     return {
@@ -57,46 +57,6 @@ export function getPlayerBrowserCapabilities(
       canDocumentPictureInPicture,
       canUseMediaSession,
       pictureInPictureUnavailableReason: "Picture-in-Picture is unavailable until playback is ready.",
-    };
-  }
-
-  if (video.disablePictureInPicture) {
-    return {
-      canFullscreen,
-      canPictureInPicture: false,
-      canDocumentPictureInPicture,
-      canUseMediaSession,
-      pictureInPictureUnavailableReason: "Picture-in-Picture is disabled for this player.",
-    };
-  }
-
-  if (canDocumentPictureInPicture) {
-    return {
-      canFullscreen,
-      canPictureInPicture: true,
-      canDocumentPictureInPicture,
-      canUseMediaSession,
-      pictureInPictureUnavailableReason: null,
-    };
-  }
-
-  if (typeof video.requestPictureInPicture !== "function") {
-    return {
-      canFullscreen,
-      canPictureInPicture: false,
-      canDocumentPictureInPicture,
-      canUseMediaSession,
-      pictureInPictureUnavailableReason: "Picture-in-Picture is not supported in this browser.",
-    };
-  }
-
-  if (doc.pictureInPictureEnabled === false) {
-    return {
-      canFullscreen,
-      canPictureInPicture: false,
-      canDocumentPictureInPicture,
-      canUseMediaSession,
-      pictureInPictureUnavailableReason: "Picture-in-Picture is disabled in this browser.",
     };
   }
 

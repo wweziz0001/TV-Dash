@@ -428,60 +428,43 @@ describe("HlsPlayer", () => {
     expect(controlOverlay).toHaveClass("opacity-0");
   });
 
-  it("prefers document picture-in-picture over native video PiP when supported", async () => {
-    const pipDocument = document.implementation.createHTMLDocument("pip");
-    const pipWindow = {
-      document: pipDocument,
-      closed: false,
-      close: vi.fn(function (this: { closed: boolean }) {
-        this.closed = true;
-      }),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    } as unknown as Window;
-    const requestWindow = vi.fn(async () => pipWindow);
-
-    Object.defineProperty(window, "documentPictureInPicture", {
-      configurable: true,
-      value: {
-        requestWindow,
-      },
-      writable: true,
-    });
-
-    const { container } = render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
+  it("opens multiple in-page PiP panels without using the browser-native PiP API", async () => {
+    const { container } = render(
+      <div>
+        <HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />
+        <HlsPlayer src="https://example.com/b.m3u8" title="Channel B" />
+      </div>,
+    );
 
     act(() => {
       MockHls.instances[0].emit(MockHls.Events.MANIFEST_PARSED, {
         levels: [{ height: 1080 }, { height: 720 }],
       });
+      MockHls.instances[1].emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 1080 }, { height: 720 }],
+      });
     });
 
-    const playerRoot = container.firstElementChild as HTMLDivElement;
-    fireEvent.mouseEnter(playerRoot);
-    fireEvent.mouseMove(playerRoot);
+    const playerRoots = Array.from((container.firstElementChild as HTMLDivElement).children) as HTMLDivElement[];
+
+    playerRoots.forEach((playerRoot) => {
+      fireEvent.mouseEnter(playerRoot);
+      fireEvent.mouseMove(playerRoot);
+    });
+
+    const pipButtons = screen.getAllByRole("button", { name: "Open Picture-in-Picture" });
+
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Open Picture-in-Picture" }));
-      await Promise.resolve();
+      fireEvent.click(pipButtons[0]);
+      fireEvent.click(pipButtons[1]);
       await Promise.resolve();
     });
 
-    act(() => {
-      vi.runAllTicks();
-    });
-
-    expect(requestWindow).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByTestId("floating-pip-shell")).toHaveLength(2);
+    expect(screen.getAllByTestId("floating-pip-placeholder")).toHaveLength(2);
     expect(HTMLVideoElement.prototype.requestPictureInPicture).not.toHaveBeenCalled();
-  });
-
-  it("disables the PiP control when the browser does not expose Picture-in-Picture support", () => {
-    Object.defineProperty(HTMLVideoElement.prototype, "requestPictureInPicture", {
-      configurable: true,
-      value: undefined,
-    });
-
-    render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
-
-    expect(screen.getByRole("button", { name: "Open Picture-in-Picture" })).toBeDisabled();
+    expect(MockHls.instances[0].destroy).not.toHaveBeenCalled();
+    expect(MockHls.instances[1].destroy).not.toHaveBeenCalled();
+    expect(screen.getAllByRole("button", { name: "Return from PiP" })).toHaveLength(2);
   });
 });
