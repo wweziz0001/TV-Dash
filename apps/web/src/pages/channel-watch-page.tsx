@@ -321,7 +321,9 @@ export function ChannelWatchPage() {
 
   const channel = channelQuery.data;
   const timeshiftStatus: LiveTimeshiftStatus | null = timeshiftStatusQuery.data ?? null;
-  const playbackUrl = getChannelPlaybackUrl(channel);
+  const playbackUrl = getChannelPlaybackUrl(channel, {
+    timeshiftStatus,
+  });
   const nowNext = nowNextQuery.data;
   const guideProgrammes = (guideWindowQuery.data?.programmes ?? []).filter((programme) => {
     return !nowNext?.now || programme.id !== nowNext.now.id;

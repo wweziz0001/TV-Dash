@@ -490,6 +490,6 @@ describe("HlsPlayer", () => {
     expect(screen.queryByRole("button", { name: "Pause playback" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Jump to live" })).not.toBeInTheDocument();
     expect(screen.queryByRole("slider", { name: "Player timeline" })).not.toBeInTheDocument();
-    expect(screen.getAllByText("No DVR").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Live only").length).toBeGreaterThan(0);
   });
 });

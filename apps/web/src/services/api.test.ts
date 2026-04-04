@@ -49,7 +49,7 @@ describe("getChannelPlaybackUrl", () => {
     ).toContain("/streams/channels/11111111-1111-1111-1111-111111111111/master");
   });
 
-  it("prefers the timeshift master path when the channel has real DVR support configured", () => {
+  it("keeps using the live proxy path while the retained DVR buffer is still unavailable", () => {
     expect(
       getChannelPlaybackUrl({
         id: "11111111-1111-1111-1111-111111111111",
@@ -58,6 +58,25 @@ describe("getChannelPlaybackUrl", () => {
         playbackMode: "PROXY",
         timeshiftEnabled: true,
       }),
+    ).toContain("/streams/channels/11111111-1111-1111-1111-111111111111/master");
+  });
+
+  it("prefers the timeshift master path once the retained DVR buffer is actually ready", () => {
+    expect(
+      getChannelPlaybackUrl(
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          sourceMode: "MASTER_PLAYLIST",
+          masterHlsUrl: null,
+          playbackMode: "PROXY",
+          timeshiftEnabled: true,
+        },
+        {
+          timeshiftStatus: {
+            available: true,
+          },
+        },
+      ),
     ).toContain("/streams/channels/11111111-1111-1111-1111-111111111111/timeshift/master");
   });
 

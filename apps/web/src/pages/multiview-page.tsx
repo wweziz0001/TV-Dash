@@ -666,7 +666,14 @@ export function MultiViewPage() {
                     playerStatus={playerStatus}
                     qualityOptions={qualityOptions}
                     recordingJob={recordingJob}
-                    src={channel ? getChannelPlaybackUrl(channel, { preferProxy: true }) : null}
+                    src={
+                      channel
+                        ? getChannelPlaybackUrl(channel, {
+                            preferProxy: true,
+                            timeshiftStatus,
+                          })
+                        : null
+                    }
                     timeshiftStatus={timeshiftStatus}
                     tile={tile}
                     tileIndex={index}

@@ -910,7 +910,7 @@ export function HlsPlayer({
     timeshiftMessage: timeshiftStatus?.message ?? null,
   });
   const liveStateLabel = !timeshiftSupported
-    ? "No DVR"
+    ? "Live only"
     : !timeshiftAvailable
       ? "DVR warming"
       : seekState.isAtLiveEdge

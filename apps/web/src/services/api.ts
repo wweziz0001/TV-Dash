@@ -258,13 +258,18 @@ export const api = {
 interface ChannelPlaybackUrlOptions {
   preferProxy?: boolean;
   preferTimeshift?: boolean;
+  timeshiftStatus?: Pick<LiveTimeshiftStatus, "available"> | null;
 }
 
 export function getChannelPlaybackUrl(
   channel: Pick<Channel, "id" | "masterHlsUrl" | "playbackMode" | "sourceMode" | "timeshiftEnabled">,
   options: ChannelPlaybackUrlOptions = {},
 ) {
-  if (options.preferTimeshift || channel.timeshiftEnabled === true) {
+  if (options.preferTimeshift) {
+    return `${API_BASE_URL}/streams/channels/${channel.id}/timeshift/master`;
+  }
+
+  if (channel.timeshiftEnabled === true && options.timeshiftStatus?.available === true) {
     return `${API_BASE_URL}/streams/channels/${channel.id}/timeshift/master`;
   }
 
