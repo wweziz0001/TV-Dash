@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from "react";
+import { useRef, useState, type DragEvent } from "react";
 import {
   CalendarClock,
   Focus,
@@ -89,6 +89,8 @@ export function MultiviewTileCard({
 }: MultiviewTileCardProps) {
   const statusBadgeClassName = getStatusBadgeClassName(playerDiagnostics);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const playerFrameRef = useRef<HTMLDivElement | null>(null);
+  const controlDensity = layoutDefinition.tileCount >= 9 ? "micro" : layoutDefinition.tileCount >= 4 ? "compact" : "full";
 
   return (
     <div
@@ -212,12 +214,19 @@ export function MultiviewTileCard({
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1" ref={playerFrameRef}>
         {channel ? (
           <HlsPlayer
             autoPlay
+            controlDensity={controlDensity}
+            fullscreenTargetRef={playerFrameRef}
             initialBias={tile.isMuted ? "LOWEST" : "AUTO"}
             muted={tile.isMuted}
+            onMutedChange={(nextMuted) => {
+              if (nextMuted !== tile.isMuted) {
+                onToggleAudio();
+              }
+            }}
             onQualityOptionsChange={onQualityOptionsChange}
             onSelectedQualityChange={onSelectedQualityChange}
             onStatusChange={onStatusChange}

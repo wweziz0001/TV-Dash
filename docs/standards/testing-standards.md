@@ -14,6 +14,8 @@ Current automated coverage already exists for:
 - XMLTV parsing, guide resolution, and now/next lookup
 - quality option resolution
 - player diagnostics mapping for loading, retrying, buffering, failed, and recovered states
+- browser media capability detection and Media Session integration helpers
+- explicit player control rendering for pause, mute, PiP, fullscreen, and live-state visibility
 - multi-view tile defaulting and single-audio behavior
 
 Mandatory workspace verification remains:
@@ -69,6 +71,7 @@ Examples:
 
 - player retry overlay behavior
 - quality selector reacting to player callbacks
+- player PiP/fullscreen/media-session controls and unsupported-browser states
 - admin form loading, save, and delete states
 - multi-view tile mute/fullscreen controls
 - responsive picker, drawer, or fullscreen state behavior when layout mode changes are driven by explicit component logic
@@ -141,6 +144,9 @@ These areas are release-critical and should gain or maintain automated coverage 
 - single active audio enforcement
 - retryable vs terminal error handling
 - operator-facing diagnostics state mapping for failed, retrying, buffering, and recovered playback
+- explicit playback controls for pause, mute, volume, PiP, and fullscreen
+- browser capability detection for PiP/fullscreen/media-session integration
+- live-only vs seekable-DVR control behavior so seek buttons are not faked on unsupported streams
 
 ### Diagnostics
 

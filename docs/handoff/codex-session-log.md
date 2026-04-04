@@ -1,5 +1,98 @@
 # Codex Session Log
 
+## `2026-04-04T17:35:00+03:00`
+
+### Objective
+
+Improve player controls, Picture-in-Picture support, and cross-browser media UX so TV-Dash no longer depends on browser-native behavior alone for critical playback actions.
+
+### Work Completed
+
+- created the requested branch `019-player-controls-pip-and-cross-browser-media-ux`
+- upgraded `HlsPlayer` into a real in-page control surface with:
+  - play/pause
+  - mute/unmute
+  - volume slider
+  - fullscreen
+  - explicit Picture-in-Picture toggle
+  - live-state visibility
+  - seek backward / seek forward only when the browser exposes a real seekable live window
+- added browser-media helpers for:
+  - PiP capability detection
+  - fullscreen capability detection
+  - live-DVR seek window detection
+  - clamped seek behavior inside the real seekable range
+- added Media Session integration so supported browsers can use:
+  - metadata
+  - play
+  - pause
+  - stop
+  - seekbackward / seekforward only when the stream actually exposes DVR-like seeking
+- updated single-view playback so the page now:
+  - passes mute/fullscreen ownership into `HlsPlayer`
+  - surfaces PiP support, live-window state, and volume in the sidebar diagnostics
+- updated multiview tiles so each tile gets compact in-player controls without breaking the existing one-audio-owner rule
+- refined multiview control density so denser layouts scale the control chrome down further:
+  - `2x2` stays compact
+  - `3x3` now uses a smaller `micro` control treatment
+- kept PiP explicit at the player level, but standardized runtime playback on native video PiP so live HLS playback stays attached to the real video element instead of moving into a separate PiP document
+- kept live-stream realism explicit:
+  - no fake seek controls on live-only streams
+  - `No DVR` is shown when the stream does not expose a real seekable window
+- added targeted frontend tests for:
+  - browser media capability detection
+  - Media Session integration logic
+  - paused-player diagnostics mapping
+  - explicit HlsPlayer controls and PiP/fullscreen state
+  - multiview control-density selection
+  - native video PiP activation and state handling
+
+### Files Added Or Changed
+
+- frontend player code:
+  - `apps/web/src/player/hls-player.tsx`
+  - `apps/web/src/player/browser-media.ts`
+  - `apps/web/src/player/media-session.ts`
+  - `apps/web/src/player/player-control-overlay.tsx`
+  - `apps/web/src/player/playback-diagnostics.ts`
+  - `apps/web/src/player/multiview-tile-card.tsx`
+- frontend pages:
+  - `apps/web/src/pages/channel-watch-page.tsx`
+- frontend tests:
+  - `apps/web/src/player/browser-media.test.ts`
+  - `apps/web/src/player/media-session.test.ts`
+  - `apps/web/src/player/hls-player.test.tsx`
+  - `apps/web/src/player/playback-diagnostics.test.ts`
+- docs:
+  - `docs/architecture/player-architecture.md`
+  - `docs/standards/player-hls-standards.md`
+  - `docs/standards/testing-standards.md`
+  - `docs/handoff/codex-handoff.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- Kept browser-media capability detection and Media Session logic in dedicated `player/` helpers instead of embedding browser-condition branches directly into route pages.
+- Used one shared in-player control overlay for single-view and multiview so Chrome and Firefox both benefit from explicit controls even when their native PiP behavior differs.
+- Exposed seek controls only when the media element reports a real seekable window, because TV-Dash is live-first and should not fake DVR on non-seekable streams.
+- Preserved the existing one-active-audio multiview rule by routing in-player mute changes back through the existing tile audio ownership logic.
+
+### Verification Run
+
+- `npm run test -w apps/web -- src/player/browser-media.test.ts src/player/media-session.test.ts src/player/playback-diagnostics.test.ts src/player/hls-player.test.tsx src/player/multiview-tile-card.test.tsx`
+- `npm run lint -w apps/web`
+
+### Remaining Risk
+
+- Media Session support still depends on what each browser actually exposes; unsupported actions are cleared gracefully, but browser/system media UI will still vary.
+- PiP richness still differs across browsers, especially Firefox vs Chrome; TV-Dash now provides the explicit launch point and in-page controls, but native floating-window chrome remains browser-owned.
+- Native browser PiP keeps playback stable above other apps, but custom HTML controls remain limited by the browser-owned PiP window.
+- The player now shows `No DVR` when the stream is not seekable, but there is still no richer operator hint for large DVR windows such as bookmark or jump-to-live controls.
+
+### Exact Suggested Next Task
+
+Add focused-player keyboard shortcuts for play/pause, mute, PiP, and fullscreen, then extend the live-window UX with an explicit `jump to live` action and a clearer `behind live` indicator for long DVR windows.
+
 ## `2026-04-04T17:15:00+03:00`
 
 ### Objective

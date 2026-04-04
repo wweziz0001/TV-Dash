@@ -1,5 +1,7 @@
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+let mediaPaused = true;
 
 const { MockHls } = vi.hoisted(() => {
   class MockHls {
@@ -61,7 +63,93 @@ describe("HlsPlayer", () => {
   beforeEach(() => {
     MockHls.instances = [];
     MockHls.isSupported.mockReturnValue(true);
-    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    mediaPaused = true;
+
+    Object.defineProperty(HTMLMediaElement.prototype, "paused", {
+      configurable: true,
+      get() {
+        return mediaPaused;
+      },
+    });
+
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(async function (this: HTMLMediaElement) {
+      mediaPaused = false;
+      this.dispatchEvent(new Event("play"));
+      this.dispatchEvent(new Event("playing"));
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(function (this: HTMLMediaElement) {
+      mediaPaused = true;
+      this.dispatchEvent(new Event("pause"));
+    });
+
+    Object.defineProperty(document, "pictureInPictureEnabled", {
+      configurable: true,
+      value: true,
+    });
+    Object.defineProperty(window, "documentPictureInPicture", {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
+    Object.defineProperty(document, "pictureInPictureElement", {
+      configurable: true,
+      value: null,
+      writable: true,
+    });
+    Object.defineProperty(document, "exitPictureInPicture", {
+      configurable: true,
+      value: vi.fn(async () => {
+        Object.defineProperty(document, "pictureInPictureElement", {
+          configurable: true,
+          value: null,
+          writable: true,
+        });
+      }),
+    });
+    Object.defineProperty(document, "fullscreenEnabled", {
+      configurable: true,
+      value: true,
+    });
+    Object.defineProperty(document, "fullscreenElement", {
+      configurable: true,
+      value: null,
+      writable: true,
+    });
+    Object.defineProperty(document, "exitFullscreen", {
+      configurable: true,
+      value: vi.fn(async () => {
+        Object.defineProperty(document, "fullscreenElement", {
+          configurable: true,
+          value: null,
+          writable: true,
+        });
+        document.dispatchEvent(new Event("fullscreenchange"));
+      }),
+    });
+    Object.defineProperty(HTMLVideoElement.prototype, "requestPictureInPicture", {
+      configurable: true,
+      value: vi.fn(async function (this: HTMLVideoElement) {
+        Object.defineProperty(document, "pictureInPictureElement", {
+          configurable: true,
+          value: this,
+          writable: true,
+        });
+        this.dispatchEvent(new Event("enterpictureinpicture"));
+        return {};
+      }),
+    });
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      value: vi.fn(async function (this: HTMLElement) {
+        Object.defineProperty(document, "fullscreenElement", {
+          configurable: true,
+          value: this,
+          writable: true,
+        });
+        document.dispatchEvent(new Event("fullscreenchange"));
+      }),
+    });
+
     vi.useFakeTimers();
   });
 
@@ -228,5 +316,134 @@ describe("HlsPlayer", () => {
     });
 
     expect(handleSelectedQualityChange).toHaveBeenLastCalledWith("1");
+  });
+
+  it("renders explicit in-player controls and reports pause, mute, PiP, and fullscreen state", async () => {
+    const handleMutedChange = vi.fn();
+    const handleDiagnosticsChange = vi.fn();
+
+    const { container } = render(
+      <HlsPlayer
+        muted={false}
+        onDiagnosticsChange={handleDiagnosticsChange}
+        onMutedChange={handleMutedChange}
+        src="https://example.com/a.m3u8"
+        title="Channel A"
+      />,
+    );
+
+    act(() => {
+      MockHls.instances[0].emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 1080 }, { height: 720 }],
+      });
+    });
+
+    const video = container.querySelector("video") as HTMLVideoElement;
+
+    Object.defineProperty(video, "seekable", {
+      configurable: true,
+      value: {
+        length: 1,
+        start: () => 100,
+        end: () => 160,
+      },
+    });
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      value: 120,
+      writable: true,
+    });
+
+    fireEvent(video, new Event("loadedmetadata"));
+    fireEvent(video, new Event("timeupdate"));
+    const playerRoot = screen.getByTestId("player-surface");
+    fireEvent.mouseOver(playerRoot);
+    fireEvent.mouseMove(playerRoot);
+
+    expect(screen.getByRole("button", { name: "Pause playback" })).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Player volume" })).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Player timeline" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Jump to live" })).toBeInTheDocument();
+    expect(screen.getByText("00:20")).toBeInTheDocument();
+    expect(screen.getByText("01:00")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Picture-in-Picture" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Enter fullscreen" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mute audio" }));
+    expect(handleMutedChange).toHaveBeenCalledWith(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Jump to live" }));
+    expect(video.currentTime).toBe(160);
+
+    fireEvent.click(screen.getByRole("button", { name: "Pause playback" }));
+    expect(screen.getAllByText("Paused").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
+    expect(screen.getByText("Fullscreen")).toBeInTheDocument();
+
+    expect(handleDiagnosticsChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        isPaused: true,
+        canPictureInPicture: true,
+        isFullscreenActive: true,
+      }),
+    );
+  });
+
+  it("shows player chrome on hover and hides it after inactivity or mouse leave", () => {
+    render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
+
+    const playerRoot = screen.getByTestId("player-surface");
+    const statusChrome = screen.getByTestId("player-status-chrome");
+    const controlOverlay = screen.getByTestId("player-control-overlay");
+
+    expect(statusChrome).toHaveClass("opacity-0");
+    expect(controlOverlay).toHaveClass("opacity-0");
+
+    fireEvent.mouseOver(playerRoot);
+    fireEvent.mouseMove(playerRoot);
+
+    expect(statusChrome).toHaveClass("opacity-100");
+    expect(controlOverlay).toHaveClass("opacity-100");
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(statusChrome).toHaveClass("opacity-0");
+    expect(controlOverlay).toHaveClass("opacity-0");
+
+    fireEvent.mouseOver(playerRoot);
+    fireEvent.mouseMove(playerRoot);
+
+    expect(statusChrome).toHaveClass("opacity-100");
+    expect(controlOverlay).toHaveClass("opacity-100");
+
+    fireEvent.mouseLeave(playerRoot);
+
+    expect(statusChrome).toHaveClass("opacity-0");
+    expect(controlOverlay).toHaveClass("opacity-0");
+  });
+
+  it("opens native video picture-in-picture without moving playback into a separate document", async () => {
+    render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
+
+    act(() => {
+      MockHls.instances[0].emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 1080 }, { height: 720 }],
+      });
+    });
+
+    const playerRoot = screen.getByTestId("player-surface");
+    fireEvent.mouseOver(playerRoot);
+    fireEvent.mouseMove(playerRoot);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Open Picture-in-Picture" }));
+      await Promise.resolve();
+    });
+
+    expect(HTMLVideoElement.prototype.requestPictureInPicture).toHaveBeenCalledTimes(1);
+    expect(document.pictureInPictureElement).toBeTruthy();
   });
 });

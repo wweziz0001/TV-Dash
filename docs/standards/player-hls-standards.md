@@ -101,10 +101,38 @@ Any change to retry timing or retry count must consider multi-view bandwidth pre
 - Native fallback must still publish quality/status callbacks in the reduced form the browser supports.
 - Unsupported browsers must surface a clear, user-facing error state.
 
+## Explicit Player Controls
+
+- TV-Dash must not rely on browser-native controls alone for critical playback actions.
+- `HlsPlayer` should expose visible in-page controls for:
+  - play/pause
+  - mute/unmute
+  - volume
+  - fullscreen
+  - Picture-in-Picture when supported
+- controls must stay keyboard-usable and visible without hover-only discovery
+- compact multi-view controls are preferred over removing controls entirely
+
+## Picture-In-Picture And Browser Media APIs
+
+- PiP support must be capability-detected inside `player/`, not guessed from browser family names.
+- When PiP is unsupported, the control must be disabled or hidden with an operator-facing explanation.
+- Firefox may provide richer native PiP chrome than Chrome; do not let that reduce TV-Dash's own in-page controls.
+- Fullscreen and PiP toggles should call the browser APIs directly from player-owned actions and keep state reflected in player diagnostics.
+- Media Session metadata and handlers belong in `player/` so browser/system media controls stay aligned with TV-Dash playback state.
+
+## Live DVR And Seek Realism
+
+- Seek controls are only valid when the media element exposes a real seekable range.
+- Live-only streams without DVR must not show fake seek buttons.
+- When a seekable live window exists, seek actions should clamp within the available range and preserve the live-edge concept for the operator.
+- Player UI should make it clear whether the viewer is at the live edge, behind live, or on a stream with no DVR window.
+
 ## Separation Of Engine And UI
 
 - `HlsPlayer` may render its own lightweight overlays for loading, status, and retry because those are playback-engine states.
-- Pages and surrounding components own layout-specific controls and orchestration.
+- `HlsPlayer` may also render its own playback-control overlay because that behavior is part of the browser playback boundary.
+- Pages and surrounding components still own layout-specific controls, recording actions, and orchestration.
 - Do not put persistence or navigation logic inside the player engine component.
 
 ## Resource Control Rules
@@ -129,6 +157,8 @@ Higher-risk player changes should add component or integration coverage for:
 - retry and terminal error UI
 - source replacement cleanup
 - autoplay and mute transitions
+- explicit player controls, PiP support, and disabled-browser fallbacks
+- Media Session handler wiring when browser/system playback integration changes
 
 ## Review Checklist
 

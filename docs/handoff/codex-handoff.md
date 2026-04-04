@@ -19,6 +19,7 @@ The current operator milestone also adds:
 - a dedicated admin observability area with live viewer sessions, per-channel current viewer counts, recent failures, and a filterable logs viewer
 - a hardened auth/access baseline with session-version invalidation, explicit permission guards, admin-only stream inspection, and a durable admin audit trail
 - a device-ux pass that makes mobile browsing practical, improves tablet watch/multiview behavior, and gives large-screen walls clearer layout policy
+- a stronger cross-browser player UX pass with explicit in-player controls, PiP handling, Media Session integration, and honest live-DVR behavior
 
 ## Current Architecture Summary
 
@@ -147,9 +148,12 @@ Key relationship rules:
 
 ## Player Architecture Overview
 
-- `player/hls-player.tsx` owns one video element and one HLS.js instance
+- `player/hls-player.tsx` owns one video element, one HLS.js instance, and the explicit in-player browser-control surface
+- `player/browser-media.ts` owns browser capability detection plus live-DVR seek window helpers
+- `player/media-session.ts` owns Media Session metadata/action wiring
+- `player/player-control-overlay.tsx` owns the compact playback-control chrome shared by single-view, multiview, and preview playback
 - `player/playback-recovery.ts` owns bounded fatal error recovery decisions
-- `player/playback-diagnostics.ts` maps raw lifecycle state into operator-facing labels, summaries, recovery state, and failure-class hints
+- `player/playback-diagnostics.ts` maps raw lifecycle state into operator-facing labels, summaries, recovery state, failure-class hints, and browser-control state such as paused/PiP/fullscreen/live-edge
 - quality options and preference resolution live in `player/quality-options.ts`
 - manual-variant channels reach the player through a backend-generated synthetic master playlist, not duplicated channel rows
 - supported multi-view layouts live in `player/layouts.ts`
@@ -162,6 +166,42 @@ Key relationship rules:
   - root cause was `HlsPlayer` treating `initialBias` as a source-lifecycle dependency, so mute/unmute handoff tore down HLS and re-requested manifests
   - `HlsPlayer` now rebuilds playback only for real source changes or explicit retries, while mute state and preferred-quality updates sync separately
   - `MultiviewTileCard` no longer keys `HlsPlayer` by `tileIndex:channelId`, so same-source focus/metadata changes do not force React remounts
+
+## Player Controls And Browser Media UX
+
+- Player controls now available directly inside `HlsPlayer`:
+  - play/pause
+  - mute/unmute
+  - volume slider
+  - fullscreen
+  - Picture-in-Picture
+  - seek backward / seek forward only when the stream exposes a real seekable live window
+- Single-view uses the same `HlsPlayer` overlay plus the existing sidebar controls for quality, fullscreen, and recording actions.
+- Multiview tiles now get a compact version of the same controls inside each tile without breaking the one-audio-owner rule.
+- Multiview control density now scales by layout density:
+  - `2x2` keeps compact controls
+  - `3x3` uses an even smaller control treatment for crowded monitor walls
+- Media Session support now exists where the browser exposes it:
+  - metadata is published as `TV-Dash / Live playback`
+  - play, pause, and stop route back into the same player-owned actions
+  - seekbackward/seekforward are only registered when the active stream exposes a real DVR window
+- PiP support is now explicit rather than browser-default-only:
+  - supported browsers get an explicit PiP button
+  - TV-Dash now prefers native video PiP for live-playback stability instead of moving the whole player into a separate PiP document
+  - the browser-managed PiP window stays above the tab and other apps, but its in-window controls remain browser-limited
+  - unsupported browsers keep the control disabled with a reason instead of exposing a broken UX
+- Cross-browser expectations:
+  - Firefox may still feel richer in native PiP chrome
+  - Chrome now benefits from explicit TV-Dash in-page controls, PiP toggling, and Media Session actions instead of depending on browser defaults
+- Live-stream limitations that still remain:
+  - not every live source exposes a seekable DVR window
+  - when no real seek window exists, TV-Dash intentionally shows `No DVR` and omits seek buttons rather than faking VOD behavior
+  - PiP richness still varies by browser even though TV-Dash now exposes the same launch point and state handling
+  - browser-native PiP does not allow TV-Dash to force its custom HTML controls into the floating window
+- Recommended future enhancements:
+  - add focused-player keyboard shortcuts for play/pause, mute, PiP, and fullscreen that integrate cleanly with the existing multiview shortcut model
+  - add optional channel artwork to Media Session metadata once stable image URLs are available
+  - add a clearer operator hint for `behind live` vs `paused` when DVR windows are large
 
 ## Device Experience Overview
 
