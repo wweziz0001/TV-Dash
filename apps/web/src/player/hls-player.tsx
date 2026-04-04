@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FocusEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import Hls from "hls.js";
 import { AlertTriangle, LoaderCircle, Pause, Play, RotateCcw, Signal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -164,6 +165,17 @@ export function HlsPlayer({
   const [areControlsVisible, setAreControlsVisible] = useState(false);
   const [floatingPipSize] = useState({ width: FLOATING_PIP_WIDTH, height: FLOATING_PIP_HEIGHT });
   const [floatingPipPosition, setFloatingPipPosition] = useState(() => getNextFloatingPipPosition());
+  const [surfacePortalHost] = useState<HTMLDivElement | null>(() => {
+    if (typeof document === "undefined") {
+      return null;
+    }
+
+    const host = document.createElement("div");
+    host.className = "h-full w-full";
+    return host;
+  });
+  const [inlineSurfaceAnchor, setInlineSurfaceAnchor] = useState<HTMLDivElement | null>(null);
+  const [floatingSurfaceAnchor, setFloatingSurfaceAnchor] = useState<HTMLDivElement | null>(null);
   const floatingPipDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -553,6 +565,30 @@ export function HlsPlayer({
     statusDetail,
     volume,
   ]);
+
+  useEffect(() => () => {
+    surfacePortalHost?.remove();
+  }, [surfacePortalHost]);
+
+  useEffect(() => {
+    if (!surfacePortalHost) {
+      return;
+    }
+
+    const targetAnchor = isPictureInPictureMode ? floatingSurfaceAnchor : inlineSurfaceAnchor;
+
+    if (!targetAnchor) {
+      return;
+    }
+
+    targetAnchor.appendChild(surfacePortalHost);
+
+    return () => {
+      if (surfacePortalHost.parentElement === targetAnchor) {
+        targetAnchor.removeChild(surfacePortalHost);
+      }
+    };
+  }, [floatingSurfaceAnchor, inlineSurfaceAnchor, isPictureInPictureMode, surfacePortalHost]);
 
   useEffect(() => {
     syncBrowserState();
@@ -1007,30 +1043,13 @@ export function HlsPlayer({
     return (
       <div
         ref={playerFrameRef}
-        className={cn(
-          "relative overflow-hidden rounded-[1.1rem] bg-black",
-          isPictureInPictureMode
-            ? "fixed z-[90] shadow-[0_24px_80px_rgba(2,6,23,0.55)] ring-1 ring-cyan-400/25"
-            : "h-full",
-          className,
-        )}
-        data-floating-pip={isPictureInPictureMode ? "true" : undefined}
+        className={cn("relative h-full overflow-hidden rounded-[1.1rem] bg-black", className)}
         data-testid="player-surface"
         onBlur={handleBlurWithin}
         onFocus={handleFocusWithin}
         onMouseEnter={handlePointerEnter}
         onMouseLeave={handlePointerLeave}
         onMouseMove={handlePointerMove}
-        style={
-          isPictureInPictureMode
-            ? {
-                left: `${floatingPipPosition.left}px`,
-                top: `${floatingPipPosition.top + 28}px`,
-                width: `min(${FLOATING_PIP_WIDTH}px, calc(100vw - ${FLOATING_PIP_GAP * 2}px))`,
-                height: `min(${FLOATING_PIP_HEIGHT}px, calc(100vh - ${FLOATING_PIP_GAP * 2}px))`,
-              }
-            : undefined
-        }
       >
         <video ref={videoRef} className="h-full w-full object-cover" playsInline muted={playerMuted} />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10" />
@@ -1163,28 +1182,42 @@ export function HlsPlayer({
         </div>
       ) : null}
 
-      <div className="contents">
-        {isPictureInPictureMode ? (
+      <div className="h-full w-full" ref={setInlineSurfaceAnchor} />
+
+      {surfacePortalHost ? createPortal(renderPlayerSurface(), surfacePortalHost) : null}
+
+      {isPictureInPictureMode
+        ? createPortal(
           <div
-            aria-label="Move floating PiP"
-            className={cn(
-              "fixed z-[95] flex items-center justify-between rounded-t-[1.1rem] bg-gradient-to-b from-slate-950/75 to-transparent px-3 py-2 text-[11px] text-slate-200 transition-opacity duration-200",
-              areControlsVisible ? "opacity-100" : "pointer-events-none opacity-0",
-            )}
-            data-testid="floating-pip-drag-handle"
-            onPointerDown={handleFloatingPipDragStart}
+            className="fixed z-[95] overflow-hidden rounded-[1.15rem] border border-cyan-400/25 bg-slate-950/85 shadow-[0_24px_80px_rgba(2,6,23,0.55)] backdrop-blur-sm"
+            data-floating-pip="true"
+            data-testid="floating-pip-shell"
             style={{
               left: `${floatingPipPosition.left}px`,
               top: `${floatingPipPosition.top}px`,
               width: `min(${floatingPipSize.width}px, calc(100vw - ${FLOATING_PIP_GAP * 2}px))`,
+              height: `min(${floatingPipSize.height + 28}px, calc(100vh - ${FLOATING_PIP_GAP * 2}px))`,
             }}
           >
-            <span className="truncate pr-3">{title}</span>
-            <span className="uppercase tracking-[0.18em] text-slate-400">Drag</span>
+            <div
+              aria-label="Move floating PiP"
+              className={cn(
+                "flex items-center justify-between px-3 py-2 text-[11px] text-slate-200 transition-opacity duration-200",
+                areControlsVisible ? "cursor-grab opacity-100" : "pointer-events-none opacity-0",
+              )}
+              data-testid="floating-pip-drag-handle"
+              onPointerDown={handleFloatingPipDragStart}
+            >
+              <span className="truncate pr-3">{title}</span>
+              <span className="uppercase tracking-[0.18em] text-slate-400">Drag</span>
+            </div>
+            <div
+              className="h-[calc(100%-28px)] w-full"
+              ref={setFloatingSurfaceAnchor}
+            />
           </div>
-        ) : null}
-        {renderPlayerSurface()}
-      </div>
+        , document.body)
+        : null}
     </>
   );
 }
