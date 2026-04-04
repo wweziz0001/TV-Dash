@@ -22,7 +22,13 @@ That does not belong in:
 ## Current Modules
 
 - `player/hls-player.tsx`
-  - React wrapper around one `<video>` element and one HLS.js instance
+  - React wrapper around one `<video>` element, one HLS.js instance, explicit in-player controls, and browser media API integration
+- `player/browser-media.ts`
+  - browser capability detection plus live-DVR/seek window helpers for PiP, fullscreen, and seek realism
+- `player/media-session.ts`
+  - Media Session metadata/action wiring for browser and system media controls
+- `player/player-control-overlay.tsx`
+  - compact overlay controls for play/pause, mute, volume, PiP, fullscreen, and live-DVR seek actions
 - `player/quality-options.ts`
   - converts manifest levels into UI options and resolves manual/auto selection
 - `player/playback-recovery.ts`
@@ -61,7 +67,7 @@ That does not belong in:
 
 - Route pages own page orchestration and persistence payload assembly.
 - Frontend service helpers may choose the playback URL contract (`DIRECT` upstream URL vs `PROXY` gateway path), but they do not own HLS lifecycle behavior.
-- `HlsPlayer` owns playback lifecycle and emits status, diagnostics, and quality callbacks upward.
+- `HlsPlayer` owns playback lifecycle, explicit player controls, browser media API integration, and emits status, diagnostics, mute, and quality callbacks upward.
 - Multi-view pages own which tile is focused, reassigned, saved, or displayed.
 - Player-facing multiview UI components may live under `player/` when they wrap `HlsPlayer`, but pages still resolve playback URLs and persistence decisions.
 - Shared quality and tile decision logic lives in pure player helpers.
@@ -132,6 +138,33 @@ Do not add silent infinite retry loops. Any retry policy change must consider mu
 - multi-view tile fullscreen should keep the same focused tile before and after exiting fullscreen
 - fullscreen must preserve current diagnostics, mute state, and selected quality instead of rebuilding playback purely for presentation
 - immersive playback controls must stay available through explicit buttons or stable keyboard shortcuts instead of hover-only affordances
+
+## In-Player Controls And Browser Integration
+
+- TV-Dash now treats browser-native controls as additive, not sufficient on their own.
+- `HlsPlayer` must expose explicit in-page controls for:
+  - play/pause
+  - mute/unmute
+  - volume
+  - fullscreen
+  - Picture-in-Picture
+- seek backward and seek forward are only shown when the current media element exposes a real seekable window
+- live-only streams without DVR must surface honest state such as `No DVR` instead of fake VOD-style seek controls
+- player diagnostics may report paused, muted, PiP-active, fullscreen-active, and live-edge state so surrounding pages can explain the current browser/player state without reimplementing media APIs
+- fullscreen and PiP capability detection belongs in player helpers, not route pages, because Chrome and Firefox diverge most in those browser-owned behaviors
+
+## Picture-In-Picture And Media Session Policy
+
+- PiP must be triggered from an explicit TV-Dash control when the browser exposes the API
+- unsupported PiP states must disable the control with a clear reason rather than leaving a broken button
+- Firefox may still expose richer native PiP chrome than Chrome; TV-Dash should assume Chrome needs stronger in-page controls
+- Media Session integration should publish at least:
+  - metadata
+  - play
+  - pause
+  - stop
+  - seekbackward/seekforward only when a real seekable live window exists
+- Media Session handlers must call back into the same player-owned actions as the visible controls so browser/system controls stay consistent with the page UI
 
 ## Performance Safeguards
 
