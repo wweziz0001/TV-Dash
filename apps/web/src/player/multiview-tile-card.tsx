@@ -112,11 +112,10 @@ export function MultiviewTileCard({
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Badge size="sm">Tile {tileIndex + 1}</Badge>
+            <Badge size="sm">T {tileIndex + 1}</Badge>
             <p className="truncate text-[13px] font-semibold text-white">{channel?.name ?? `Tile ${tileIndex + 1}`}</p>
             <Badge className={statusBadgeClassName} size="sm">{playerDiagnostics.label}</Badge>
             {playerDiagnostics.recoveryState === "recovered" ? <Badge className="text-emerald-200" size="sm">Recovered</Badge> : null}
-            {isFocused ? <Badge size="sm">Focused</Badge> : null}
             {tile.isMuted ? <Badge size="sm">Muted</Badge> : <Badge className="text-emerald-200" size="sm">Audio</Badge>}
           </div>
           <p className="mt-0.5 truncate text-[11px] text-slate-400">
@@ -145,7 +144,7 @@ export function MultiviewTileCard({
       <div className="mb-2 flex flex-wrap gap-1.5">
         <Button onClick={onOpenPicker} size="sm" type="button" variant={channel ? "secondary" : "primary"}>
           <Search className="h-4 w-4" />
-          {channel ? "Replace" : "Assign"}
+          {channel ? "" : ""}
         </Button>
         <Button aria-label={tile.isMuted ? "Unmute tile audio" : "Mute tile audio"} onClick={onToggleAudio} size="icon-sm" type="button" variant={tile.isMuted ? "secondary" : "primary"}>
           {tile.isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
@@ -185,7 +184,7 @@ export function MultiviewTileCard({
         <Button aria-label="Clear tile" disabled={!channel} onClick={onClear} size="icon-sm" type="button" variant="ghost">
           <X className="h-4 w-4" />
         </Button>
-        <div className="flex w-full items-center gap-1.5 rounded-xl border border-slate-800/80 bg-slate-950/70 px-2.5 py-1 sm:ml-auto sm:w-auto sm:min-w-[88px] sm:rounded-lg sm:px-2 sm:py-0">
+        <div className="flex w-full items-center gap-1.5 rounded-xl border border-slate-800/80 bg-slate-950/70 px-2.5 py-1 sm:ml-auto sm:w-1 sm:min-w-[68px] sm:rounded-lg sm:px-0 sm:py-0">
           <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500"></span>
           <Select
             className="h-7 border-0 bg-transparent px-0 text-[11px] focus:border-transparent sm:h-6"
