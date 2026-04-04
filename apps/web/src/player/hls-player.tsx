@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FocusEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type FocusEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import Hls from "hls.js";
 import { AlertTriangle, LoaderCircle, Pause, Play, RotateCcw, Signal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -55,13 +55,34 @@ const FLOATING_PIP_GAP = 16;
 const FLOATING_PIP_OFFSET = 28;
 let nextFloatingPipSlot = 0;
 
-function getNextFloatingPipPosition() {
+function getNextFloatingPipPosition(size = { width: FLOATING_PIP_WIDTH, height: FLOATING_PIP_HEIGHT }) {
   const slot = nextFloatingPipSlot;
   nextFloatingPipSlot += 1;
+  const viewportWidth = typeof window === "undefined" ? size.width + FLOATING_PIP_GAP * 2 : window.innerWidth;
+  const viewportHeight = typeof window === "undefined" ? size.height + FLOATING_PIP_GAP * 2 : window.innerHeight;
+  const maxLeft = Math.max(viewportWidth - size.width - FLOATING_PIP_GAP, FLOATING_PIP_GAP);
+  const maxTop = Math.max(viewportHeight - size.height - FLOATING_PIP_GAP, FLOATING_PIP_GAP);
 
   return {
-    bottom: FLOATING_PIP_GAP + (slot % 3) * FLOATING_PIP_OFFSET,
-    right: FLOATING_PIP_GAP + (Math.floor(slot / 3) % 3) * FLOATING_PIP_OFFSET,
+    left: Math.max(FLOATING_PIP_GAP, maxLeft - (Math.floor(slot / 3) % 3) * FLOATING_PIP_OFFSET),
+    top: Math.max(FLOATING_PIP_GAP, maxTop - (slot % 3) * FLOATING_PIP_OFFSET),
+  };
+}
+
+function clampFloatingPipPosition(
+  position: { left: number; top: number },
+  size: { width: number; height: number },
+) {
+  if (typeof window === "undefined") {
+    return position;
+  }
+
+  const maxLeft = Math.max(window.innerWidth - size.width - FLOATING_PIP_GAP, FLOATING_PIP_GAP);
+  const maxTop = Math.max(window.innerHeight - size.height - FLOATING_PIP_GAP, FLOATING_PIP_GAP);
+
+  return {
+    left: Math.min(Math.max(position.left, FLOATING_PIP_GAP), maxLeft),
+    top: Math.min(Math.max(position.top, FLOATING_PIP_GAP), maxTop),
   };
 }
 
@@ -141,7 +162,15 @@ export function HlsPlayer({
   const [isPictureInPictureMode, setIsPictureInPictureMode] = useState(false);
   const [isFullscreenMode, setIsFullscreenMode] = useState(false);
   const [areControlsVisible, setAreControlsVisible] = useState(false);
+  const [floatingPipSize] = useState({ width: FLOATING_PIP_WIDTH, height: FLOATING_PIP_HEIGHT });
   const [floatingPipPosition, setFloatingPipPosition] = useState(() => getNextFloatingPipPosition());
+  const floatingPipDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startLeft: number;
+    startTop: number;
+  } | null>(null);
 
   callbacksRef.current = {
     onMutedChange,
@@ -166,6 +195,22 @@ export function HlsPlayer({
 
   function clearFloatingPictureInPictureState() {
     setIsPictureInPictureMode(false);
+  }
+
+  function handleFloatingPipDragStart(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!isPictureInPictureMode) {
+      return;
+    }
+
+    floatingPipDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startLeft: floatingPipPosition.left,
+      startTop: floatingPipPosition.top,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    showControls();
   }
 
   function updateStatus(nextStatus: PlayerStatus) {
@@ -414,7 +459,7 @@ export function HlsPlayer({
         return;
       }
 
-      setFloatingPipPosition(getNextFloatingPipPosition());
+      setFloatingPipPosition(getNextFloatingPipPosition(floatingPipSize));
       setIsPictureInPictureMode(true);
       setStatusDetail("Opened a TV-Dash floating Picture-in-Picture panel.");
       showControls();
@@ -512,6 +557,50 @@ export function HlsPlayer({
   useEffect(() => {
     syncBrowserState();
   }, [isPictureInPictureMode]);
+
+  useEffect(() => {
+    if (!isPictureInPictureMode) {
+      floatingPipDragRef.current = null;
+      return;
+    }
+
+    function handlePointerMove(event: PointerEvent) {
+      if (!floatingPipDragRef.current || floatingPipDragRef.current.pointerId !== event.pointerId) {
+        return;
+      }
+
+      const deltaX = event.clientX - floatingPipDragRef.current.startX;
+      const deltaY = event.clientY - floatingPipDragRef.current.startY;
+
+      setFloatingPipPosition(
+        clampFloatingPipPosition(
+          {
+            left: floatingPipDragRef.current.startLeft + deltaX,
+            top: floatingPipDragRef.current.startTop + deltaY,
+          },
+          floatingPipSize,
+        ),
+      );
+    }
+
+    function handlePointerUp(event: PointerEvent) {
+      if (!floatingPipDragRef.current || floatingPipDragRef.current.pointerId !== event.pointerId) {
+        return;
+      }
+
+      floatingPipDragRef.current = null;
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [floatingPipSize, isPictureInPictureMode]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -925,7 +1014,8 @@ export function HlsPlayer({
             : "h-full",
           className,
         )}
-        data-testid={isPictureInPictureMode ? "floating-pip-shell" : undefined}
+        data-floating-pip={isPictureInPictureMode ? "true" : undefined}
+        data-testid="player-surface"
         onBlur={handleBlurWithin}
         onFocus={handleFocusWithin}
         onMouseEnter={handlePointerEnter}
@@ -934,8 +1024,8 @@ export function HlsPlayer({
         style={
           isPictureInPictureMode
             ? {
-                bottom: `${floatingPipPosition.bottom}px`,
-                right: `${floatingPipPosition.right}px`,
+                left: `${floatingPipPosition.left}px`,
+                top: `${floatingPipPosition.top + 28}px`,
                 width: `min(${FLOATING_PIP_WIDTH}px, calc(100vw - ${FLOATING_PIP_GAP * 2}px))`,
                 height: `min(${FLOATING_PIP_HEIGHT}px, calc(100vh - ${FLOATING_PIP_GAP * 2}px))`,
               }
@@ -948,7 +1038,7 @@ export function HlsPlayer({
         <div
           data-testid="player-status-chrome"
           className={cn(
-            "pointer-events-none absolute left-2.5 top-2.5 flex flex-wrap items-center gap-1.5 transition-opacity duration-200",
+            "pointer-events-none absolute left-2.5 top-2.5 z-20 flex flex-wrap items-center gap-1.5 transition-opacity duration-200",
             areControlsVisible ? "opacity-100" : "opacity-0",
           )}
         >
@@ -980,7 +1070,7 @@ export function HlsPlayer({
         </div>
 
         {showCenterPlaybackButton ? (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
             <Button
               aria-label={isPaused ? "Resume playback" : "Pause playback"}
               className="pointer-events-auto h-12 w-12 rounded-full border border-white/20 bg-slate-950/78 text-white shadow-[0_16px_40px_rgba(2,6,23,0.45)] backdrop-blur-sm hover:bg-slate-900/90"
@@ -1054,11 +1144,9 @@ export function HlsPlayer({
     );
   }
 
-  let content: ReactNode = renderPlayerSurface();
-
-  if (isPictureInPictureMode) {
-    content = (
-      <>
+  return (
+    <>
+      {isPictureInPictureMode ? (
         <div
           className="flex h-full min-h-[160px] items-center justify-center rounded-[1rem] border border-dashed border-cyan-400/30 bg-slate-950/70 p-4 text-center"
           data-testid="floating-pip-placeholder"
@@ -1073,10 +1161,30 @@ export function HlsPlayer({
             </Button>
           </div>
         </div>
-        {renderPlayerSurface()}
-      </>
-    );
-  }
+      ) : null}
 
-  return content;
+      <div className="contents">
+        {isPictureInPictureMode ? (
+          <div
+            aria-label="Move floating PiP"
+            className={cn(
+              "fixed z-[95] flex items-center justify-between rounded-t-[1.1rem] bg-gradient-to-b from-slate-950/75 to-transparent px-3 py-2 text-[11px] text-slate-200 transition-opacity duration-200",
+              areControlsVisible ? "opacity-100" : "pointer-events-none opacity-0",
+            )}
+            data-testid="floating-pip-drag-handle"
+            onPointerDown={handleFloatingPipDragStart}
+            style={{
+              left: `${floatingPipPosition.left}px`,
+              top: `${floatingPipPosition.top}px`,
+              width: `min(${floatingPipSize.width}px, calc(100vw - ${FLOATING_PIP_GAP * 2}px))`,
+            }}
+          >
+            <span className="truncate pr-3">{title}</span>
+            <span className="uppercase tracking-[0.18em] text-slate-400">Drag</span>
+          </div>
+        ) : null}
+        {renderPlayerSurface()}
+      </div>
+    </>
+  );
 }

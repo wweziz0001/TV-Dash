@@ -356,8 +356,9 @@ describe("HlsPlayer", () => {
 
     fireEvent(video, new Event("loadedmetadata"));
     fireEvent(video, new Event("timeupdate"));
-    fireEvent.mouseEnter(container.firstElementChild as HTMLDivElement);
-    fireEvent.mouseMove(container.firstElementChild as HTMLDivElement);
+    const playerRoot = screen.getByTestId("player-surface");
+    fireEvent.mouseOver(playerRoot);
+    fireEvent.mouseMove(playerRoot);
 
     expect(screen.getByRole("button", { name: "Pause playback" })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: "Player volume" })).toBeInTheDocument();
@@ -394,16 +395,16 @@ describe("HlsPlayer", () => {
   });
 
   it("shows player chrome on hover and hides it after inactivity or mouse leave", () => {
-    const { container } = render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
+    render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
 
-    const playerRoot = container.firstElementChild as HTMLDivElement;
+    const playerRoot = screen.getByTestId("player-surface");
     const statusChrome = screen.getByTestId("player-status-chrome");
     const controlOverlay = screen.getByTestId("player-control-overlay");
 
     expect(statusChrome).toHaveClass("opacity-0");
     expect(controlOverlay).toHaveClass("opacity-0");
 
-    fireEvent.mouseEnter(playerRoot);
+    fireEvent.mouseOver(playerRoot);
     fireEvent.mouseMove(playerRoot);
 
     expect(statusChrome).toHaveClass("opacity-100");
@@ -416,7 +417,7 @@ describe("HlsPlayer", () => {
     expect(statusChrome).toHaveClass("opacity-0");
     expect(controlOverlay).toHaveClass("opacity-0");
 
-    fireEvent.mouseEnter(playerRoot);
+    fireEvent.mouseOver(playerRoot);
     fireEvent.mouseMove(playerRoot);
 
     expect(statusChrome).toHaveClass("opacity-100");
@@ -429,7 +430,7 @@ describe("HlsPlayer", () => {
   });
 
   it("opens multiple in-page PiP panels without using the browser-native PiP API", async () => {
-    const { container } = render(
+    render(
       <div>
         <HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />
         <HlsPlayer src="https://example.com/b.m3u8" title="Channel B" />
@@ -445,10 +446,10 @@ describe("HlsPlayer", () => {
       });
     });
 
-    const playerRoots = Array.from((container.firstElementChild as HTMLDivElement).children) as HTMLDivElement[];
+    const playerRoots = screen.getAllByTestId("player-surface");
 
     playerRoots.forEach((playerRoot) => {
-      fireEvent.mouseEnter(playerRoot);
+      fireEvent.mouseOver(playerRoot);
       fireEvent.mouseMove(playerRoot);
     });
 
@@ -460,11 +461,46 @@ describe("HlsPlayer", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getAllByTestId("floating-pip-shell")).toHaveLength(2);
+    expect(document.querySelectorAll('[data-floating-pip="true"]')).toHaveLength(2);
     expect(screen.getAllByTestId("floating-pip-placeholder")).toHaveLength(2);
     expect(HTMLVideoElement.prototype.requestPictureInPicture).not.toHaveBeenCalled();
     expect(MockHls.instances[0].destroy).not.toHaveBeenCalled();
     expect(MockHls.instances[1].destroy).not.toHaveBeenCalled();
     expect(screen.getAllByRole("button", { name: "Return from PiP" })).toHaveLength(2);
+  });
+
+  it("keeps the center playback control working after entering and leaving in-page PiP", async () => {
+    render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
+
+    act(() => {
+      MockHls.instances[0].emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 1080 }, { height: 720 }],
+      });
+    });
+
+    const playerRoot = screen.getByTestId("player-surface");
+    fireEvent.mouseOver(playerRoot);
+    fireEvent.mouseMove(playerRoot);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Open Picture-in-Picture" }));
+      await Promise.resolve();
+    });
+
+    expect(document.querySelector('[data-floating-pip="true"]')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Pause playback" }));
+    expect(screen.getAllByText("Paused").length).toBeGreaterThan(0);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Return from PiP" }));
+      await Promise.resolve();
+    });
+
+    fireEvent.mouseOver(playerRoot);
+    fireEvent.mouseMove(playerRoot);
+    fireEvent.click(screen.getByRole("button", { name: "Resume playback" }));
+
+    expect(screen.getByRole("button", { name: "Pause playback" })).toBeInTheDocument();
   });
 });
