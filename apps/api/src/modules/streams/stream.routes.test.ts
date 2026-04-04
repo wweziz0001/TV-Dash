@@ -411,6 +411,85 @@ segment12.ts`),
     });
   });
 
+  it("warms only the default timeshift variant instead of downloading every variant immediately", async () => {
+    mockPrisma.channel.findUnique.mockResolvedValue({
+      id: "66666666-6666-6666-6666-666666666666",
+      name: "Adaptive Buffered News",
+      slug: "adaptive-buffered-news",
+      isActive: true,
+      sourceMode: "MASTER_PLAYLIST",
+      masterHlsUrl: "https://origin.example.com/master.m3u8",
+      playbackMode: "PROXY",
+      timeshiftEnabled: true,
+      timeshiftWindowMinutes: 30,
+      upstreamUserAgent: null,
+      upstreamReferrer: null,
+      upstreamHeaders: null,
+      qualityVariants: [],
+    });
+
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === "https://origin.example.com/master.m3u8") {
+        return Promise.resolve({
+          ok: true,
+          text: vi.fn().mockResolvedValue(`#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=1200000,RESOLUTION=1280x720
+variant-a.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2400000,RESOLUTION=1920x1080
+variant-b.m3u8`),
+          headers: {
+            get: vi.fn().mockReturnValue("application/vnd.apple.mpegurl"),
+          },
+        });
+      }
+
+      if (url === "https://origin.example.com/variant-a.m3u8") {
+        return Promise.resolve({
+          ok: true,
+          text: vi.fn().mockResolvedValue(`#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:6
+#EXT-X-MEDIA-SEQUENCE:10
+#EXTINF:6.0,
+segment10.ts
+#EXTINF:6.0,
+segment11.ts
+#EXTINF:6.0,
+segment12.ts`),
+          headers: {
+            get: vi.fn().mockReturnValue("application/vnd.apple.mpegurl"),
+          },
+        });
+      }
+
+      if (url === "https://origin.example.com/segment10.ts" || url === "https://origin.example.com/segment11.ts" || url === "https://origin.example.com/segment12.ts") {
+        return Promise.resolve({
+          ok: true,
+          arrayBuffer: vi.fn().mockResolvedValue(Uint8Array.from([1, 2, 3]).buffer),
+          headers: {
+            get: vi.fn().mockReturnValue("video/mp2t"),
+          },
+        });
+      }
+
+      throw new Error(`Unexpected fetch ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/streams/channels/66666666-6666-6666-6666-666666666666/timeshift/status",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith("https://origin.example.com/master.m3u8", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("https://origin.example.com/variant-a.m3u8", expect.any(Object));
+    expect(fetchMock).not.toHaveBeenCalledWith("https://origin.example.com/variant-b.m3u8", expect.any(Object));
+  });
+
   it("serves a timeshift master playlist for proxy-backed channels with DVR enabled", async () => {
     mockPrisma.channel.findUnique.mockResolvedValue({
       id: "55555555-5555-5555-5555-555555555555",

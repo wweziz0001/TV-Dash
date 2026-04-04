@@ -68,6 +68,7 @@ interface TimeshiftVariantState extends TimeshiftVariantDefinition {
   segments: TimeshiftSegmentRecord[];
   assetsById: Map<string, TimeshiftAssetRecord>;
   lastUpdatedAtMs: number | null;
+  lastAccessAtMs: number | null;
 }
 
 interface ChannelTimeshiftState {
@@ -191,6 +192,7 @@ function createVariantState(definition: TimeshiftVariantDefinition): TimeshiftVa
     segments: [],
     assetsById: new Map(),
     lastUpdatedAtMs: null,
+    lastAccessAtMs: null,
   };
 }
 
@@ -218,6 +220,24 @@ async function loadChannelTimeshiftState(channelId: string) {
     configured,
     supported,
   } satisfies ChannelTimeshiftState;
+}
+
+function markVariantAccessed(variant: TimeshiftVariantState) {
+  variant.lastAccessAtMs = Date.now();
+}
+
+function getTrackedVariants(state: ChannelTimeshiftState) {
+  const now = Date.now();
+  const recentlyAccessedVariants = state.variants.filter((variant) => {
+    return variant.lastAccessAtMs !== null && now - variant.lastAccessAtMs < env.TIMESHIFT_IDLE_TTL_MS;
+  });
+
+  if (recentlyAccessedVariants.length > 0) {
+    return recentlyAccessedVariants;
+  }
+
+  const fallbackVariant = state.variants[0];
+  return fallbackVariant ? [fallbackVariant] : [];
 }
 
 function getVariantWindowSeconds(variant: TimeshiftVariantState) {
@@ -263,13 +283,14 @@ function buildReadyStatus(state: ChannelTimeshiftState): TimeshiftStatus {
     return buildDisabledStatus(state);
   }
 
-  const availableWindowSeconds = state.variants.length
-    ? Math.floor(Math.min(...state.variants.map((variant) => getVariantWindowSeconds(variant))))
+  const bufferedVariants = state.variants.filter((variant) => variant.segments.length > 0);
+  const availableWindowSeconds = bufferedVariants.length
+    ? Math.floor(Math.min(...bufferedVariants.map((variant) => getVariantWindowSeconds(variant))))
     : 0;
-  const bufferedSegmentCount = state.variants.length
-    ? Math.min(...state.variants.map((variant) => variant.segments.length))
+  const bufferedSegmentCount = bufferedVariants.length
+    ? Math.min(...bufferedVariants.map((variant) => variant.segments.length))
     : 0;
-  const lastUpdatedAtMs = state.variants.reduce<number | null>((latest, variant) => {
+  const lastUpdatedAtMs = bufferedVariants.reduce<number | null>((latest, variant) => {
     if (variant.lastUpdatedAtMs === null) {
       return latest;
     }
@@ -375,6 +396,7 @@ async function evictOldSegments(state: ChannelTimeshiftState, variant: Timeshift
 }
 
 async function refreshVariantState(state: ChannelTimeshiftState, variant: TimeshiftVariantState) {
+  markVariantAccessed(variant);
   const response = await fetchUpstreamResponse(variant.playlistUrl, state.requestConfig);
   const playlistText = await response.text();
   const parsed = parseMediaPlaylist(playlistText, variant.playlistUrl);
@@ -410,7 +432,7 @@ async function refreshVariantState(state: ChannelTimeshiftState, variant: Timesh
   await evictOldSegments(state, variant);
 }
 
-async function refreshChannelState(state: ChannelTimeshiftState) {
+async function refreshChannelState(state: ChannelTimeshiftState, requestedVariants?: TimeshiftVariantState[]) {
   if (!state.supported) {
     return;
   }
@@ -421,7 +443,11 @@ async function refreshChannelState(state: ChannelTimeshiftState) {
 
   state.refreshPromise = (async () => {
     try {
-      await Promise.all(state.variants.map((variant) => refreshVariantState(state, variant)));
+      const variantsToRefresh = requestedVariants && requestedVariants.length > 0
+        ? requestedVariants
+        : getTrackedVariants(state);
+
+      await Promise.all(variantsToRefresh.map((variant) => refreshVariantState(state, variant)));
       state.lastError = null;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown timeshift failure";
@@ -452,6 +478,9 @@ async function getOrCreateState(channelId: string) {
   }
 
   const state = await loadChannelTimeshiftState(channelId);
+  if (state.variants[0]) {
+    markVariantAccessed(state.variants[0]);
+  }
   timeshiftStates.set(channelId, state);
   await refreshChannelState(state);
   scheduleRefresh(state);
@@ -534,8 +563,10 @@ export async function getChannelTimeshiftVariantResponse(channelId: string, vari
     throw new Error("Timeshift is not available for this channel");
   }
 
+  markVariantAccessed(variant);
+
   if (!variant.segments.length) {
-    await refreshChannelState(state);
+    await refreshChannelState(state, [variant]);
   }
 
   return {
@@ -552,6 +583,8 @@ export async function getChannelTimeshiftAssetResponse(channelId: string, assetI
   if (!variant || !asset) {
     throw new Error("Timeshift asset not found");
   }
+
+  markVariantAccessed(variant);
 
   const body = await readTimeshiftAsset(asset.storagePath);
 
