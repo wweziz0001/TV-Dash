@@ -10,11 +10,15 @@ const hlsPlayerLifecycle = {
   mounts: 0,
   unmounts: 0,
 };
+const hlsPlayerProps = {
+  controlDensity: null as string | null,
+};
 
 vi.mock("./hls-player", () => ({
-  HlsPlayer: ({ title }: { title: string }) => {
+  HlsPlayer: ({ title, controlDensity }: { title: string; controlDensity?: string }) => {
     useEffect(() => {
       hlsPlayerLifecycle.mounts += 1;
+      hlsPlayerProps.controlDensity = controlDensity ?? null;
 
       return () => {
         hlsPlayerLifecycle.unmounts += 1;
@@ -44,6 +48,7 @@ describe("MultiviewTileCard", () => {
     cleanup();
     hlsPlayerLifecycle.mounts = 0;
     hlsPlayerLifecycle.unmounts = 0;
+    hlsPlayerProps.controlDensity = null;
   });
 
   it("keeps the guide collapsed until the operator toggles it", async () => {
@@ -276,5 +281,66 @@ describe("MultiviewTileCard", () => {
     );
 
     expect(screen.queryByLabelText("Drag to swap tile positions")).not.toBeInTheDocument();
+  });
+
+  it("uses denser player controls for higher-count multiview layouts", () => {
+    render(
+      <MultiviewTileCard
+        canDragSwap={false}
+        channel={{
+          id: "channel-1",
+          name: "Ops Feed",
+          slug: "ops-feed",
+          logoUrl: null,
+          sourceMode: "MASTER_PLAYLIST",
+          masterHlsUrl: "https://example.com/live.m3u8",
+          playbackMode: "DIRECT",
+          manualVariantCount: 0,
+          groupId: null,
+          group: null,
+          epgSourceId: null,
+          epgChannelId: null,
+          epgSource: null,
+          isActive: true,
+          sortOrder: 1,
+          createdAt: "",
+          updatedAt: "",
+        }}
+        guide={null}
+        guideLoading={false}
+        isDragging={false}
+        isDragTarget={false}
+        isFocused={false}
+        isPickerTarget={false}
+        layoutDefinition={{
+          ...layoutDefinition,
+          type: "LAYOUT_3X3",
+          tileCount: 9,
+          tileClassNames: Array.from({ length: 9 }, () => "min-h-[180px]"),
+        }}
+        onClear={vi.fn()}
+        onDragEnd={vi.fn()}
+        onDragOver={vi.fn()}
+        onDragStart={vi.fn()}
+        onDrop={vi.fn()}
+        onFocus={vi.fn()}
+        onFullscreen={vi.fn()}
+        onOpenPicker={vi.fn()}
+        onPreferredQualityChange={vi.fn()}
+        onQualityOptionsChange={vi.fn()}
+        onSelectedQualityChange={vi.fn()}
+        onStatusChange={vi.fn()}
+        onDiagnosticsChange={vi.fn()}
+        onToggleAudio={vi.fn()}
+        playerDiagnostics={defaultPlayerDiagnostics}
+        playerStatus="playing"
+        qualityOptions={[{ value: "AUTO", label: "Auto", height: null }]}
+        src="https://example.com/live.m3u8"
+        tile={{ channelId: "channel-1", isMuted: false, preferredQuality: "AUTO" }}
+        tileIndex={0}
+      />,
+    );
+
+    expect(hlsPlayerProps.controlDensity).toBe("micro");
   });
 });

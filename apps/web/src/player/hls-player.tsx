@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type FocusEvent, type RefObject } from "react";
+import { useEffect, useRef, useState, type FocusEvent, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import Hls from "hls.js";
 import { AlertTriangle, LoaderCircle, RotateCcw, Signal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,7 @@ import {
   type PlayerBrowserCapabilities,
   type PlayerSeekState,
 } from "./browser-media";
+import { copyDocumentStyles, getDocumentPictureInPictureApi } from "./document-picture-in-picture";
 import { syncPlayerMediaSession } from "./media-session";
 import { buildPlayerDiagnostics, type PlayerDiagnostics } from "./playback-diagnostics";
 import { PlayerControlOverlay } from "./player-control-overlay";
@@ -29,7 +31,7 @@ interface HlsPlayerProps {
   preferredQuality?: string | null;
   initialBias?: "AUTO" | "LOWEST";
   className?: string;
-  controlDensity?: "compact" | "full";
+  controlDensity?: "micro" | "compact" | "full";
   fullscreenTargetRef?: RefObject<HTMLElement | null>;
   onMutedChange?: (muted: boolean) => void;
   onQualityOptionsChange?: (options: QualityOption[]) => void;
@@ -44,6 +46,7 @@ export type { PlayerDiagnostics } from "./playback-diagnostics";
 const defaultBrowserCapabilities: PlayerBrowserCapabilities = {
   canFullscreen: false,
   canPictureInPicture: false,
+  canDocumentPictureInPicture: false,
   canUseMediaSession: false,
   pictureInPictureUnavailableReason: "Picture-in-Picture is not supported in this browser.",
 };
@@ -126,6 +129,8 @@ export function HlsPlayer({
   const [isPictureInPictureMode, setIsPictureInPictureMode] = useState(false);
   const [isFullscreenMode, setIsFullscreenMode] = useState(false);
   const [areControlsVisible, setAreControlsVisible] = useState(false);
+  const [documentPipWindow, setDocumentPipWindow] = useState<Window | null>(null);
+  const [documentPipContainer, setDocumentPipContainer] = useState<HTMLDivElement | null>(null);
 
   callbacksRef.current = {
     onMutedChange,
@@ -142,6 +147,11 @@ export function HlsPlayer({
 
   function getFullscreenTarget() {
     return fullscreenTargetRef?.current ?? playerFrameRef.current;
+  }
+
+  function clearDocumentPictureInPictureState() {
+    setDocumentPipContainer(null);
+    setDocumentPipWindow(null);
   }
 
   function updateStatus(nextStatus: PlayerStatus) {
@@ -243,10 +253,22 @@ export function HlsPlayer({
   function syncBrowserState() {
     const video = videoRef.current;
     const fullscreenTarget = getFullscreenTarget();
+    const activeDocument = (video?.ownerDocument ?? document) as Document;
+    const usingDocumentPictureInPicture = Boolean(documentPipWindow && !documentPipWindow.closed);
+    const nextCapabilities = getPlayerBrowserCapabilities(
+      video,
+      usingDocumentPictureInPicture ? null : fullscreenTarget,
+      activeDocument,
+      navigator,
+      window,
+    );
 
-    setCapabilities(getPlayerBrowserCapabilities(video, fullscreenTarget));
-    setIsPictureInPictureMode(isPictureInPictureActive(video));
-    setIsFullscreenMode(isFullscreenActive(fullscreenTarget));
+    setCapabilities({
+      ...nextCapabilities,
+      canFullscreen: usingDocumentPictureInPicture ? false : nextCapabilities.canFullscreen,
+    });
+    setIsPictureInPictureMode(usingDocumentPictureInPicture || isPictureInPictureActive(video, activeDocument));
+    setIsFullscreenMode(usingDocumentPictureInPicture ? false : isFullscreenActive(fullscreenTarget, activeDocument));
     setSeekState(getPlayerSeekState(video));
 
     if (!video) {
@@ -372,16 +394,54 @@ export function HlsPlayer({
 
   async function handleTogglePictureInPicture() {
     const video = videoRef.current;
+    const documentPictureInPictureApi = getDocumentPictureInPictureApi();
 
     if (!video) {
       return;
     }
 
     try {
+      if (documentPipWindow && !documentPipWindow.closed) {
+        documentPipWindow.close();
+        clearDocumentPictureInPictureState();
+        return;
+      }
+
+      if (capabilities.canDocumentPictureInPicture && documentPictureInPictureApi) {
+        const pipWindow = await documentPictureInPictureApi.requestWindow({
+          width: 480,
+          height: 320,
+          preferInitialWindowPlacement: true,
+        });
+
+        copyDocumentStyles(document, pipWindow.document);
+
+        const portalContainer = pipWindow.document.createElement("div");
+        portalContainer.style.width = "100vw";
+        portalContainer.style.height = "100vh";
+        portalContainer.style.display = "flex";
+        portalContainer.style.flexDirection = "column";
+        pipWindow.document.body.innerHTML = "";
+        pipWindow.document.body.appendChild(portalContainer);
+
+        const handlePipWindowClosed = () => {
+          clearDocumentPictureInPictureState();
+        };
+
+        pipWindow.addEventListener("pagehide", handlePipWindowClosed, { once: true });
+        pipWindow.addEventListener("beforeunload", handlePipWindowClosed, { once: true });
+
+        setDocumentPipWindow(pipWindow);
+        setDocumentPipContainer(portalContainer);
+        showControls();
+        return;
+      }
+
       if (document.pictureInPictureElement === video) {
         await document.exitPictureInPicture?.();
       } else if (capabilities.canPictureInPicture) {
         await video.requestPictureInPicture?.();
+        setStatusDetail("Native Picture-in-Picture is active. Custom in-window TV-Dash controls depend on browser support.");
       }
     } catch {
       setStatusDetail("Picture-in-Picture could not be opened in this browser session.");
@@ -475,6 +535,19 @@ export function HlsPlayer({
   ]);
 
   useEffect(() => {
+    if (!documentPipWindow) {
+      return;
+    }
+
+    copyDocumentStyles(document, documentPipWindow.document);
+    syncBrowserState();
+
+    return () => {
+      syncBrowserState();
+    };
+  }, [documentPipWindow]);
+
+  useEffect(() => {
     const video = videoRef.current;
 
     if (!video) {
@@ -544,7 +617,7 @@ export function HlsPlayer({
       video.removeEventListener("leavepictureinpicture", handlePictureInPictureUpdated);
       document.removeEventListener("fullscreenchange", handleFullscreenUpdated);
     };
-  }, [fullscreenTargetRef, src]);
+  }, [documentPipContainer, fullscreenTargetRef, src]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -805,7 +878,7 @@ export function HlsPlayer({
         }
       }
     };
-  }, [reloadKey, src]);
+  }, [documentPipContainer, reloadKey, src]);
 
   useEffect(() => {
     if (!hlsRef.current) {
@@ -845,8 +918,11 @@ export function HlsPlayer({
     clearReconnectTimeout();
     clearRecoveryNoticeTimeout();
     clearControlsVisibilityTimeout();
+    if (documentPipWindow && !documentPipWindow.closed) {
+      documentPipWindow.close();
+    }
     stopPlayback();
-  }, []);
+  }, [documentPipWindow]);
 
   const diagnostics = buildPlayerDiagnostics({
     status,
@@ -886,7 +962,8 @@ export function HlsPlayer({
       : `${Math.round(seekState.liveLatencySeconds ?? 0)}s behind live`
     : "Live stream";
 
-  return (
+  function renderPlayerSurface() {
+    return (
     <div
       ref={playerFrameRef}
       className={cn("relative h-full overflow-hidden rounded-[1.1rem] bg-black", className)}
@@ -992,5 +1069,29 @@ export function HlsPlayer({
         volume={volume}
       />
     </div>
-  );
+    );
+  }
+
+  let content: ReactNode = renderPlayerSurface();
+
+  if (documentPipContainer) {
+    content = (
+      <>
+        <div className="flex h-full min-h-[160px] items-center justify-center rounded-[1rem] border border-dashed border-cyan-400/30 bg-slate-950/70 p-4 text-center">
+          <div>
+            <p className="text-sm font-semibold text-white">Playing in Picture-in-Picture</p>
+            <p className="mt-1.5 text-[12px] text-slate-400">
+              The player controls moved into the PiP window.
+            </p>
+            <Button className="mt-3" onClick={() => void handleTogglePictureInPicture()} size="sm" type="button" variant="secondary">
+              Return from PiP
+            </Button>
+          </div>
+        </div>
+        {createPortal(renderPlayerSurface(), documentPipContainer)}
+      </>
+    );
+  }
+
+  return content;
 }

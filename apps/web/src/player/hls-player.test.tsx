@@ -86,6 +86,11 @@ describe("HlsPlayer", () => {
       configurable: true,
       value: true,
     });
+    Object.defineProperty(window, "documentPictureInPicture", {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
     Object.defineProperty(document, "pictureInPictureElement", {
       configurable: true,
       value: null,
@@ -419,6 +424,52 @@ describe("HlsPlayer", () => {
 
     expect(statusChrome).toHaveClass("opacity-0");
     expect(controlOverlay).toHaveClass("opacity-0");
+  });
+
+  it("prefers document picture-in-picture over native video PiP when supported", async () => {
+    const pipDocument = document.implementation.createHTMLDocument("pip");
+    const pipWindow = {
+      document: pipDocument,
+      closed: false,
+      close: vi.fn(function (this: { closed: boolean }) {
+        this.closed = true;
+      }),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as Window;
+    const requestWindow = vi.fn(async () => pipWindow);
+
+    Object.defineProperty(window, "documentPictureInPicture", {
+      configurable: true,
+      value: {
+        requestWindow,
+      },
+      writable: true,
+    });
+
+    const { container } = render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
+
+    act(() => {
+      MockHls.instances[0].emit(MockHls.Events.MANIFEST_PARSED, {
+        levels: [{ height: 1080 }, { height: 720 }],
+      });
+    });
+
+    const playerRoot = container.firstElementChild as HTMLDivElement;
+    fireEvent.mouseEnter(playerRoot);
+    fireEvent.mouseMove(playerRoot);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Open Picture-in-Picture" }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    act(() => {
+      vi.runAllTicks();
+    });
+
+    expect(requestWindow).toHaveBeenCalledTimes(1);
+    expect(HTMLVideoElement.prototype.requestPictureInPicture).not.toHaveBeenCalled();
   });
 
   it("disables the PiP control when the browser does not expose Picture-in-Picture support", () => {

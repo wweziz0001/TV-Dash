@@ -90,6 +90,7 @@ export function MultiviewTileCard({
   const statusBadgeClassName = getStatusBadgeClassName(playerDiagnostics);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const playerFrameRef = useRef<HTMLDivElement | null>(null);
+  const controlDensity = layoutDefinition.tileCount >= 9 ? "micro" : layoutDefinition.tileCount >= 4 ? "compact" : "full";
 
   return (
     <div
@@ -217,7 +218,7 @@ export function MultiviewTileCard({
         {channel ? (
           <HlsPlayer
             autoPlay
-            controlDensity="compact"
+            controlDensity={controlDensity}
             fullscreenTargetRef={playerFrameRef}
             initialBias={tile.isMuted ? "LOWEST" : "AUTO"}
             muted={tile.isMuted}

@@ -29,10 +29,16 @@ describe("browser-media", () => {
     const nav = {
       mediaSession: {},
     } as Navigator;
+    const win = {
+      documentPictureInPicture: {
+        requestWindow: vi.fn(),
+      },
+    } as unknown as Window;
 
-    expect(getPlayerBrowserCapabilities(video, fullscreenTarget, doc, nav)).toEqual({
+    expect(getPlayerBrowserCapabilities(video, fullscreenTarget, doc, nav, win)).toEqual({
       canFullscreen: true,
       canPictureInPicture: true,
+      canDocumentPictureInPicture: true,
       canUseMediaSession: true,
       pictureInPictureUnavailableReason: null,
     });
@@ -47,6 +53,7 @@ describe("browser-media", () => {
       getPlayerBrowserCapabilities(video, null, { pictureInPictureEnabled: true } as Document, {} as Navigator),
     ).toMatchObject({
       canPictureInPicture: false,
+      canDocumentPictureInPicture: false,
       pictureInPictureUnavailableReason: "Picture-in-Picture is not supported in this browser.",
     });
   });
