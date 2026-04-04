@@ -32,6 +32,14 @@ Improve player controls, Picture-in-Picture support, and cross-browser media UX 
   - passes mute/fullscreen ownership into `HlsPlayer`
   - surfaces PiP support, live-window state, and volume in the sidebar diagnostics
 - updated multiview tiles so each tile gets compact in-player controls without breaking the existing one-audio-owner rule
+- refined multiview control density so denser layouts scale the control chrome down further:
+  - `2x2` stays compact
+  - `3x3` now uses a smaller `micro` control treatment
+- added a Document PiP path for browsers that support it so:
+  - the TV-Dash controls can move with the player into the PiP window
+  - the timeline stays under the video inside that window
+  - the same hover / inactivity auto-hide behavior continues inside the PiP window
+  - browsers without Document PiP still fall back to native video PiP
 - kept live-stream realism explicit:
   - no fake seek controls on live-only streams
   - `No DVR` is shown when the stream does not expose a real seekable window
@@ -40,6 +48,8 @@ Improve player controls, Picture-in-Picture support, and cross-browser media UX 
   - Media Session integration logic
   - paused-player diagnostics mapping
   - explicit HlsPlayer controls and PiP/fullscreen state
+  - multiview control-density selection
+  - Document PiP preference over native video PiP when supported
 
 ### Files Added Or Changed
 
@@ -80,6 +90,7 @@ Improve player controls, Picture-in-Picture support, and cross-browser media UX 
 
 - Media Session support still depends on what each browser actually exposes; unsupported actions are cleared gracefully, but browser/system media UI will still vary.
 - PiP richness still differs across browsers, especially Firefox vs Chrome; TV-Dash now provides the explicit launch point and in-page controls, but native floating-window chrome remains browser-owned.
+- Moving custom controls into the PiP window depends on Document PiP support; today that remains more browser-limited than standard video PiP.
 - The player now shows `No DVR` when the stream is not seekable, but there is still no richer operator hint for large DVR windows such as bookmark or jump-to-live controls.
 
 ### Exact Suggested Next Task

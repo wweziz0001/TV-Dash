@@ -150,6 +150,7 @@ Key relationship rules:
 
 - `player/hls-player.tsx` owns one video element, one HLS.js instance, and the explicit in-player browser-control surface
 - `player/browser-media.ts` owns browser capability detection plus live-DVR seek window helpers
+- `player/document-picture-in-picture.ts` owns Document PiP detection plus style transfer into the PiP window
 - `player/media-session.ts` owns Media Session metadata/action wiring
 - `player/player-control-overlay.tsx` owns the compact playback-control chrome shared by single-view, multiview, and preview playback
 - `player/playback-recovery.ts` owns bounded fatal error recovery decisions
@@ -178,12 +179,17 @@ Key relationship rules:
   - seek backward / seek forward only when the stream exposes a real seekable live window
 - Single-view uses the same `HlsPlayer` overlay plus the existing sidebar controls for quality, fullscreen, and recording actions.
 - Multiview tiles now get a compact version of the same controls inside each tile without breaking the one-audio-owner rule.
+- Multiview control density now scales by layout density:
+  - `2x2` keeps compact controls
+  - `3x3` uses an even smaller control treatment for crowded monitor walls
 - Media Session support now exists where the browser exposes it:
   - metadata is published as `TV-Dash / Live playback`
   - play, pause, and stop route back into the same player-owned actions
   - seekbackward/seekforward are only registered when the active stream exposes a real DVR window
 - PiP support is now application-level rather than browser-default-only:
   - supported browsers get an explicit PiP button
+  - browsers that support Document PiP can now move the TV-Dash controls and timeline into the PiP window itself
+  - browsers that only support native video PiP still fall back cleanly, but custom in-window TV-Dash controls remain browser-limited there
   - unsupported browsers keep the control disabled with a reason instead of exposing a broken UX
 - Cross-browser expectations:
   - Firefox may still feel richer in native PiP chrome
