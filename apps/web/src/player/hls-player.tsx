@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type FocusEvent, type RefObject } from "react";
 import Hls from "hls.js";
 import { AlertTriangle, LoaderCircle, RotateCcw, Signal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -88,6 +88,7 @@ export function HlsPlayer({
   const hlsRef = useRef<Hls | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const recoveryNoticeTimeoutRef = useRef<number | null>(null);
+  const controlsVisibilityTimeoutRef = useRef<number | null>(null);
   const qualityOptionsRef = useRef<QualityOption[]>([...defaultQualityOptions]);
   const selectionModeRef = useRef<"AUTO" | "MANUAL">("AUTO");
   const sessionIdRef = useRef(0);
@@ -124,6 +125,7 @@ export function HlsPlayer({
   const [capabilities, setCapabilities] = useState<PlayerBrowserCapabilities>(defaultBrowserCapabilities);
   const [isPictureInPictureMode, setIsPictureInPictureMode] = useState(false);
   const [isFullscreenMode, setIsFullscreenMode] = useState(false);
+  const [areControlsVisible, setAreControlsVisible] = useState(false);
 
   callbacksRef.current = {
     onMutedChange,
@@ -161,6 +163,13 @@ export function HlsPlayer({
     }
   }
 
+  function clearControlsVisibilityTimeout() {
+    if (controlsVisibilityTimeoutRef.current !== null) {
+      window.clearTimeout(controlsVisibilityTimeoutRef.current);
+      controlsVisibilityTimeoutRef.current = null;
+    }
+  }
+
   function showRecoveryNotice(message: string) {
     clearRecoveryNoticeTimeout();
     setRecoveryNotice(message);
@@ -168,6 +177,24 @@ export function HlsPlayer({
       setRecoveryNotice(null);
       recoveryNoticeTimeoutRef.current = null;
     }, 2200);
+  }
+
+  function scheduleControlsHide() {
+    clearControlsVisibilityTimeout();
+    controlsVisibilityTimeoutRef.current = window.setTimeout(() => {
+      setAreControlsVisible(false);
+      controlsVisibilityTimeoutRef.current = null;
+    }, 1400);
+  }
+
+  function showControls() {
+    setAreControlsVisible(true);
+    scheduleControlsHide();
+  }
+
+  function hideControls() {
+    clearControlsVisibilityTimeout();
+    setAreControlsVisible(false);
   }
 
   function teardownVideo(video: HTMLVideoElement) {
@@ -381,6 +408,30 @@ export function HlsPlayer({
     } finally {
       syncBrowserState();
     }
+  }
+
+  function handlePointerEnter() {
+    showControls();
+  }
+
+  function handlePointerMove() {
+    showControls();
+  }
+
+  function handlePointerLeave() {
+    hideControls();
+  }
+
+  function handleFocusWithin() {
+    showControls();
+  }
+
+  function handleBlurWithin(event: FocusEvent<HTMLDivElement>) {
+    if (event.currentTarget.contains(event.relatedTarget)) {
+      return;
+    }
+
+    hideControls();
   }
 
   useEffect(() => {
@@ -793,6 +844,7 @@ export function HlsPlayer({
   useEffect(() => () => {
     clearReconnectTimeout();
     clearRecoveryNoticeTimeout();
+    clearControlsVisibilityTimeout();
     stopPlayback();
   }, []);
 
@@ -838,11 +890,22 @@ export function HlsPlayer({
     <div
       ref={playerFrameRef}
       className={cn("relative h-full overflow-hidden rounded-[1.1rem] bg-black", className)}
+      onBlur={handleBlurWithin}
+      onFocus={handleFocusWithin}
+      onMouseEnter={handlePointerEnter}
+      onMouseLeave={handlePointerLeave}
+      onMouseMove={handlePointerMove}
     >
       <video ref={videoRef} className="h-full w-full object-cover" playsInline muted={playerMuted} />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10" />
 
-      <div className="pointer-events-none absolute left-2.5 top-2.5 flex flex-wrap items-center gap-1.5">
+      <div
+        data-testid="player-status-chrome"
+        className={cn(
+          "pointer-events-none absolute left-2.5 top-2.5 flex flex-wrap items-center gap-1.5 transition-opacity duration-200",
+          areControlsVisible ? "opacity-100" : "opacity-0",
+        )}
+      >
         <Badge className="border-cyan-400/30 bg-slate-950/80 text-cyan-100" size="sm">
           <Signal className="mr-2 h-3.5 w-3.5" />
           {title}
@@ -925,6 +988,7 @@ export function HlsPlayer({
         timelineMin={timelineMin}
         timelineStatusLabel={timelineStatusLabel}
         timelineValue={timelineValue}
+        visible={areControlsVisible}
         volume={volume}
       />
     </div>

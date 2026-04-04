@@ -15,6 +15,7 @@ type PlayerControlDensity = "compact" | "full";
 
 interface PlayerControlOverlayProps {
   density?: PlayerControlDensity;
+  visible?: boolean;
   hasSource: boolean;
   isPaused: boolean;
   isMuted: boolean;
@@ -45,6 +46,7 @@ interface PlayerControlOverlayProps {
 
 export function PlayerControlOverlay({
   density = "full",
+  visible = true,
   hasSource,
   isPaused,
   isMuted,
@@ -76,9 +78,11 @@ export function PlayerControlOverlay({
 
   return (
     <div
+      data-testid="player-control-overlay"
       className={cn(
-        "absolute inset-x-2 bottom-2 pointer-events-auto rounded-[1rem] border border-slate-700/70 bg-slate-950/88 backdrop-blur-sm",
+        "absolute inset-x-2 bottom-2 rounded-[1rem] border border-slate-700/70 bg-slate-950/88 backdrop-blur-sm transition-opacity duration-200",
         isCompact ? "px-2 py-2" : "px-3 py-2.5",
+        visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
       )}
     >
       <div className="mb-2 rounded-2xl border border-slate-800/80 bg-slate-900/75 px-3 py-2">

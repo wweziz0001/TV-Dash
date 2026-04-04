@@ -386,6 +386,41 @@ describe("HlsPlayer", () => {
     );
   });
 
+  it("shows player chrome on hover and hides it after inactivity or mouse leave", () => {
+    const { container } = render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
+
+    const playerRoot = container.firstElementChild as HTMLDivElement;
+    const statusChrome = screen.getByTestId("player-status-chrome");
+    const controlOverlay = screen.getByTestId("player-control-overlay");
+
+    expect(statusChrome).toHaveClass("opacity-0");
+    expect(controlOverlay).toHaveClass("opacity-0");
+
+    fireEvent.mouseEnter(playerRoot);
+    fireEvent.mouseMove(playerRoot);
+
+    expect(statusChrome).toHaveClass("opacity-100");
+    expect(controlOverlay).toHaveClass("opacity-100");
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(statusChrome).toHaveClass("opacity-0");
+    expect(controlOverlay).toHaveClass("opacity-0");
+
+    fireEvent.mouseEnter(playerRoot);
+    fireEvent.mouseMove(playerRoot);
+
+    expect(statusChrome).toHaveClass("opacity-100");
+    expect(controlOverlay).toHaveClass("opacity-100");
+
+    fireEvent.mouseLeave(playerRoot);
+
+    expect(statusChrome).toHaveClass("opacity-0");
+    expect(controlOverlay).toHaveClass("opacity-0");
+  });
+
   it("disables the PiP control when the browser does not expose Picture-in-Picture support", () => {
     Object.defineProperty(HTMLVideoElement.prototype, "requestPictureInPicture", {
       configurable: true,
