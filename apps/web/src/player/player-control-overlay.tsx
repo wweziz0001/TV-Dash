@@ -1,8 +1,6 @@
 import {
   Maximize2,
   Minimize2,
-  Pause,
-  Play,
   SkipBack,
   SkipForward,
   Volume2,
@@ -17,7 +15,6 @@ interface PlayerControlOverlayProps {
   density?: PlayerControlDensity;
   visible?: boolean;
   hasSource: boolean;
-  isPaused: boolean;
   isMuted: boolean;
   volume: number;
   canSeek: boolean;
@@ -27,13 +24,11 @@ interface PlayerControlOverlayProps {
   timelineMax: number;
   currentTimeLabel: string;
   durationLabel: string;
-  timelineStatusLabel: string;
   isPictureInPictureActive: boolean;
   isFullscreenActive: boolean;
   canPictureInPicture: boolean;
   pictureInPictureUnavailableReason: string | null;
   canFullscreen: boolean;
-  onTogglePlayback: () => void;
   onToggleMute: () => void;
   onVolumeChange: (value: number) => void;
   onSeekBackward: () => void;
@@ -48,7 +43,6 @@ export function PlayerControlOverlay({
   density = "full",
   visible = true,
   hasSource,
-  isPaused,
   isMuted,
   volume,
   canSeek,
@@ -58,13 +52,11 @@ export function PlayerControlOverlay({
   timelineMax,
   currentTimeLabel,
   durationLabel,
-  timelineStatusLabel,
   isPictureInPictureActive,
   isFullscreenActive,
   canPictureInPicture,
   pictureInPictureUnavailableReason,
   canFullscreen,
-  onTogglePlayback,
   onToggleMute,
   onVolumeChange,
   onSeekBackward,
@@ -78,23 +70,20 @@ export function PlayerControlOverlay({
   const isMicro = density === "micro";
   const buttonClassName = isMicro ? "h-7 min-h-7 rounded-md px-1.5 text-[10px]" : "";
   const iconButtonClassName = isMicro ? "h-7 w-7 rounded-md" : "";
-  const timelineWrapperClassName = isMicro ? "mb-1.5 rounded-xl px-2 py-1.5" : "mb-2 rounded-2xl px-3 py-2";
+  const timelineWrapperClassName = isMicro ? "mb-1 px-1 py-1" : "mb-1.5 px-1 py-1";
 
   return (
     <div
       data-testid="player-control-overlay"
       className={cn(
-        "absolute inset-x-2 bottom-2 rounded-[1rem] border border-slate-700/70 bg-slate-950/88 backdrop-blur-sm transition-opacity duration-200",
-        isMicro ? "px-1.5 py-1.5" : isCompact ? "px-2 py-2" : "px-3 py-2.5",
+        "absolute inset-x-2 bottom-2 transition-opacity duration-200",
+        isMicro ? "px-1 py-1" : isCompact ? "px-1.5 py-1.5" : "px-2 py-2",
         visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
       )}
     >
-      <div className={cn("border border-slate-800/80 bg-slate-900/75", timelineWrapperClassName)}>
-        <div className={cn("flex items-center justify-between gap-2 text-slate-400", isMicro ? "mb-1 text-[9px]" : "mb-1.5 text-[11px]")}>
+      <div className={timelineWrapperClassName}>
+        <div className={cn("flex items-center justify-between gap-2 text-slate-300", isMicro ? "mb-1 text-[9px]" : "mb-1 text-[11px]")}>
           <span>{currentTimeLabel}</span>
-          <span className={cn("truncate text-center uppercase tracking-[0.18em] text-slate-500", isMicro ? "text-[8px]" : "text-[10px]")}>
-            {timelineStatusLabel}
-          </span>
           <span>{durationLabel}</span>
         </div>
         <input
@@ -115,18 +104,6 @@ export function PlayerControlOverlay({
 
       <div className={cn("flex items-center gap-2", isMicro || isCompact ? "flex-wrap" : "flex-wrap lg:flex-nowrap")}>
         <div className="flex items-center gap-1.5">
-          <Button
-            aria-label={isPaused ? "Resume playback" : "Pause playback"}
-            disabled={!hasSource}
-            className={iconButtonClassName}
-            onClick={onTogglePlayback}
-            size="icon-sm"
-            title={isPaused ? "Resume playback" : "Pause playback"}
-            type="button"
-            variant={isPaused ? "secondary" : "primary"}
-          >
-            {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
-          </Button>
           {canSeek ? (
             <>
               <Button
@@ -199,10 +176,12 @@ export function PlayerControlOverlay({
         </label>
 
         <div className="flex items-center gap-1.5">
-          <span className={cn(
-            "rounded-full border border-emerald-400/25 bg-emerald-500/10 font-semibold uppercase tracking-[0.18em] text-emerald-200",
-            isMicro ? "px-1.5 py-0.5 text-[8px]" : "px-2 py-1 text-[10px]",
-          )}>
+          <span
+            className={cn(
+              "rounded-full border border-emerald-400/25 bg-emerald-500/10 font-semibold uppercase tracking-[0.18em] text-emerald-200",
+              isMicro ? "px-1.5 py-0.5 text-[8px]" : "px-2 py-1 text-[10px]",
+            )}
+          >
             {liveStateLabel}
           </span>
           <Button

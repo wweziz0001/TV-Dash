@@ -356,6 +356,8 @@ describe("HlsPlayer", () => {
 
     fireEvent(video, new Event("loadedmetadata"));
     fireEvent(video, new Event("timeupdate"));
+    fireEvent.mouseEnter(container.firstElementChild as HTMLDivElement);
+    fireEvent.mouseMove(container.firstElementChild as HTMLDivElement);
 
     expect(screen.getByRole("button", { name: "Pause playback" })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: "Player volume" })).toBeInTheDocument();
