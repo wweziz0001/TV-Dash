@@ -403,8 +403,10 @@ segment12.ts`),
         supported: true,
         available: false,
         bufferState: "WARMING",
+        minimumReadyWindowSeconds: 30,
         availableWindowSeconds: 18,
         bufferedSegmentCount: 3,
+        message: "Timeshift buffer is warming up. DVR ready in ~12s.",
       }),
     });
   });

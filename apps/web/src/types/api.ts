@@ -448,6 +448,7 @@ export interface LiveTimeshiftStatus {
   bufferState: LiveTimeshiftBufferState;
   message: string;
   windowSeconds: number;
+  minimumReadyWindowSeconds: number;
   availableWindowSeconds: number;
   bufferedSegmentCount: number;
   lastUpdatedAt: string | null;

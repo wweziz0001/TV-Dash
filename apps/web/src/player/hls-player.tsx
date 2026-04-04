@@ -131,6 +131,20 @@ export function HlsPlayer({
   const timeshiftSupported = timeshiftStatus?.supported ?? false;
   const timeshiftAvailable = timeshiftStatus?.available ?? false;
   const effectiveCanSeek = timeshiftAvailable && seekState.canSeek;
+  const warmupRemainingSeconds =
+    timeshiftSupported && !timeshiftAvailable
+      ? Math.max(
+          0,
+          Math.ceil(
+            (timeshiftStatus?.minimumReadyWindowSeconds ?? 0) -
+              (timeshiftStatus?.availableWindowSeconds ?? 0),
+          ),
+        )
+      : null;
+  const warmupReadyLabel =
+    warmupRemainingSeconds !== null && warmupRemainingSeconds > 0
+      ? `Ready in ~${warmupRemainingSeconds}s`
+      : null;
 
   callbacksRef.current = {
     onMutedChange,
@@ -971,6 +985,11 @@ export function HlsPlayer({
         <Badge className="border-slate-700/80 bg-slate-950/80 text-slate-200" size="sm">
           {liveStateLabel}
         </Badge>
+        {warmupReadyLabel ? (
+          <Badge className="border-amber-400/30 bg-amber-500/10 text-amber-100" size="sm">
+            {warmupReadyLabel}
+          </Badge>
+        ) : null}
         {playerMuted ? <Badge size="sm">Muted</Badge> : null}
         {isPictureInPictureMode ? <Badge size="sm">PiP</Badge> : null}
         {isFullscreenMode ? <Badge size="sm">Fullscreen</Badge> : null}

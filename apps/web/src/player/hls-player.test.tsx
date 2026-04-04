@@ -331,6 +331,7 @@ describe("HlsPlayer", () => {
           bufferState: "READY",
           message: "Live DVR window is ready.",
           windowSeconds: 1800,
+          minimumReadyWindowSeconds: 30,
           availableWindowSeconds: 60,
           bufferedSegmentCount: 10,
           lastUpdatedAt: "2026-04-04T00:00:00.000Z",
@@ -491,5 +492,35 @@ describe("HlsPlayer", () => {
     expect(screen.queryByRole("button", { name: "Jump to live" })).not.toBeInTheDocument();
     expect(screen.queryByRole("slider", { name: "Player timeline" })).not.toBeInTheDocument();
     expect(screen.getAllByText("Live only").length).toBeGreaterThan(0);
+  });
+
+  it("shows a warmup countdown while the retained DVR buffer is still filling", () => {
+    render(
+      <HlsPlayer
+        src="https://example.com/warming.m3u8"
+        title="Channel warming"
+        timeshiftStatus={{
+          channelId: "channel-warming",
+          configured: true,
+          supported: true,
+          available: false,
+          bufferState: "WARMING",
+          message: "Timeshift buffer is warming up. DVR ready in ~18s.",
+          windowSeconds: 1800,
+          minimumReadyWindowSeconds: 30,
+          availableWindowSeconds: 12,
+          bufferedSegmentCount: 2,
+          lastUpdatedAt: "2026-04-04T00:00:00.000Z",
+          lastError: null,
+        }}
+      />,
+    );
+
+    const playerRoot = screen.getByTestId("player-surface");
+    fireEvent.mouseOver(playerRoot);
+    fireEvent.mouseMove(playerRoot);
+
+    expect(screen.getAllByText("DVR warming").length).toBeGreaterThan(0);
+    expect(screen.getByText("Ready in ~18s")).toBeInTheDocument();
   });
 });

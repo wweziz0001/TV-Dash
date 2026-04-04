@@ -26,6 +26,7 @@ interface TimeshiftStatus {
   bufferState: "DISABLED" | "UNSUPPORTED" | "STARTING" | "WARMING" | "READY" | "ERROR";
   message: string;
   windowSeconds: number;
+  minimumReadyWindowSeconds: number;
   availableWindowSeconds: number;
   bufferedSegmentCount: number;
   lastUpdatedAt: string | null;
@@ -233,6 +234,7 @@ function buildDisabledStatus(state: ChannelTimeshiftState): TimeshiftStatus {
       bufferState: "DISABLED",
       message: "Timeshift is disabled for this channel.",
       windowSeconds: state.windowSeconds,
+      minimumReadyWindowSeconds: env.TIMESHIFT_MIN_AVAILABLE_WINDOW_SECONDS,
       availableWindowSeconds: 0,
       bufferedSegmentCount: 0,
       lastUpdatedAt: null,
@@ -248,6 +250,7 @@ function buildDisabledStatus(state: ChannelTimeshiftState): TimeshiftStatus {
     bufferState: "UNSUPPORTED",
     message: "Timeshift requires proxy playback so TV-Dash can retain the live buffer.",
     windowSeconds: state.windowSeconds,
+    minimumReadyWindowSeconds: env.TIMESHIFT_MIN_AVAILABLE_WINDOW_SECONDS,
     availableWindowSeconds: 0,
     bufferedSegmentCount: 0,
     lastUpdatedAt: null,
@@ -274,6 +277,10 @@ function buildReadyStatus(state: ChannelTimeshiftState): TimeshiftStatus {
     return latest === null ? variant.lastUpdatedAtMs : Math.max(latest, variant.lastUpdatedAtMs);
   }, null);
   const available = availableWindowSeconds >= env.TIMESHIFT_MIN_AVAILABLE_WINDOW_SECONDS;
+  const remainingReadyWindowSeconds = Math.max(
+    0,
+    Math.ceil(env.TIMESHIFT_MIN_AVAILABLE_WINDOW_SECONDS - availableWindowSeconds),
+  );
 
   return {
     channelId: state.channelId,
@@ -285,8 +292,11 @@ function buildReadyStatus(state: ChannelTimeshiftState): TimeshiftStatus {
       ? "Timeshift buffer refresh failed."
       : available
         ? "Live DVR window is ready."
-        : "Timeshift buffer is warming up.",
+        : remainingReadyWindowSeconds > 0
+          ? `Timeshift buffer is warming up. DVR ready in ~${remainingReadyWindowSeconds}s.`
+          : "Timeshift buffer is warming up.",
     windowSeconds: state.windowSeconds,
+    minimumReadyWindowSeconds: env.TIMESHIFT_MIN_AVAILABLE_WINDOW_SECONDS,
     availableWindowSeconds,
     bufferedSegmentCount,
     lastUpdatedAt: lastUpdatedAtMs === null ? null : new Date(lastUpdatedAtMs).toISOString(),
