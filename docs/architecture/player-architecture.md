@@ -67,6 +67,7 @@ That does not belong in:
 
 - Route pages own page orchestration and persistence payload assembly.
 - Frontend service helpers may choose the playback URL contract (`DIRECT` upstream URL vs `PROXY` gateway path), but they do not own HLS lifecycle behavior.
+- Frontend service helpers may choose the playback URL contract (`DIRECT` upstream URL vs `PROXY` gateway path vs `SHARED` local-origin path), but they do not own HLS lifecycle behavior.
 - `HlsPlayer` owns playback lifecycle, explicit player controls, browser media API integration, and emits status, diagnostics, mute, and quality callbacks upward.
 - Multi-view pages own which tile is focused, reassigned, saved, or displayed.
 - Player-facing multiview UI components may live under `player/` when they wrap `HlsPlayer`, but pages still resolve playback URLs and persistence decisions.
@@ -76,10 +77,13 @@ That does not belong in:
 ## Playback URL Selection Rules
 
 - Public channel payloads may intentionally omit `masterHlsUrl` when `playbackMode` is `PROXY`.
+- Public channel payloads may intentionally omit `masterHlsUrl` when `playbackMode` is `PROXY` or `SHARED`.
 - Manual-variant channels should resolve playback through the backend stream path so HLS.js receives the generated synthetic master playlist.
+- Shared-delivery channels should resolve playback through the backend shared master path so multiple local viewers can reuse one channel-local cache/session where possible.
 - Page code should resolve playback URLs through a small service/helper seam rather than hard-coding `/api/streams/...` paths inline.
-- Timeshift-enabled proxy channels should resolve playback through the backend timeshift master path so the player is attached to the retained DVR manifest instead of the upstream live edge.
+- Timeshift-enabled TV-Dash-managed channels should resolve playback through the backend timeshift master path so the player is attached to the retained DVR manifest instead of the upstream live edge.
 - The player should receive a final URL or `null`; it should not know how channel proxy mode is decided.
+- The player should receive a final URL or `null`; it should not know how channel delivery mode is decided.
 - Admin-only flows may still use the raw upstream URL for diagnostics and preview/testing.
 
 ## Tile Lifecycle Rules

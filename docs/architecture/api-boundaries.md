@@ -102,13 +102,18 @@ Repositories must not:
 
 - Public playback uses one of two contracts:
   - direct master: the channel response may expose `masterHlsUrl`
-  - generated/proxy master: the player uses a stable API playback path instead of the upstream URL
+  - generated TV-Dash master: the player uses a stable API playback path instead of the upstream URL
 - Stream proxy routes currently own:
   - channel master playlist lookup
   - synthetic master playlist generation for manual-variant channels
   - upstream request header/referrer/user-agent application
   - playlist rewriting for nested playlists, key URIs, and segments
   - short-lived signed asset tokens
+- Shared-delivery routes now also own:
+  - per-channel shared session startup on first local viewer request
+  - channel-local HLS manifest and segment cache reuse for repeated local requests
+  - in-flight upstream fetch deduping for concurrent local viewers on the same channel
+  - shared-session idle expiry and cache cleanup after inactivity
 - Timeshift routes currently own:
   - retained live segment polling and local buffer storage
   - per-channel rolling DVR window retention and eviction
@@ -118,6 +123,7 @@ Repositories must not:
 - Invalid or expired proxy asset tokens should fail with `400`, not a fake upstream error.
 - This milestone uses buffered upstream responses as a practical foundation. If future work adds streaming passthrough, that belongs inside the `streams` module rather than pages or generic app utilities.
 - First-version timeshift state is process-local orchestration backed by disk-retained HLS assets under the configured storage root. If future work adds multi-process leasing or durable manifest indexes, that still belongs inside `streams`.
+- First-version shared delivery is also process-local orchestration. It reduces redundant upstream fetches for local viewers through shared channel sessions plus short-lived edge caching, but it does not yet guarantee exactly one upstream request per asset across process restarts or multi-node deployments.
 
 ## EPG Foundation Rules
 

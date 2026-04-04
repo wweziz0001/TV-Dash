@@ -1,5 +1,71 @@
 # Codex Session Log
 
+## `2026-04-05T00:25:00+03:00`
+
+### Objective
+
+Add a real shared channel restream / edge-cache foundation so multiple local viewers can reuse TV-Dash-managed HLS delivery instead of each viewer behaving like a fully independent upstream pull.
+
+### Work Completed
+
+- created the requested branch `021-shared-channel-restream-and-edge-caching`
+- expanded the shared delivery model from two modes to three:
+  - `DIRECT`
+  - `PROXY`
+  - `SHARED`
+- updated channel validation, Prisma enum state, frontend form state, and admin UX so operators can explicitly choose shared local delivery instead of overloading ordinary proxy mode
+- added explicit shared-stream env/config support for:
+  - global enable/disable
+  - idle session expiry
+  - manifest cache TTL
+  - segment cache TTL
+  - max cache bytes
+  - max cache entries
+- implemented a new shared-stream foundation in `apps/api/src/modules/streams`:
+  - channel-local shared session lifecycle
+  - per-channel manifest and segment cache
+  - in-flight upstream request deduping
+  - shared master serving at `/api/streams/channels/:channelId/shared/master`
+  - shared asset serving at `/api/streams/channels/:channelId/shared/assets/:assetId`
+  - shared status reporting at `/api/streams/channels/:channelId/shared/status`
+- kept the design technically honest:
+  - shared delivery reduces redundant upstream fetches for repeated/concurrent local viewers where the channel-local cache window still covers the requested asset
+  - it does not claim a full CDN or perfect single-upstream behavior across restarts or multiple processes
+- extended existing TV-Dash-managed delivery behavior so retained timeshift can work with `SHARED` channels in addition to ordinary `PROXY` channels
+- updated recording input selection so shared-delivery channels record through the internal shared master path instead of bypassing the new local-origin layer
+- extended admin observability so operators can now see:
+  - active shared session count
+  - viewers currently attached to shared-delivery channels
+  - shared cache hit rate
+  - per-channel shared session state
+  - cache entry counts, retained bytes, mapped shared assets, and last shared-session failure
+- updated watch, multiview, picker, card, and diagnostics labels so the product now distinguishes:
+  - direct playback
+  - proxy playback
+  - shared delivery
+- updated durable docs to explain the real scope and limits of the first shared restream / edge-cache milestone
+
+### Verification Run
+
+- `npm run db:generate -w apps/api`
+- `npm run lint -w apps/api`
+- `npm run lint -w apps/web`
+- `npm run test -w apps/api -- src/modules/streams/shared-session-cache.test.ts src/modules/streams/shared-stream-session.test.ts src/modules/streams/stream.routes.test.ts src/modules/diagnostics/monitoring.service.test.ts src/modules/recordings/recording-input.test.ts src/modules/channels/channel-input.test.ts`
+- `npm run test -w apps/web -- src/services/api.test.ts src/components/channels/channel-admin-form-state.test.ts src/components/channels/channel-picker-dialog.test.tsx src/player/multiview-tile-card.test.tsx`
+- `npm run test`
+- `npm run build`
+
+### Remaining Risk
+
+- Shared sessions and caches are process-local and in-memory, so API restart clears hot shared state until the next viewer request repopulates it.
+- This milestone reduces redundant upstream fetches through cache reuse and in-flight deduping, but it does not yet keep one continuously open upstream media pull per channel.
+- Shared asset ids are scoped to the current in-memory session, so very stale client requests after idle expiry will miss instead of reviving old asset mappings.
+- Build output still warns about large frontend chunks; this work did not change the existing player bundle-size pressure.
+
+### Exact Suggested Next Task
+
+Add proactive shared-playlist prefetching plus smarter live-segment warming for hot shared channels, then decide whether shared sessions should gain durable multi-process coordination or stay intentionally single-node for the next milestone.
+
 ## `2026-04-04T22:05:00+03:00`
 
 ### Objective

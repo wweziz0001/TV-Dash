@@ -186,6 +186,10 @@ These areas are release-critical and should gain or maintain automated coverage 
 - channel timeshift enablement validation
 - timeshift status and manifest route behavior
 - player-facing honest capability handling so pause/rewind only appear when a real retained buffer exists
+- shared-session lifecycle start/expire behavior
+- shared manifest/segment cache hit, miss, and expiry behavior
+- shared local-origin route behavior for master playlists and cached assets
+- upstream failure handling for shared-delivery sessions so operator visibility reflects real restream trouble
 
 ### Auth And Governance
 

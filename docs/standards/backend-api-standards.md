@@ -208,6 +208,7 @@ Recording additions:
 ## Live Timeshift Rules
 
 - Proxy playback alone does not count as DVR or timeshift.
+- Shared local delivery also counts as TV-Dash-managed delivery, but only when the backend really owns the retained buffer and serving path.
 - Live pause, rewind, timeline seek, and jump-to-live behavior must only be exposed when the backend owns a real retained live buffer.
 - Timeshift retention, eviction, manifest generation, and asset storage belong in the `streams` module, not in pages or generic helpers.
 - Channel-level timeshift enablement must stay explicit in the channel contract and must reject unsupported combinations such as direct-playback-only live rewind.
@@ -218,6 +219,23 @@ Recording additions:
   - minimum available window threshold
   - polling cadence and idle cleanup timing
 - First-version timeshift implementations may be single-process and channel-local, but the limitation must be documented instead of hidden behind a fake DVR UI.
+
+## Shared Stream Delivery Rules
+
+- `SHARED` delivery must mean more than a renamed proxy URL.
+- Shared delivery belongs in the `streams` module and must provide real reuse through one or both of:
+  - channel-local shared upstream session state
+  - channel-local manifest/segment edge caching with in-flight request deduping
+- Shared-delivery routes should behave like a small local origin for repeated LAN/local viewer requests, while staying explicit about first-version limits.
+- Shared-session lifecycle must stay bounded:
+  - start on first local viewer request
+  - expose idle expiry timing
+  - clean up stale cache state after inactivity
+- Shared-delivery observability must expose enough truth for operators to answer:
+  - whether a shared session exists
+  - whether it is active, starting, or erroring
+  - whether local viewers are attached
+  - whether cache hits are actually happening
 
 ## Observability Rules
 

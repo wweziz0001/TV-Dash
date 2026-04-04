@@ -21,6 +21,7 @@ The current operator milestone also adds:
 - a device-ux pass that makes mobile browsing practical, improves tablet watch/multiview behavior, and gives large-screen walls clearer layout policy
 - a stronger cross-browser player UX pass with explicit in-player controls, PiP handling, Media Session integration, and honest live-DVR behavior
 - a first real live-timeshift foundation with retained proxy-backed HLS buffers, rolling DVR windows, honest live-vs-buffered state, and per-channel timeshift enablement
+- a first shared channel restream / edge-cache foundation with channel-local shared sessions, local-origin playlist/segment serving, and cache reuse for repeated local viewers
 
 ## Current Architecture Summary
 
@@ -31,6 +32,7 @@ The current operator milestone also adds:
 - Backend governance now also includes an `audit` module for durable admin action records with sanitized detail fields
 - Backend now also includes a `recordings` module for real ffmpeg-backed capture, guide/recurrence-aware scheduling, storage-backed media assets, and playback access tokens
 - Backend stream handling now also includes a real first-version live-timeshift path that retains rolling HLS buffers on disk for eligible proxy channels and serves DVR manifests from the `streams` module
+- Backend stream handling now also includes a real first-version shared local-delivery path that keeps channel-local shared sessions plus manifest/segment edge caching in the `streams` module
 - Playback session tracking now persists real active player heartbeats in PostgreSQL so admin monitoring pages can show who is watching what now
 - Guide source imports, source-channel discovery, channel mappings, and persisted programme rows now also live in PostgreSQL
 - Frontend keeps app bootstrap in `app`, route screens in `pages`, shared UI in `components`, auth in `features`, request logic in `services`, and player-specific code in `player`
@@ -142,7 +144,7 @@ Key relationship rules:
 - recording rules store recurring schedule intent, timezone-aware recurrence metadata, optional guide-program origin snapshots, and optional future-program title matching
 - recording runs store one concrete ffmpeg execution attempt with process/result metadata
 - recording assets store finalized playable media metadata and relative storage keys under the configured recordings root
-- channels may play either in `DIRECT` or `PROXY` mode
+- channels may play in `DIRECT`, `PROXY`, or `SHARED` mode
 - channels may independently enable retained live timeshift when they are served through `PROXY` mode
 - favorites are per-user per-channel
 - saved layouts are per-user and contain ordered tile items
@@ -159,7 +161,8 @@ Key relationship rules:
 - `player/playback-diagnostics.ts` maps raw lifecycle state into operator-facing labels, summaries, recovery state, failure-class hints, and browser-control state such as paused/PiP/fullscreen/live-edge
 - quality options and preference resolution live in `player/quality-options.ts`
 - manual-variant channels reach the player through a backend-generated synthetic master playlist, not duplicated channel rows
-- timeshift-enabled proxy channels reach the player through `/api/streams/channels/:id/timeshift/master`, with player controls gated by backend-reported timeshift availability
+- shared-delivery channels reach the player through `/api/streams/channels/:id/shared/master`, where TV-Dash behaves like a small local origin with channel-local cache/session reuse
+- timeshift-enabled TV-Dash-managed channels reach the player through `/api/streams/channels/:id/timeshift/master`, with player controls gated by backend-reported timeshift availability
 - supported multi-view layouts live in `player/layouts.ts`
 - tile defaults and one-active-audio rules live in `player/multiview-layout.ts`
 - saved multi-view serialization/hydration helpers live in `player/multiview-state.ts`
@@ -230,6 +233,37 @@ Key relationship rules:
   - timeshift retention is disk-backed, but the in-memory manifest index is rebuilt per process and does not survive restart
   - polling/retention is started lazily when a timeshift channel is requested, not pre-warmed for every enabled channel
   - this is a rolling pause/rewind window, not yet a full long-horizon DVR library or scheduled catch-up system
+
+## Shared Channel Restream And Edge Cache Foundation
+
+- `SHARED` is now a real delivery mode, distinct from both direct playback and ordinary proxy playback.
+- Shared-delivery behavior now exists in the `streams` module through:
+  - one process-local shared session per active channel
+  - a shared local master path at `/api/streams/channels/:id/shared/master`
+  - shared asset paths at `/api/streams/channels/:id/shared/assets/:assetId`
+  - short-lived channel-local manifest and segment caching
+  - in-flight upstream request deduping for concurrent local viewers on the same channel
+- What local viewers benefit from now:
+  - repeated local requests for the same manifests/segments can hit TV-Dash's channel-local cache instead of fetching upstream again
+  - concurrent local viewers requesting the same upstream asset can share one in-flight upstream fetch
+  - admin observability now shows whether a shared session is active, how many current viewers are attached to that channel, cache hit rate, cache size, and the latest shared-session failure state
+- What is reduced now:
+  - redundant upstream manifest fetches for the same shared channel
+  - redundant segment fetches for repeated/concurrent local viewers where the cache window still covers the requested asset
+- What is not promised yet:
+  - exactly one upstream request for every asset forever
+  - multi-process or multi-node shared session coordination
+  - a full CDN or long-lived distributed cache mesh
+- Lifecycle behavior now:
+  - first local shared-view request starts the session
+  - later local viewers reuse the same session/cache
+  - session state expires after `SHARED_STREAM_IDLE_TTL_MS` of inactivity
+  - idle expiry clears the per-channel asset map and cache entries
+  - upstream failures keep the session visible in an `ERROR` state until it recovers or expires
+- Current first-version limitations:
+  - shared sessions are process-local and in-memory, so restart clears hot cache/session state
+  - cache windows are intentionally short-lived and tuned for repeated local live viewing, not archival reuse
+  - the implementation is HLS-focused and does not yet prefetch or continuously restream every variant proactively
 
 ## Device Experience Overview
 
