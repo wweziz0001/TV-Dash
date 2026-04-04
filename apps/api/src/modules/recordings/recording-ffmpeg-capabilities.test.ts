@@ -15,6 +15,7 @@ built with gcc 12`),
   -extension_picky   <boolean>    .D......... Be picky with all extensions matching`;
 
     expect(supportsFfmpegOption(helpOutput, "allowed_segment_extensions")).toBe(true);
+    expect(supportsFfmpegOption(helpOutput, "extension_picky")).toBe(true);
     expect(supportsFfmpegOption(helpOutput, "protocol_whitelist")).toBe(false);
   });
 });

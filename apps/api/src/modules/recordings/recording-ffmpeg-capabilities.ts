@@ -11,6 +11,7 @@ export interface RecordingFfmpegCapabilities {
   binaryPath: string;
   version: string | null;
   supportsAllowedSegmentExtensions: boolean;
+  supportsExtensionPicky: boolean;
 }
 
 let ffmpegCapabilitiesPromise: Promise<RecordingFfmpegCapabilities> | null = null;
@@ -73,6 +74,7 @@ async function detectRecordingFfmpegCapabilities(): Promise<RecordingFfmpegCapab
         `${helpStdout}\n${helpStderr}`,
         "allowed_segment_extensions",
       ),
+      supportsExtensionPicky: supportsFfmpegOption(`${helpStdout}\n${helpStderr}`, "extension_picky"),
     };
   } catch {
     return {
@@ -80,6 +82,7 @@ async function detectRecordingFfmpegCapabilities(): Promise<RecordingFfmpegCapab
       binaryPath,
       version: null,
       supportsAllowedSegmentExtensions: false,
+      supportsExtensionPicky: false,
     };
   }
 }

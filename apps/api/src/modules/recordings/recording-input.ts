@@ -32,16 +32,20 @@ function buildInternalRecordingSourceUrl(channelId: string, apiPort: number) {
   return `http://127.0.0.1:${apiPort}/api/streams/channels/${channelId}/master?intent=recording`;
 }
 
-function buildProxyHlsInputArgs(ffmpegCapabilities?: Pick<RecordingFfmpegCapabilities, "supportsAllowedSegmentExtensions"> | null) {
+function buildProxyHlsInputArgs(
+  ffmpegCapabilities?: Pick<RecordingFfmpegCapabilities, "supportsAllowedSegmentExtensions" | "supportsExtensionPicky"> | null,
+) {
   const ffmpegInputArgs = ["-allowed_extensions", "ALL"];
 
   if (ffmpegCapabilities?.supportsAllowedSegmentExtensions) {
     ffmpegInputArgs.push("-allowed_segment_extensions", "ALL");
   }
 
+  if (ffmpegCapabilities?.supportsExtensionPicky) {
+    ffmpegInputArgs.push("-extension_picky", "0");
+  }
+
   ffmpegInputArgs.push(
-    "-extension_picky",
-    "0",
     "-protocol_whitelist",
     "file,http,https,tcp,tls,crypto,data",
     "-reconnect",
@@ -62,7 +66,10 @@ function buildProxyHlsInputArgs(ffmpegCapabilities?: Pick<RecordingFfmpegCapabil
 function buildInternalProxyInputConfig(
   channelId: string,
   apiPort: number,
-  ffmpegCapabilities?: Pick<RecordingFfmpegCapabilities, "supportsAllowedSegmentExtensions"> | null,
+  ffmpegCapabilities?: Pick<
+    RecordingFfmpegCapabilities,
+    "supportsAllowedSegmentExtensions" | "supportsExtensionPicky"
+  > | null,
 ): RecordingInputConfig {
   return {
     sourceUrl: buildInternalRecordingSourceUrl(channelId, apiPort),
@@ -113,7 +120,10 @@ export async function buildRecordingInputConfig(
   channel: StreamChannelRecord,
   apiPort: number,
   requestedQualitySelector: string | null | undefined,
-  ffmpegCapabilities?: Pick<RecordingFfmpegCapabilities, "supportsAllowedSegmentExtensions"> | null,
+  ffmpegCapabilities?: Pick<
+    RecordingFfmpegCapabilities,
+    "supportsAllowedSegmentExtensions" | "supportsExtensionPicky"
+  > | null,
 ): Promise<RecordingInputConfig> {
   if (channel.playbackMode === "PROXY") {
     return buildInternalProxyInputConfig(channel.id, apiPort, ffmpegCapabilities);

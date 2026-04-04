@@ -167,6 +167,7 @@ mid/index.m3u8`),
       "1",
       {
         supportsAllowedSegmentExtensions: true,
+        supportsExtensionPicky: true,
       },
     );
 
@@ -210,6 +211,7 @@ mid/index.m3u8`),
       "1",
       {
         supportsAllowedSegmentExtensions: false,
+        supportsExtensionPicky: false,
       },
     );
 
@@ -221,8 +223,6 @@ mid/index.m3u8`),
     expect(config.ffmpegInputArgs).toEqual([
       "-allowed_extensions",
       "ALL",
-      "-extension_picky",
-      "0",
       "-protocol_whitelist",
       "file,http,https,tcp,tls,crypto,data",
       "-reconnect",
@@ -237,5 +237,44 @@ mid/index.m3u8`),
       "+genpts+discardcorrupt",
     ]);
     expect(config.ffmpegInputArgs).not.toContain("-allowed_segment_extensions");
+    expect(config.ffmpegInputArgs).not.toContain("-extension_picky");
+  });
+
+  it("omits extension_picky when ffmpeg does not support it but still uses allowed_segment_extensions when available", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const config = await buildRecordingInputConfig(
+      buildChannel({
+        playbackMode: "PROXY",
+      }),
+      4000,
+      "1",
+      {
+        supportsAllowedSegmentExtensions: true,
+        supportsExtensionPicky: false,
+      },
+    );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(config.ffmpegInputArgs).toEqual([
+      "-allowed_extensions",
+      "ALL",
+      "-allowed_segment_extensions",
+      "ALL",
+      "-protocol_whitelist",
+      "file,http,https,tcp,tls,crypto,data",
+      "-reconnect",
+      "1",
+      "-reconnect_streamed",
+      "1",
+      "-reconnect_on_network_error",
+      "1",
+      "-reconnect_delay_max",
+      "2",
+      "-fflags",
+      "+genpts+discardcorrupt",
+    ]);
+    expect(config.ffmpegInputArgs).not.toContain("-extension_picky");
   });
 });

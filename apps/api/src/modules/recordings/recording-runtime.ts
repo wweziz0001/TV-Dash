@@ -357,6 +357,7 @@ async function startRecordingJobExecution(recordingJobId: string) {
       ffmpegBinaryPath: ffmpegCapabilities.binaryPath,
       ffmpegVersion: ffmpegCapabilities.version,
       supportsAllowedSegmentExtensions: ffmpegCapabilities.supportsAllowedSegmentExtensions,
+      supportsExtensionPicky: ffmpegCapabilities.supportsExtensionPicky,
     },
   });
 }
