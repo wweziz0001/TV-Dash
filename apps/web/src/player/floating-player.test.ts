@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildFloatingPlayerWindowFeatures,
   clampFloatingPlayerLayout,
   getDefaultFloatingPlayerLayout,
 } from "./floating-player";
@@ -37,5 +38,16 @@ describe("floating-player", () => {
       height: 312,
       zIndex: 99,
     });
+  });
+
+  it("serializes detached floating window features for popup launch", () => {
+    expect(
+      buildFloatingPlayerWindowFeatures({
+        left: 128.4,
+        top: 72.1,
+        width: 420.2,
+        height: 236.7,
+      }),
+    ).toBe("popup=yes,resizable=yes,scrollbars=no,noopener=no,left=128,top=72,width=420,height=237");
   });
 });

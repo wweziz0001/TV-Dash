@@ -3,9 +3,11 @@ export interface PlayerBrowserCapabilities {
   canPictureInPicture: boolean;
   canNativePictureInPicture: boolean;
   canFloatingPlayback: boolean;
+  canDetachedFloatingPlayback: boolean;
   canDocumentPictureInPicture: boolean;
   canUseMediaSession: boolean;
   pictureInPictureUnavailableReason: string | null;
+  floatingPlaybackUnavailableReason: string | null;
 }
 
 export interface PlayerSeekState {
@@ -46,11 +48,17 @@ export function getPlayerBrowserCapabilities(
   fullscreenTarget: Element | null = null,
   doc: PictureInPictureDocument & FullscreenDocument = document,
   nav: Navigator = navigator,
+  win: Pick<Window, "open"> = window,
 ): PlayerBrowserCapabilities {
   const canUseMediaSession = "mediaSession" in nav && typeof nav.mediaSession !== "undefined";
   const canFullscreen = Boolean(fullscreenTarget?.requestFullscreen) && doc.fullscreenEnabled !== false;
   const canDocumentPictureInPicture = false;
   const canFloatingPlayback = typeof doc.createElement === "function";
+  const canDetachedFloatingPlayback = typeof win.open === "function";
+  const floatingPlaybackUnavailableReason =
+    canFloatingPlayback || canDetachedFloatingPlayback
+      ? null
+      : "TV-Dash floating playback is unavailable in this browser session.";
 
   if (!video) {
     return {
@@ -58,11 +66,13 @@ export function getPlayerBrowserCapabilities(
       canPictureInPicture: canFloatingPlayback,
       canNativePictureInPicture: false,
       canFloatingPlayback,
+      canDetachedFloatingPlayback,
       canDocumentPictureInPicture,
       canUseMediaSession,
       pictureInPictureUnavailableReason: canFloatingPlayback
         ? "Picture-in-Picture is unavailable until playback is ready."
         : "Picture-in-Picture is not supported in this browser.",
+      floatingPlaybackUnavailableReason,
     };
   }
 
@@ -72,11 +82,13 @@ export function getPlayerBrowserCapabilities(
       canPictureInPicture: canFloatingPlayback,
       canNativePictureInPicture: false,
       canFloatingPlayback,
+      canDetachedFloatingPlayback,
       canDocumentPictureInPicture,
       canUseMediaSession,
       pictureInPictureUnavailableReason: canFloatingPlayback
         ? "Native Picture-in-Picture is disabled for this player. TV-Dash can still open a floating player."
         : "Picture-in-Picture is disabled for this player.",
+      floatingPlaybackUnavailableReason,
     };
   }
 
@@ -86,11 +98,13 @@ export function getPlayerBrowserCapabilities(
       canPictureInPicture: canFloatingPlayback,
       canNativePictureInPicture: false,
       canFloatingPlayback,
+      canDetachedFloatingPlayback,
       canDocumentPictureInPicture,
       canUseMediaSession,
       pictureInPictureUnavailableReason: canFloatingPlayback
         ? "Native Picture-in-Picture is not supported in this browser. TV-Dash can use a floating player instead."
         : "Picture-in-Picture is not supported in this browser.",
+      floatingPlaybackUnavailableReason,
     };
   }
 
@@ -100,11 +114,13 @@ export function getPlayerBrowserCapabilities(
       canPictureInPicture: canFloatingPlayback,
       canNativePictureInPicture: false,
       canFloatingPlayback,
+      canDetachedFloatingPlayback,
       canDocumentPictureInPicture,
       canUseMediaSession,
       pictureInPictureUnavailableReason: canFloatingPlayback
         ? "Native Picture-in-Picture is disabled in this browser. TV-Dash can use a floating player instead."
         : "Picture-in-Picture is disabled in this browser.",
+      floatingPlaybackUnavailableReason,
     };
   }
 
@@ -113,9 +129,11 @@ export function getPlayerBrowserCapabilities(
     canPictureInPicture: true,
     canNativePictureInPicture: true,
     canFloatingPlayback,
+    canDetachedFloatingPlayback,
     canDocumentPictureInPicture,
     canUseMediaSession,
     pictureInPictureUnavailableReason: null,
+    floatingPlaybackUnavailableReason,
   };
 }
 

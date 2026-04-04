@@ -6,6 +6,13 @@ export interface FloatingPlayerLayout {
   zIndex: number;
 }
 
+export interface FloatingPlayerWindowLayout {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 const FLOATING_PLAYER_MARGIN = 24;
 const FLOATING_PLAYER_STEP = 28;
 const DEFAULT_FLOATING_PLAYER_WIDTH = 420;
@@ -72,4 +79,22 @@ export function getDefaultFloatingPlayerLayout(
     viewportWidth,
     viewportHeight,
   );
+}
+
+export function buildFloatingPlayerWindowFeatures({
+  left,
+  top,
+  width,
+  height,
+}: FloatingPlayerWindowLayout) {
+  return [
+    "popup=yes",
+    "resizable=yes",
+    "scrollbars=no",
+    "noopener=no",
+    `left=${Math.round(left)}`,
+    `top=${Math.round(top)}`,
+    `width=${Math.round(width)}`,
+    `height=${Math.round(height)}`,
+  ].join(",");
 }

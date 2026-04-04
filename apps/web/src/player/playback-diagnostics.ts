@@ -1,6 +1,6 @@
 import type { PlayerFailureKind, PlayerStatus } from "./playback-recovery";
 
-export type PlayerPictureInPictureMode = "none" | "native" | "floating";
+export type PlayerPictureInPictureMode = "none" | "native" | "floating" | "detached";
 
 export interface PlayerDiagnostics {
   status: PlayerStatus;
