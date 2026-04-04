@@ -378,9 +378,6 @@ describe("HlsPlayer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Pause playback" }));
     expect(screen.getAllByText("Paused").length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole("button", { name: "Open Picture-in-Picture" }));
-    expect(screen.getByText("PiP")).toBeInTheDocument();
-
     fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
     expect(screen.getByText("Fullscreen")).toBeInTheDocument();
 
@@ -388,7 +385,6 @@ describe("HlsPlayer", () => {
       expect.objectContaining({
         isPaused: true,
         canPictureInPicture: true,
-        isPictureInPictureActive: true,
         isFullscreenActive: true,
       }),
     );
@@ -429,47 +425,51 @@ describe("HlsPlayer", () => {
     expect(controlOverlay).toHaveClass("opacity-0");
   });
 
-  it("opens multiple in-page PiP panels without using the browser-native PiP API", async () => {
-    render(
-      <div>
-        <HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />
-        <HlsPlayer src="https://example.com/b.m3u8" title="Channel B" />
-      </div>,
-    );
+  it("prefers document picture-in-picture when the browser supports it", async () => {
+    const pipDocument = document.implementation.createHTMLDocument("pip");
+    const pipWindow = {
+      document: pipDocument,
+      closed: false,
+      close: vi.fn(function (this: { closed: boolean }) {
+        this.closed = true;
+      }),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as Window;
+    const requestWindow = vi.fn(async () => pipWindow);
+
+    Object.defineProperty(window, "documentPictureInPicture", {
+      configurable: true,
+      value: {
+        requestWindow,
+      },
+      writable: true,
+    });
+
+    render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
 
     act(() => {
       MockHls.instances[0].emit(MockHls.Events.MANIFEST_PARSED, {
         levels: [{ height: 1080 }, { height: 720 }],
       });
-      MockHls.instances[1].emit(MockHls.Events.MANIFEST_PARSED, {
-        levels: [{ height: 1080 }, { height: 720 }],
-      });
     });
 
-    const playerRoots = screen.getAllByTestId("player-surface");
-
-    playerRoots.forEach((playerRoot) => {
-      fireEvent.mouseOver(playerRoot);
-      fireEvent.mouseMove(playerRoot);
-    });
-
-    const pipButtons = screen.getAllByRole("button", { name: "Open Picture-in-Picture" });
+    const playerRoot = screen.getByTestId("player-surface");
+    fireEvent.mouseOver(playerRoot);
+    fireEvent.mouseMove(playerRoot);
 
     await act(async () => {
-      fireEvent.click(pipButtons[0]);
-      fireEvent.click(pipButtons[1]);
+      fireEvent.click(screen.getByRole("button", { name: "Open Picture-in-Picture" }));
+      await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(document.querySelectorAll('[data-floating-pip="true"]')).toHaveLength(2);
-    expect(screen.getAllByTestId("floating-pip-placeholder")).toHaveLength(2);
+    expect(requestWindow).toHaveBeenCalledTimes(1);
     expect(HTMLVideoElement.prototype.requestPictureInPicture).not.toHaveBeenCalled();
-    expect(MockHls.instances[0].destroy).not.toHaveBeenCalled();
-    expect(MockHls.instances[1].destroy).not.toHaveBeenCalled();
-    expect(screen.getAllByRole("button", { name: "Return from PiP" })).toHaveLength(2);
+    expect(screen.getByTestId("floating-pip-placeholder")).toBeInTheDocument();
   });
 
-  it("keeps the center playback control working after entering and leaving in-page PiP", async () => {
+  it("falls back to native video picture-in-picture when document PiP is unavailable", async () => {
     render(<HlsPlayer src="https://example.com/a.m3u8" title="Channel A" />);
 
     act(() => {
@@ -487,20 +487,6 @@ describe("HlsPlayer", () => {
       await Promise.resolve();
     });
 
-    expect(document.querySelector('[data-floating-pip="true"]')).not.toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Pause playback" }));
-    expect(screen.getAllByText("Paused").length).toBeGreaterThan(0);
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Return from PiP" }));
-      await Promise.resolve();
-    });
-
-    fireEvent.mouseOver(playerRoot);
-    fireEvent.mouseMove(playerRoot);
-    fireEvent.click(screen.getByRole("button", { name: "Resume playback" }));
-
-    expect(screen.getByRole("button", { name: "Pause playback" })).toBeInTheDocument();
+    expect(HTMLVideoElement.prototype.requestPictureInPicture).toHaveBeenCalledTimes(1);
   });
 });

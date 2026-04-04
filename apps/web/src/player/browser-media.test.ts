@@ -14,33 +14,47 @@ function createSeekableRange(start: number, end: number): TimeRanges {
 }
 
 describe("browser-media", () => {
-  it("reports in-page PiP, fullscreen, and media-session capabilities when playback is ready", () => {
-    const video = {} as HTMLVideoElement;
+  it("reports document PiP, fullscreen, and media-session capabilities when playback is ready", () => {
+    const video = {
+      disablePictureInPicture: false,
+      requestPictureInPicture: vi.fn(),
+    } as unknown as HTMLVideoElement;
     const fullscreenTarget = {
       requestFullscreen: vi.fn(),
     } as unknown as Element;
     const doc = {
+      pictureInPictureEnabled: true,
       fullscreenEnabled: true,
     } as Document;
     const nav = {
       mediaSession: {},
     } as Navigator;
-    const win = {} as unknown as Window;
+    const win = {
+      documentPictureInPicture: {
+        requestWindow: vi.fn(),
+      },
+    } as unknown as Window;
 
     expect(getPlayerBrowserCapabilities(video, fullscreenTarget, doc, nav, win)).toEqual({
       canFullscreen: true,
       canPictureInPicture: true,
-      canDocumentPictureInPicture: false,
+      canDocumentPictureInPicture: true,
       canUseMediaSession: true,
       pictureInPictureUnavailableReason: null,
     });
   });
 
-  it("returns a clear PiP fallback reason when playback is not ready yet", () => {
-    expect(getPlayerBrowserCapabilities(null, null, {} as Document, {} as Navigator)).toMatchObject({
+  it("returns a clear PiP fallback reason when the browser does not expose the API", () => {
+    const video = {
+      disablePictureInPicture: false,
+    } as HTMLVideoElement;
+
+    expect(
+      getPlayerBrowserCapabilities(video, null, { pictureInPictureEnabled: true } as Document, {} as Navigator),
+    ).toMatchObject({
       canPictureInPicture: false,
       canDocumentPictureInPicture: false,
-      pictureInPictureUnavailableReason: "Picture-in-Picture is unavailable until playback is ready.",
+      pictureInPictureUnavailableReason: "Picture-in-Picture is not supported in this browser.",
     });
   });
 

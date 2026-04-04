@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FocusEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { useEffect, useRef, useState, type FocusEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import Hls from "hls.js";
 import { AlertTriangle, LoaderCircle, Pause, Play, RotateCcw, Signal } from "lucide-react";
@@ -11,10 +11,12 @@ import {
   getPlayerBrowserCapabilities,
   getPlayerSeekState,
   isFullscreenActive,
+  isPictureInPictureActive,
   seekVideoByOffset,
   type PlayerBrowserCapabilities,
   type PlayerSeekState,
 } from "./browser-media";
+import { copyDocumentStyles, getDocumentPictureInPictureApi } from "./document-picture-in-picture";
 import { syncPlayerMediaSession } from "./media-session";
 import { buildPlayerDiagnostics, type PlayerDiagnostics } from "./playback-diagnostics";
 import { PlayerControlOverlay } from "./player-control-overlay";
@@ -50,42 +52,8 @@ const defaultBrowserCapabilities: PlayerBrowserCapabilities = {
 };
 
 const SEEK_STEP_SECONDS = 10;
-const FLOATING_PIP_WIDTH = 420;
-const FLOATING_PIP_HEIGHT = 236;
-const FLOATING_PIP_GAP = 16;
-const FLOATING_PIP_OFFSET = 28;
-let nextFloatingPipSlot = 0;
-
-function getNextFloatingPipPosition(size = { width: FLOATING_PIP_WIDTH, height: FLOATING_PIP_HEIGHT }) {
-  const slot = nextFloatingPipSlot;
-  nextFloatingPipSlot += 1;
-  const viewportWidth = typeof window === "undefined" ? size.width + FLOATING_PIP_GAP * 2 : window.innerWidth;
-  const viewportHeight = typeof window === "undefined" ? size.height + FLOATING_PIP_GAP * 2 : window.innerHeight;
-  const maxLeft = Math.max(viewportWidth - size.width - FLOATING_PIP_GAP, FLOATING_PIP_GAP);
-  const maxTop = Math.max(viewportHeight - size.height - FLOATING_PIP_GAP, FLOATING_PIP_GAP);
-
-  return {
-    left: Math.max(FLOATING_PIP_GAP, maxLeft - (Math.floor(slot / 3) % 3) * FLOATING_PIP_OFFSET),
-    top: Math.max(FLOATING_PIP_GAP, maxTop - (slot % 3) * FLOATING_PIP_OFFSET),
-  };
-}
-
-function clampFloatingPipPosition(
-  position: { left: number; top: number },
-  size: { width: number; height: number },
-) {
-  if (typeof window === "undefined") {
-    return position;
-  }
-
-  const maxLeft = Math.max(window.innerWidth - size.width - FLOATING_PIP_GAP, FLOATING_PIP_GAP);
-  const maxTop = Math.max(window.innerHeight - size.height - FLOATING_PIP_GAP, FLOATING_PIP_GAP);
-
-  return {
-    left: Math.min(Math.max(position.left, FLOATING_PIP_GAP), maxLeft),
-    top: Math.min(Math.max(position.top, FLOATING_PIP_GAP), maxTop),
-  };
-}
+const DOCUMENT_PIP_WINDOW_WIDTH = 420;
+const DOCUMENT_PIP_WINDOW_HEIGHT = 264;
 
 function formatPlaybackTime(seconds: number | null) {
   if (seconds === null || !Number.isFinite(seconds)) {
@@ -163,8 +131,6 @@ export function HlsPlayer({
   const [isPictureInPictureMode, setIsPictureInPictureMode] = useState(false);
   const [isFullscreenMode, setIsFullscreenMode] = useState(false);
   const [areControlsVisible, setAreControlsVisible] = useState(false);
-  const [floatingPipSize] = useState({ width: FLOATING_PIP_WIDTH, height: FLOATING_PIP_HEIGHT });
-  const [floatingPipPosition, setFloatingPipPosition] = useState(() => getNextFloatingPipPosition());
   const [surfacePortalHost] = useState<HTMLDivElement | null>(() => {
     if (typeof document === "undefined") {
       return null;
@@ -175,14 +141,8 @@ export function HlsPlayer({
     return host;
   });
   const [inlineSurfaceAnchor, setInlineSurfaceAnchor] = useState<HTMLDivElement | null>(null);
-  const [floatingSurfaceAnchor, setFloatingSurfaceAnchor] = useState<HTMLDivElement | null>(null);
-  const floatingPipDragRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    startLeft: number;
-    startTop: number;
-  } | null>(null);
+  const [documentPipAnchor, setDocumentPipAnchor] = useState<HTMLDivElement | null>(null);
+  const [documentPipWindow, setDocumentPipWindow] = useState<Window | null>(null);
 
   callbacksRef.current = {
     onMutedChange,
@@ -198,31 +158,16 @@ export function HlsPlayer({
   };
 
   function getFullscreenTarget() {
-    if (isPictureInPictureMode) {
-      return playerFrameRef.current;
+    if (documentPipWindow && !documentPipWindow.closed) {
+      return null;
     }
 
     return fullscreenTargetRef?.current ?? playerFrameRef.current;
   }
 
-  function clearFloatingPictureInPictureState() {
-    setIsPictureInPictureMode(false);
-  }
-
-  function handleFloatingPipDragStart(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!isPictureInPictureMode) {
-      return;
-    }
-
-    floatingPipDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      startLeft: floatingPipPosition.left,
-      startTop: floatingPipPosition.top,
-    };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    showControls();
+  function clearDocumentPictureInPictureState() {
+    setDocumentPipAnchor(null);
+    setDocumentPipWindow(null);
   }
 
   function updateStatus(nextStatus: PlayerStatus) {
@@ -324,17 +269,22 @@ export function HlsPlayer({
   function syncBrowserState() {
     const video = videoRef.current;
     const fullscreenTarget = getFullscreenTarget();
-    const activeDocument = document;
+    const activeDocument = (video?.ownerDocument ?? document) as Document;
+    const usingDocumentPictureInPicture = Boolean(documentPipWindow && !documentPipWindow.closed);
     const nextCapabilities = getPlayerBrowserCapabilities(
       video,
-      fullscreenTarget,
+      usingDocumentPictureInPicture ? null : fullscreenTarget,
       activeDocument,
       navigator,
       window,
     );
 
-    setCapabilities(nextCapabilities);
-    setIsFullscreenMode(isFullscreenActive(fullscreenTarget, activeDocument));
+    setCapabilities({
+      ...nextCapabilities,
+      canFullscreen: usingDocumentPictureInPicture ? false : nextCapabilities.canFullscreen,
+    });
+    setIsPictureInPictureMode(usingDocumentPictureInPicture || isPictureInPictureActive(video, activeDocument));
+    setIsFullscreenMode(usingDocumentPictureInPicture ? false : isFullscreenActive(fullscreenTarget, activeDocument));
     setSeekState(getPlayerSeekState(video));
 
     if (!video) {
@@ -459,27 +409,69 @@ export function HlsPlayer({
   }
 
   function handleTogglePictureInPicture() {
-    if (!videoRef.current || !src) {
+    const video = videoRef.current;
+    const documentPictureInPictureApi = getDocumentPictureInPictureApi();
+
+    if (!video || !src) {
       return;
     }
 
-    try {
-      if (isPictureInPictureMode) {
-        clearFloatingPictureInPictureState();
-        setStatusDetail("Returned the player to its original position.");
-        showControls();
-        return;
-      }
+    void (async () => {
+      try {
+        if (documentPipWindow && !documentPipWindow.closed) {
+          documentPipWindow.close();
+          clearDocumentPictureInPictureState();
+          setStatusDetail("Returned the player to the tab.");
+          showControls();
+          return;
+        }
 
-      setFloatingPipPosition(getNextFloatingPipPosition(floatingPipSize));
-      setIsPictureInPictureMode(true);
-      setStatusDetail("Opened a TV-Dash floating Picture-in-Picture panel.");
-      showControls();
-    } catch {
-      setStatusDetail("Picture-in-Picture could not be opened in this browser session.");
-    } finally {
-      syncBrowserState();
-    }
+        if (document.pictureInPictureElement === video) {
+          await document.exitPictureInPicture?.();
+          setStatusDetail("Returned the player to the tab.");
+          showControls();
+          return;
+        }
+
+        if (capabilities.canDocumentPictureInPicture && documentPictureInPictureApi) {
+          const pipWindow = await documentPictureInPictureApi.requestWindow({
+            width: DOCUMENT_PIP_WINDOW_WIDTH,
+            height: DOCUMENT_PIP_WINDOW_HEIGHT,
+            preferInitialWindowPlacement: true,
+          });
+
+          copyDocumentStyles(document, pipWindow.document);
+          const pipAnchor = pipWindow.document.createElement("div");
+          pipAnchor.className = "h-full w-full";
+          pipWindow.document.body.innerHTML = "";
+          pipWindow.document.body.appendChild(pipAnchor);
+
+          const handlePipWindowClosed = () => {
+            clearDocumentPictureInPictureState();
+            syncBrowserState();
+          };
+
+          pipWindow.addEventListener("pagehide", handlePipWindowClosed, { once: true });
+          pipWindow.addEventListener("beforeunload", handlePipWindowClosed, { once: true });
+
+          setDocumentPipAnchor(pipAnchor);
+          setDocumentPipWindow(pipWindow);
+          setStatusDetail("Opened a browser Picture-in-Picture window.");
+          showControls();
+          return;
+        }
+
+        if (capabilities.canPictureInPicture) {
+          await video.requestPictureInPicture?.();
+          setStatusDetail("Opened native Picture-in-Picture. Browser controls will appear in the PiP window.");
+          showControls();
+        }
+      } catch {
+        setStatusDetail("Picture-in-Picture could not be opened in this browser session.");
+      } finally {
+        syncBrowserState();
+      }
+    })();
   }
 
   async function handleToggleFullscreen() {
@@ -575,7 +567,7 @@ export function HlsPlayer({
       return;
     }
 
-    const targetAnchor = isPictureInPictureMode ? floatingSurfaceAnchor : inlineSurfaceAnchor;
+    const targetAnchor = documentPipAnchor ?? inlineSurfaceAnchor;
 
     if (!targetAnchor) {
       return;
@@ -588,55 +580,20 @@ export function HlsPlayer({
         targetAnchor.removeChild(surfacePortalHost);
       }
     };
-  }, [floatingSurfaceAnchor, inlineSurfaceAnchor, isPictureInPictureMode, surfacePortalHost]);
+  }, [documentPipAnchor, inlineSurfaceAnchor, surfacePortalHost]);
 
   useEffect(() => {
-    syncBrowserState();
-  }, [isPictureInPictureMode]);
-
-  useEffect(() => {
-    if (!isPictureInPictureMode) {
-      floatingPipDragRef.current = null;
+    if (!documentPipWindow) {
       return;
     }
 
-    function handlePointerMove(event: PointerEvent) {
-      if (!floatingPipDragRef.current || floatingPipDragRef.current.pointerId !== event.pointerId) {
-        return;
-      }
-
-      const deltaX = event.clientX - floatingPipDragRef.current.startX;
-      const deltaY = event.clientY - floatingPipDragRef.current.startY;
-
-      setFloatingPipPosition(
-        clampFloatingPipPosition(
-          {
-            left: floatingPipDragRef.current.startLeft + deltaX,
-            top: floatingPipDragRef.current.startTop + deltaY,
-          },
-          floatingPipSize,
-        ),
-      );
-    }
-
-    function handlePointerUp(event: PointerEvent) {
-      if (!floatingPipDragRef.current || floatingPipDragRef.current.pointerId !== event.pointerId) {
-        return;
-      }
-
-      floatingPipDragRef.current = null;
-    }
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-    window.addEventListener("pointercancel", handlePointerUp);
+    copyDocumentStyles(document, documentPipWindow.document);
+    syncBrowserState();
 
     return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-      window.removeEventListener("pointercancel", handlePointerUp);
+      syncBrowserState();
     };
-  }, [floatingPipSize, isPictureInPictureMode]);
+  }, [documentPipWindow]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -674,6 +631,9 @@ export function HlsPlayer({
       setCurrentTime(video.currentTime);
       setSeekState(getPlayerSeekState(video));
     };
+    const handlePictureInPictureUpdated = () => {
+      syncBrowserState();
+    };
     const handleFullscreenUpdated = () => {
       syncBrowserState();
     };
@@ -687,6 +647,8 @@ export function HlsPlayer({
     video.addEventListener("loadedmetadata", handleTimeRangeUpdated);
     video.addEventListener("seeking", handleTimeRangeUpdated);
     video.addEventListener("seeked", handleTimeRangeUpdated);
+    video.addEventListener("enterpictureinpicture", handlePictureInPictureUpdated);
+    video.addEventListener("leavepictureinpicture", handlePictureInPictureUpdated);
     document.addEventListener("fullscreenchange", handleFullscreenUpdated);
 
     return () => {
@@ -699,9 +661,11 @@ export function HlsPlayer({
       video.removeEventListener("loadedmetadata", handleTimeRangeUpdated);
       video.removeEventListener("seeking", handleTimeRangeUpdated);
       video.removeEventListener("seeked", handleTimeRangeUpdated);
+      video.removeEventListener("enterpictureinpicture", handlePictureInPictureUpdated);
+      video.removeEventListener("leavepictureinpicture", handlePictureInPictureUpdated);
       document.removeEventListener("fullscreenchange", handleFullscreenUpdated);
     };
-  }, [fullscreenTargetRef, src]);
+  }, [documentPipAnchor, fullscreenTargetRef, src]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -1002,8 +966,11 @@ export function HlsPlayer({
     clearReconnectTimeout();
     clearRecoveryNoticeTimeout();
     clearControlsVisibilityTimeout();
+    if (documentPipWindow && !documentPipWindow.closed) {
+      documentPipWindow.close();
+    }
     stopPlayback();
-  }, []);
+  }, [documentPipWindow]);
 
   const diagnostics = buildPlayerDiagnostics({
     status,
@@ -1165,15 +1132,15 @@ export function HlsPlayer({
 
   return (
     <>
-      {isPictureInPictureMode ? (
+      {documentPipAnchor ? (
         <div
           className="flex h-full min-h-[160px] items-center justify-center rounded-[1rem] border border-dashed border-cyan-400/30 bg-slate-950/70 p-4 text-center"
           data-testid="floating-pip-placeholder"
         >
           <div>
-            <p className="text-sm font-semibold text-white">Playing in TV-Dash PiP</p>
+            <p className="text-sm font-semibold text-white">Playing in Picture-in-Picture</p>
             <p className="mt-1.5 text-[12px] text-slate-400">
-              The player stays live in a floating in-page panel.
+              The player controls moved into the PiP window.
             </p>
             <Button className="mt-3" onClick={handleTogglePictureInPicture} size="sm" type="button" variant="secondary">
               Return from PiP
@@ -1185,39 +1152,6 @@ export function HlsPlayer({
       <div className="h-full w-full" ref={setInlineSurfaceAnchor} />
 
       {surfacePortalHost ? createPortal(renderPlayerSurface(), surfacePortalHost) : null}
-
-      {isPictureInPictureMode
-        ? createPortal(
-          <div
-            className="fixed z-[95] overflow-hidden rounded-[1.15rem] border border-cyan-400/25 bg-slate-950/85 shadow-[0_24px_80px_rgba(2,6,23,0.55)] backdrop-blur-sm"
-            data-floating-pip="true"
-            data-testid="floating-pip-shell"
-            style={{
-              left: `${floatingPipPosition.left}px`,
-              top: `${floatingPipPosition.top}px`,
-              width: `min(${floatingPipSize.width}px, calc(100vw - ${FLOATING_PIP_GAP * 2}px))`,
-              height: `min(${floatingPipSize.height + 28}px, calc(100vh - ${FLOATING_PIP_GAP * 2}px))`,
-            }}
-          >
-            <div
-              aria-label="Move floating PiP"
-              className={cn(
-                "flex items-center justify-between px-3 py-2 text-[11px] text-slate-200 transition-opacity duration-200",
-                areControlsVisible ? "cursor-grab opacity-100" : "pointer-events-none opacity-0",
-              )}
-              data-testid="floating-pip-drag-handle"
-              onPointerDown={handleFloatingPipDragStart}
-            >
-              <span className="truncate pr-3">{title}</span>
-              <span className="uppercase tracking-[0.18em] text-slate-400">Drag</span>
-            </div>
-            <div
-              className="h-[calc(100%-28px)] w-full"
-              ref={setFloatingSurfaceAnchor}
-            />
-          </div>
-        , document.body)
-        : null}
     </>
   );
 }
