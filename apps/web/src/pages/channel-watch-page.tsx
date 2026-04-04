@@ -18,6 +18,7 @@ import { getPlaybackModeLabel } from "@/lib/playback-mode";
 import { HlsPlayer, type PlayerDiagnostics } from "@/player/hls-player";
 import { buildPlayerDiagnostics } from "@/player/playback-diagnostics";
 import { defaultQualityOptions } from "@/player/quality-options";
+import { buildPlayerTimeshiftUiModel } from "@/player/timeshift-ui";
 import { api, getChannelPlaybackTargets, resolveApiUrl } from "@/services/api";
 import type { LiveTimeshiftStatus, QualityOption, RecordingJob } from "@/types/api";
 
@@ -333,6 +334,10 @@ export function ChannelWatchPage() {
     timeshiftStatus,
   });
   const playbackUrl = playbackTargets.defaultPlaybackUrl ? resolveApiUrl(playbackTargets.defaultPlaybackUrl) : null;
+  const playerTimeshiftUi = buildPlayerTimeshiftUiModel({
+    diagnostics: playerDiagnostics,
+    timeshiftStatus,
+  });
   const nowNext = nowNextQuery.data;
   const guideProgrammes = (guideWindowQuery.data?.programmes ?? []).filter((programme) => {
     return !nowNext?.now || programme.id !== nowNext.now.id;
@@ -453,7 +458,8 @@ export function ChannelWatchPage() {
               <div className="rounded-xl border border-slate-800/80 bg-slate-950/80 p-3">
                 <p className="text-[13px] font-semibold text-white">Current state</p>
                 <p className="mt-1.5 text-[13px] text-slate-400">
-                  {playerDiagnostics.label} · {selectedQuality === "AUTO" ? "Auto quality" : `Manual quality ${selectedQuality}`}
+                  {playerDiagnostics.label} · {playerTimeshiftUi.viewerPositionLabel} ·{" "}
+                  {selectedQuality === "AUTO" ? "Auto quality" : `Manual quality ${selectedQuality}`}
                 </p>
                 <p className="mt-1.5 text-[12px] text-slate-300">{playerDiagnostics.summary}</p>
                 <p className="mt-2 text-[12px] text-slate-400">
@@ -494,16 +500,13 @@ export function ChannelWatchPage() {
                       : "not available in this browser"}
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">
-                  Live window:{" "}
-                  {timeshiftStatus?.supported
-                    ? !timeshiftStatus.available
-                      ? `${timeshiftStatus.message} (${Math.max(0, Math.floor(timeshiftStatus.availableWindowSeconds))}s retained so far)`
-                      : playerDiagnostics.canSeek
-                        ? playerDiagnostics.isAtLiveEdge
-                          ? `DVR ready with ${Math.floor(timeshiftStatus.availableWindowSeconds)} seconds retained at the live edge`
-                          : `${Math.round(playerDiagnostics.liveLatencySeconds ?? 0)} seconds behind live`
-                        : "DVR is enabled but the player has not exposed a seekable window yet"
-                    : "this channel is live-only and TV-Dash does not expose pause or rewind controls"}
+                  DVR capability: {playerTimeshiftUi.capabilityLabel}
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Viewer position: {playerTimeshiftUi.viewerPositionLabel}
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Retained window: {playerTimeshiftUi.bufferWindowLabel}
                 </p>
                 {streamSessionStatus ? (
                   <p className="mt-1 text-[11px] text-slate-500">

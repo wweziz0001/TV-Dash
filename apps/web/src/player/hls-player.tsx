@@ -17,9 +17,11 @@ import {
 } from "./browser-media";
 import { syncPlayerMediaSession } from "./media-session";
 import { buildPlayerDiagnostics, type PlayerDiagnostics } from "./playback-diagnostics";
+import { LiveDvrTimeline } from "./live-dvr-timeline";
 import { PlayerControlOverlay } from "./player-control-overlay";
 import { getFatalRecoveryAction, type PlayerFailureKind, type PlayerStatus } from "./playback-recovery";
 import { buildQualityOptions, defaultQualityOptions, resolvePreferredQuality } from "./quality-options";
+import { buildPlayerTimeshiftUiModel } from "./timeshift-ui";
 
 interface HlsPlayerProps {
   src: string | null;
@@ -50,23 +52,6 @@ const defaultBrowserCapabilities: PlayerBrowserCapabilities = {
 };
 
 const SEEK_STEP_SECONDS = 10;
-
-function formatPlaybackTime(seconds: number | null) {
-  if (seconds === null || !Number.isFinite(seconds)) {
-    return "--:--";
-  }
-
-  const totalSeconds = Math.max(0, Math.floor(seconds));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const remainingSeconds = totalSeconds % 60;
-
-  if (hours > 0) {
-    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
-  }
-
-  return `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
-}
 
 export function HlsPlayer({
   src,
@@ -923,27 +908,19 @@ export function HlsPlayer({
     timeshiftAvailableWindowSeconds: timeshiftStatus?.availableWindowSeconds ?? 0,
     timeshiftMessage: timeshiftStatus?.message ?? null,
   });
-  const liveStateLabel = !timeshiftSupported
-    ? "Live only"
-    : !timeshiftAvailable
-      ? "DVR warming"
-      : seekState.isAtLiveEdge
-        ? "Live"
-        : `-${Math.round(seekState.liveLatencySeconds ?? 0)}s`;
+  const timeshiftUi = buildPlayerTimeshiftUiModel({
+    diagnostics,
+    timeshiftStatus,
+    seekState,
+    currentTime,
+  });
   const timelineMin = seekState.rangeStart ?? 0;
   const timelineMax = seekState.rangeEnd ?? 1;
   const timelineValue = effectiveCanSeek
     ? Math.min(timelineMax, Math.max(timelineMin, currentTime))
     : timelineMax;
-  const currentTimeLabel = effectiveCanSeek
-    ? formatPlaybackTime(currentTime - timelineMin)
-    : liveStateLabel;
-  const durationLabel = effectiveCanSeek
-    ? formatPlaybackTime((seekState.rangeEnd ?? timelineMax) - timelineMin)
-    : timeshiftSupported
-      ? formatPlaybackTime(timeshiftStatus?.availableWindowSeconds ?? 0)
-      : "LIVE";
   const showCenterPlaybackButton = Boolean(src) && timeshiftAvailable && (areControlsVisible || isPaused);
+  const showPersistentDvrRail = timeshiftUi.showTimeline && !areControlsVisible;
 
   return (
     <div
@@ -961,10 +938,7 @@ export function HlsPlayer({
 
       <div
         data-testid="player-status-chrome"
-        className={cn(
-          "pointer-events-none absolute left-2.5 top-2.5 z-20 flex flex-wrap items-center gap-1.5 transition-opacity duration-200",
-          areControlsVisible ? "opacity-100" : "opacity-0",
-        )}
+        className="pointer-events-none absolute left-2.5 top-2.5 z-20 flex flex-wrap items-center gap-1.5"
       >
         <Badge className="border-cyan-400/30 bg-slate-950/80 text-cyan-100" size="sm">
           <Signal className="mr-2 h-3.5 w-3.5" />
@@ -983,22 +957,56 @@ export function HlsPlayer({
           {diagnostics.label}
         </Badge>
         <Badge className="border-slate-700/80 bg-slate-950/80 text-slate-200" size="sm">
-          {liveStateLabel}
+          {timeshiftUi.capabilityLabel}
         </Badge>
-        {warmupReadyLabel ? (
+        <Badge
+          className={cn(
+            "bg-slate-950/80",
+            timeshiftUi.liveStateTone === "success" && "border-emerald-400/30 text-emerald-200",
+            timeshiftUi.liveStateTone === "warning" && "border-amber-400/30 text-amber-100",
+            timeshiftUi.liveStateTone === "neutral" && "border-slate-700/80 text-slate-200",
+            timeshiftUi.liveStateTone === "danger" && "border-rose-400/30 text-rose-100",
+          )}
+          size="sm"
+        >
+          {timeshiftUi.liveStateLabel}
+        </Badge>
+        {warmupReadyLabel && areControlsVisible ? (
           <Badge className="border-amber-400/30 bg-amber-500/10 text-amber-100" size="sm">
             {warmupReadyLabel}
           </Badge>
         ) : null}
-        {playerMuted ? <Badge size="sm">Muted</Badge> : null}
-        {isPictureInPictureMode ? <Badge size="sm">PiP</Badge> : null}
-        {isFullscreenMode ? <Badge size="sm">Fullscreen</Badge> : null}
-        {recoveryNotice ? (
+        {playerMuted && areControlsVisible ? <Badge size="sm">Muted</Badge> : null}
+        {isPictureInPictureMode && areControlsVisible ? <Badge size="sm">PiP</Badge> : null}
+        {isFullscreenMode && areControlsVisible ? <Badge size="sm">Fullscreen</Badge> : null}
+        {recoveryNotice && areControlsVisible ? (
           <Badge className="border-emerald-400/30 bg-emerald-500/10 text-emerald-200" size="sm">
             {recoveryNotice}
           </Badge>
         ) : null}
       </div>
+
+      {showPersistentDvrRail ? (
+        <div className="pointer-events-none absolute inset-x-2 bottom-2 z-20">
+          <LiveDvrTimeline
+            bufferedRatio={timeshiftUi.timelineBufferedRatio}
+            capabilityLabel={timeshiftUi.capabilityLabel}
+            density={controlDensity}
+            disabled={!effectiveCanSeek}
+            interactive={false}
+            leadingLabel={timeshiftUi.timelineLeadingLabel}
+            max={timelineMax}
+            min={timelineMin}
+            onChange={handleSeekTo}
+            playheadRatio={timeshiftUi.timelinePlayheadRatio}
+            currentLabel={timeshiftUi.timelineCurrentLabel}
+            trailingLabel={timeshiftUi.timelineTrailingLabel}
+            value={timelineValue}
+            variant="persistent"
+            windowLabel={timeshiftUi.bufferWindowLabel}
+          />
+        </div>
+      ) : null}
 
       {showCenterPlaybackButton ? (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
@@ -1048,14 +1056,15 @@ export function HlsPlayer({
         canFullscreen={capabilities.canFullscreen}
         canPictureInPicture={capabilities.canPictureInPicture}
         canSeek={effectiveCanSeek}
-        currentTimeLabel={currentTimeLabel}
         density={controlDensity}
-        durationLabel={durationLabel}
+        capabilityLabel={timeshiftUi.capabilityLabel}
+        goLiveEnabled={timeshiftUi.goLiveRecommended}
+        goLiveLabel={timeshiftUi.goLiveLabel}
         hasSource={Boolean(src)}
         isFullscreenActive={isFullscreenMode}
         isMuted={playerMuted}
         isPictureInPictureActive={isPictureInPictureMode}
-        liveStateLabel={liveStateLabel}
+        liveStateLabel={timeshiftUi.liveStateLabel}
         onJumpToLive={handleJumpToLive}
         onSeekBackward={() => handleSeek(-SEEK_STEP_SECONDS)}
         onSeekForward={() => handleSeek(SEEK_STEP_SECONDS)}
@@ -1065,10 +1074,17 @@ export function HlsPlayer({
         onTogglePictureInPicture={() => void handleTogglePictureInPicture()}
         onVolumeChange={handleVolumeChange}
         pictureInPictureUnavailableReason={capabilities.pictureInPictureUnavailableReason}
-        showTimeline={timeshiftSupported}
+        showTimeline={timeshiftUi.showTimeline}
+        timelineBufferedRatio={timeshiftUi.timelineBufferedRatio}
+        timelineCurrentLabel={timeshiftUi.timelineCurrentLabel}
+        timelineInteractive={timeshiftUi.timelineInteractive}
+        timelineLeadingLabel={timeshiftUi.timelineLeadingLabel}
         timelineMax={timelineMax}
         timelineMin={timelineMin}
+        timelinePlayheadRatio={timeshiftUi.timelinePlayheadRatio}
+        timelineTrailingLabel={timeshiftUi.timelineTrailingLabel}
         timelineValue={timelineValue}
+        timelineWindowLabel={timeshiftUi.bufferWindowLabel}
         visible={areControlsVisible}
         volume={volume}
       />

@@ -283,6 +283,87 @@ describe("MultiviewTileCard", () => {
     expect(screen.queryByLabelText("Drag to swap tile positions")).not.toBeInTheDocument();
   });
 
+  it("shows honest DVR capability and viewer-position copy for buffered playback", () => {
+    render(
+      <MultiviewTileCard
+        canDragSwap={false}
+        channel={{
+          id: "channel-1",
+          name: "Ops Feed",
+          slug: "ops-feed",
+          logoUrl: null,
+          sourceMode: "MASTER_PLAYLIST",
+          masterHlsUrl: "https://example.com/live.m3u8",
+          playbackMode: "SHARED",
+          manualVariantCount: 0,
+          groupId: null,
+          group: null,
+          epgSourceId: null,
+          epgChannelId: null,
+          epgSource: null,
+          isActive: true,
+          sortOrder: 1,
+          createdAt: "",
+          updatedAt: "",
+        }}
+        guide={null}
+        guideLoading={false}
+        isDragging={false}
+        isDragTarget={false}
+        isFocused={false}
+        isPickerTarget={false}
+        layoutDefinition={layoutDefinition}
+        onClear={vi.fn()}
+        onDragEnd={vi.fn()}
+        onDragOver={vi.fn()}
+        onDragStart={vi.fn()}
+        onDrop={vi.fn()}
+        onFocus={vi.fn()}
+        onFullscreen={vi.fn()}
+        onOpenPicker={vi.fn()}
+        onPreferredQualityChange={vi.fn()}
+        onQualityOptionsChange={vi.fn()}
+        onSelectedQualityChange={vi.fn()}
+        onStatusChange={vi.fn()}
+        onDiagnosticsChange={vi.fn()}
+        onToggleAudio={vi.fn()}
+        playerDiagnostics={buildPlayerDiagnostics({
+          status: "playing",
+          muted: false,
+          canSeek: true,
+          isAtLiveEdge: false,
+          liveLatencySeconds: 32,
+          timeshiftSupported: true,
+          timeshiftAvailable: true,
+          timeshiftAvailableWindowSeconds: 300,
+        })}
+        playerStatus="playing"
+        qualityOptions={[{ value: "AUTO", label: "Auto", height: null }]}
+        src="https://example.com/live.m3u8"
+        tile={{ channelId: "channel-1", isMuted: false, preferredQuality: "AUTO" }}
+        tileIndex={0}
+        timeshiftStatus={{
+          channelId: "channel-1",
+          configured: true,
+          supported: true,
+          available: true,
+          acquisitionMode: "SHARED_SESSION",
+          bufferState: "READY",
+          message: "Ready",
+          windowSeconds: 1800,
+          minimumReadyWindowSeconds: 30,
+          availableWindowSeconds: 300,
+          bufferedSegmentCount: 40,
+          lastUpdatedAt: "2026-04-05T00:00:00.000Z",
+          lastError: null,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("DVR ready · Retained 05:00 of 30:00")).toBeInTheDocument();
+    expect(screen.getByText("Viewer 00:32 behind live · Playback is 32 seconds behind live inside the DVR window.")).toBeInTheDocument();
+  });
+
   it("uses denser player controls for higher-count multiview layouts", () => {
     render(
       <MultiviewTileCard

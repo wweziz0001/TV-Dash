@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { LiveDvrTimeline } from "./live-dvr-timeline";
 
 type PlayerControlDensity = "micro" | "compact" | "full";
 
@@ -16,15 +17,23 @@ interface PlayerControlOverlayProps {
   visible?: boolean;
   hasSource: boolean;
   showTimeline: boolean;
+  timelineInteractive: boolean;
   isMuted: boolean;
   volume: number;
   canSeek: boolean;
   liveStateLabel: string;
+  capabilityLabel: string;
+  timelineWindowLabel: string;
   timelineValue: number;
   timelineMin: number;
   timelineMax: number;
-  currentTimeLabel: string;
-  durationLabel: string;
+  timelineBufferedRatio: number;
+  timelinePlayheadRatio: number | null;
+  timelineLeadingLabel: string;
+  timelineCurrentLabel: string;
+  timelineTrailingLabel: string;
+  goLiveLabel: string;
+  goLiveEnabled: boolean;
   isPictureInPictureActive: boolean;
   isFullscreenActive: boolean;
   canPictureInPicture: boolean;
@@ -45,15 +54,23 @@ export function PlayerControlOverlay({
   visible = true,
   hasSource,
   showTimeline,
+  timelineInteractive,
   isMuted,
   volume,
   canSeek,
   liveStateLabel,
+  capabilityLabel,
+  timelineWindowLabel,
   timelineValue,
   timelineMin,
   timelineMax,
-  currentTimeLabel,
-  durationLabel,
+  timelineBufferedRatio,
+  timelinePlayheadRatio,
+  timelineLeadingLabel,
+  timelineCurrentLabel,
+  timelineTrailingLabel,
+  goLiveLabel,
+  goLiveEnabled,
   isPictureInPictureActive,
   isFullscreenActive,
   canPictureInPicture,
@@ -85,23 +102,22 @@ export function PlayerControlOverlay({
     >
       {showTimeline ? (
         <div className={timelineWrapperClassName}>
-          <div className={cn("mb-1 flex items-center justify-between gap-2 text-slate-300", isMicro ? "text-[8px]" : "text-[10px]")}>
-            <span>{currentTimeLabel}</span>
-            <span>{durationLabel}</span>
-          </div>
-          <input
-            aria-label="Player timeline"
-            className={cn(
-              "w-full cursor-pointer accent-cyan-300 disabled:cursor-default disabled:opacity-80",
-              isMicro ? "h-1" : "h-1.5",
-            )}
+          <LiveDvrTimeline
+            bufferedRatio={timelineBufferedRatio}
+            capabilityLabel={capabilityLabel}
+            density={density}
             disabled={!canSeek || !hasSource}
+            interactive={timelineInteractive}
+            leadingLabel={timelineLeadingLabel}
             max={timelineMax}
             min={timelineMin}
-            onChange={(event) => onTimelineChange(Number(event.target.value))}
-            step={1}
-            type="range"
+            onChange={onTimelineChange}
+            playheadRatio={timelinePlayheadRatio}
+            currentLabel={timelineCurrentLabel}
+            trailingLabel={timelineTrailingLabel}
             value={timelineValue}
+            variant="overlay"
+            windowLabel={timelineWindowLabel}
           />
         </div>
       ) : null}
@@ -157,15 +173,16 @@ export function PlayerControlOverlay({
                 <SkipBack className="h-4 w-4" />
               </Button>
               <Button
-                aria-label="Jump to live"
+                aria-label={goLiveEnabled ? "Go live" : "At live edge"}
                 className={buttonClassName}
+                disabled={!goLiveEnabled}
                 onClick={onJumpToLive}
                 size="sm"
-                title="Jump to live"
+                title={goLiveEnabled ? "Return to the live edge" : "Already at the live edge"}
                 type="button"
-                variant={liveStateLabel === "Live" ? "primary" : "secondary"}
+                variant={goLiveEnabled ? "primary" : "secondary"}
               >
-                Live
+                {goLiveLabel}
               </Button>
               <Button
                 aria-label="Seek forward 10 seconds"

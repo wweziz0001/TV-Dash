@@ -34,6 +34,7 @@ import {
   swapTiles,
 } from "@/player/multiview-state";
 import { MultiviewTileCard } from "@/player/multiview-tile-card";
+import { buildPlayerTimeshiftUiModel } from "@/player/timeshift-ui";
 import {
   constrainMultiviewLayoutType,
   getMultiviewViewportPolicy,
@@ -330,6 +331,10 @@ export function MultiViewPage() {
       status: focusedChannel ? "loading" : "idle",
       muted: focusedTile?.isMuted ?? true,
     });
+  const focusedTimeshiftUi = buildPlayerTimeshiftUiModel({
+    diagnostics: focusedPlayerDiagnostics,
+    timeshiftStatus: focusedTimeshiftStatus,
+  });
 
   function updateLayoutType(nextLayoutType: LayoutType) {
     setLayoutType(constrainMultiviewLayoutType(nextLayoutType, viewportWidth, activeChannelCount));
@@ -749,11 +754,10 @@ export function MultiViewPage() {
                     {focusedTile?.isMuted ? "Muted tile" : "Audio owner"}
                   </span>
                   <span className="rounded-full border border-slate-700/80 bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200">
-                    {focusedTimeshiftStatus?.supported
-                      ? focusedTimeshiftStatus.available
-                        ? `DVR ${Math.floor(focusedTimeshiftStatus.availableWindowSeconds / 60)}m`
-                        : "DVR warming"
-                      : "Live only"}
+                    {focusedTimeshiftUi.capabilityLabel}
+                  </span>
+                  <span className="rounded-full border border-slate-700/80 bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200">
+                    {focusedTimeshiftUi.viewerPositionLabel}
                   </span>
                   {focusedPlayerDiagnostics.failureKind ? (
                     <span className="rounded-full border border-rose-400/20 bg-rose-500/10 px-2 py-0.5 text-[10px] text-rose-200">
@@ -775,9 +779,7 @@ export function MultiViewPage() {
                             : "Touch mode keeps swapping off so the wall stays stable while you replace feeds and move through focused monitoring."}
                 </p>
                 <p className="mt-1 text-[12px] text-slate-500">
-                  {canDragSwap
-                    ? "Live-edge viewers can stay current while buffered viewers move behind live inside the same retained channel window when DVR is ready."
-                    : "Touch mode keeps the wall stable while the player still distinguishes live edge from behind-live playback."}
+                  {focusedTimeshiftUi.capabilityLabel} · {focusedTimeshiftUi.bufferWindowLabel} · Viewer {focusedTimeshiftUi.viewerPositionLabel}.
                 </p>
               </div>
 

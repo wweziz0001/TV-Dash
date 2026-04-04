@@ -366,6 +366,10 @@ describe("HlsPlayer", () => {
 
     fireEvent(video, new Event("loadedmetadata"));
     fireEvent(video, new Event("timeupdate"));
+
+    expect(screen.getAllByText("Retained 01:00 of 30:00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Playhead -00:40").length).toBeGreaterThan(0);
+
     const playerRoot = screen.getByTestId("player-surface");
     fireEvent.mouseOver(playerRoot);
     fireEvent.mouseMove(playerRoot);
@@ -373,16 +377,16 @@ describe("HlsPlayer", () => {
     expect(screen.getByRole("button", { name: "Pause playback" })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: "Player volume" })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: "Player timeline" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Jump to live" })).toBeInTheDocument();
-    expect(screen.getByText("00:20")).toBeInTheDocument();
-    expect(screen.getByText("01:00")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Go live" })).toBeInTheDocument();
+    expect(screen.getAllByText("Retained 01:00 of 30:00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Playhead -00:40").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Open Picture-in-Picture" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Enter fullscreen" })).toBeEnabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Mute audio" }));
     expect(handleMutedChange).toHaveBeenCalledWith(true);
 
-    fireEvent.click(screen.getByRole("button", { name: "Jump to live" }));
+    fireEvent.click(screen.getByRole("button", { name: "Go live" }));
     expect(video.currentTime).toBe(160);
 
     fireEvent.click(screen.getByRole("button", { name: "Pause playback" }));
@@ -408,31 +412,27 @@ describe("HlsPlayer", () => {
     const statusChrome = screen.getByTestId("player-status-chrome");
     const controlOverlay = screen.getByTestId("player-control-overlay");
 
-    expect(statusChrome).toHaveClass("opacity-0");
+    expect(statusChrome).toBeInTheDocument();
     expect(controlOverlay).toHaveClass("opacity-0");
 
     fireEvent.mouseOver(playerRoot);
     fireEvent.mouseMove(playerRoot);
 
-    expect(statusChrome).toHaveClass("opacity-100");
     expect(controlOverlay).toHaveClass("opacity-100");
 
     act(() => {
       vi.advanceTimersByTime(1500);
     });
 
-    expect(statusChrome).toHaveClass("opacity-0");
     expect(controlOverlay).toHaveClass("opacity-0");
 
     fireEvent.mouseOver(playerRoot);
     fireEvent.mouseMove(playerRoot);
 
-    expect(statusChrome).toHaveClass("opacity-100");
     expect(controlOverlay).toHaveClass("opacity-100");
 
     fireEvent.mouseLeave(playerRoot);
 
-    expect(statusChrome).toHaveClass("opacity-0");
     expect(controlOverlay).toHaveClass("opacity-0");
   });
 
@@ -492,7 +492,7 @@ describe("HlsPlayer", () => {
     expect(screen.queryByRole("button", { name: "Pause playback" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Jump to live" })).not.toBeInTheDocument();
     expect(screen.queryByRole("slider", { name: "Player timeline" })).not.toBeInTheDocument();
-    expect(screen.getAllByText("Live only").length).toBeGreaterThan(0);
+    expect(screen.getByText("No DVR")).toBeInTheDocument();
   });
 
   it("shows a warmup countdown while the retained DVR buffer is still filling", () => {

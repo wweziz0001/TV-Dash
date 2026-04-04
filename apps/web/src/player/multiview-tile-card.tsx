@@ -20,6 +20,7 @@ import type { Channel, ChannelNowNext, LiveTimeshiftStatus, QualityOption, Recor
 import { getPlaybackTone } from "./playback-diagnostics";
 import type { LayoutDefinition } from "./layouts";
 import type { TileState } from "./multiview-layout";
+import { buildPlayerTimeshiftUiModel } from "./timeshift-ui";
 
 interface MultiviewTileCardProps {
   tileIndex: number;
@@ -91,6 +92,10 @@ export function MultiviewTileCard({
   onDragEnd,
 }: MultiviewTileCardProps) {
   const statusBadgeClassName = getStatusBadgeClassName(playerDiagnostics);
+  const timeshiftUi = buildPlayerTimeshiftUiModel({
+    diagnostics: playerDiagnostics,
+    timeshiftStatus,
+  });
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const playerFrameRef = useRef<HTMLDivElement | null>(null);
   const controlDensity = layoutDefinition.tileCount >= 9 ? "micro" : layoutDefinition.tileCount >= 4 ? "compact" : "full";
@@ -118,6 +123,19 @@ export function MultiviewTileCard({
             <Badge size="sm">T {tileIndex + 1}</Badge>
             <p className="truncate text-[13px] font-semibold text-white">{channel?.name ?? `Tile ${tileIndex + 1}`}</p>
             <Badge className={statusBadgeClassName} size="sm">{playerDiagnostics.label}</Badge>
+            {channel ? (
+              <Badge
+                className={cn(
+                  timeshiftUi.liveStateTone === "success" && "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
+                  timeshiftUi.liveStateTone === "warning" && "border-amber-400/30 bg-amber-500/10 text-amber-100",
+                  timeshiftUi.liveStateTone === "neutral" && "border-slate-700/80 bg-slate-900/80 text-slate-200",
+                  timeshiftUi.liveStateTone === "danger" && "border-rose-400/30 bg-rose-500/10 text-rose-100",
+                )}
+                size="sm"
+              >
+                {timeshiftUi.liveStateLabel}
+              </Badge>
+            ) : null}
             {playerDiagnostics.recoveryState === "recovered" ? <Badge className="text-emerald-200" size="sm">Recovered</Badge> : null}
             {tile.isMuted ? <Badge size="sm">Muted</Badge> : <Badge className="text-emerald-200" size="sm">Audio</Badge>}
           </div>
@@ -126,16 +144,12 @@ export function MultiviewTileCard({
           </p>
           {channel ? (
             <p className="mt-1 truncate text-[11px] text-slate-500">
-              {timeshiftStatus?.supported
-                ? timeshiftStatus.available
-                  ? `DVR ready · ${Math.floor(timeshiftStatus.availableWindowSeconds / 60)}m retained`
-                  : timeshiftStatus.message
-                : "Live only · pause and rewind stay hidden until TV-Dash has a real retained buffer"}
+              {timeshiftUi.capabilityLabel} · {timeshiftUi.bufferWindowLabel}
             </p>
           ) : null}
           {channel ? (
             <p className="mt-1 truncate text-[11px] text-slate-500">
-              {playerDiagnostics.summary}
+              Viewer {timeshiftUi.viewerPositionLabel} · {playerDiagnostics.summary}
             </p>
           ) : null}
         </div>
