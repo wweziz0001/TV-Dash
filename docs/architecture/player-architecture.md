@@ -28,9 +28,11 @@ That does not belong in:
 - `player/media-session.ts`
   - Media Session metadata/action wiring for browser and system media controls
 - `player/player-control-overlay.tsx`
-  - compact overlay controls for play/pause, mute, volume, PiP, fullscreen, and live-DVR seek actions
+  - compact overlay controls for play/pause, mute, volume, TV-Dash floating playback, optional browser PiP, fullscreen, and live-DVR seek actions
 - `player/floating-player.ts`
-  - pure helpers for floating-player layout defaults, viewport clamping, and stacking order
+  - pure helpers for floating-player layout defaults, viewport clamping, stacking order, and popup-window feature serialization
+- `player/floating-player-session.ts`
+  - detached floating-player session persistence plus cross-window runtime state handoff
 - `player/quality-options.ts`
   - converts manifest levels into UI options and resolves manual/auto selection
 - `player/playback-recovery.ts`
@@ -153,17 +155,20 @@ Do not add silent infinite retry loops. Any retry policy change must consider mu
 - seek backward and seek forward are only shown when the current media element exposes a real seekable window
 - live-only streams without DVR must surface honest state such as `No DVR` instead of fake VOD-style seek controls
 - player diagnostics may report paused, muted, PiP-active, fullscreen-active, and live-edge state so surrounding pages can explain the current browser/player state without reimplementing media APIs
-- player diagnostics should distinguish between native browser PiP and TV-Dash floating fallback so surrounding pages can explain which playback mode is active
+- player diagnostics should distinguish between native browser PiP, TV-Dash in-page floating mode, and detached TV-Dash floating windows so surrounding pages can explain which playback mode is active
 - fullscreen and PiP capability detection belongs in player helpers, not route pages, because Chrome and Firefox diverge most in those browser-owned behaviors
 
 ## Picture-In-Picture And Media Session Policy
 
 - PiP must be triggered from an explicit TV-Dash control when the browser exposes the API
-- native PiP should be attempted first for the active player when the browser allows it
-- when native PiP is unavailable, already occupied, or rejected by the browser session, TV-Dash may fall back to an in-page floating player without tearing down the live video element
-- multiple TV-Dash floating players may coexist because they are managed inside the page rather than by the browser PiP window manager
-- unsupported PiP states must disable the control with a clear reason rather than leaving a broken button
+- TV-Dash-managed floating playback is the primary path:
+  - first preference is a detached popup window routed back through the TV-Dash app
+  - popup-blocked or popup-unavailable environments may fall back to an in-page floating player without tearing down the live video element
+- multiple TV-Dash floating players may coexist because they are managed by the app rather than by the browser PiP window manager
+- browser-native PiP remains optional secondary behavior when the current browser exposes it
+- unsupported floating or PiP states must disable the relevant control with a clear reason rather than leaving a broken button
 - Firefox may still expose richer native PiP chrome than Chrome; TV-Dash should assume Chrome needs stronger in-page controls
+- detached popup windows must synchronize close/return state cleanly so the main app can restore inline playback without leaked sessions
 - Media Session integration should publish at least:
   - metadata
   - play

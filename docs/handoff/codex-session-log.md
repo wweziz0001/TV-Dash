@@ -1833,3 +1833,85 @@ Add Fastify integration tests for auth, channels, favorites, and layouts with is
 - moved frontend request logic into `src/services`
 - moved frontend player and multiview logic into `src/player`
 - added Vitest foundations and representative backend/frontend tests
+
+---
+
+## `2026-04-04T20:46:20+03:00`
+
+### Objective
+
+Shift TV-Dash away from browser-native PiP as the main model by implementing a stronger app-managed floating-player workflow with detachable windows, in-page fallback floating playback, richer built-in controls, and honest multi-window state handling.
+
+### Work Completed
+
+- added a detached floating-player session layer under `apps/web/src/player/floating-player-session.ts`
+- expanded floating-player helpers so TV-Dash can launch positioned popup windows as well as in-page floating mini-players
+- reworked `HlsPlayer` so TV-Dash-managed floating playback is now the primary control:
+  - first choice is a detached popup window
+  - popup-blocked cases fall back to the existing in-page floating mini-player
+  - browser-native PiP remains available as an explicit secondary control
+- added a dedicated detached floating-player route/page that wraps `HlsPlayer` in compact app-owned chrome with:
+  - return-to-app
+  - open-app
+  - close
+  - the same playback / mute / volume / fullscreen / live-DVR / optional PiP controls inside the player surface
+- synchronized detached-player runtime state back into session storage so the main app can restore inline playback cleanly when the popup closes or returns
+- extended frontend coverage around:
+  - floating session creation/storage lifecycle
+  - popup launch feature serialization
+  - detached floating-player launch as the primary workflow
+  - popup-blocker fallback into the in-page floating mini-player
+  - multi-floating detached-player support
+  - detached-player route runtime-state sync
+- updated handoff, architecture, player-HLS, and testing docs to describe TV-Dash-managed floating playback as the new primary direction
+
+### Files Added Or Changed
+
+- app / routes:
+  - `apps/web/src/app/router.tsx`
+  - `apps/web/src/pages/floating-player-page.tsx`
+  - `apps/web/src/pages/floating-player-page.test.tsx`
+  - `apps/web/src/pages/channel-watch-page.tsx`
+- player:
+  - `apps/web/src/player/hls-player.tsx`
+  - `apps/web/src/player/hls-player.test.tsx`
+  - `apps/web/src/player/player-control-overlay.tsx`
+  - `apps/web/src/player/browser-media.ts`
+  - `apps/web/src/player/browser-media.test.ts`
+  - `apps/web/src/player/floating-player.ts`
+  - `apps/web/src/player/floating-player.test.ts`
+  - `apps/web/src/player/floating-player-session.ts`
+  - `apps/web/src/player/floating-player-session.test.ts`
+  - `apps/web/src/player/playback-diagnostics.ts`
+- docs:
+  - `docs/handoff/codex-handoff.md`
+  - `docs/architecture/player-architecture.md`
+  - `docs/standards/player-hls-standards.md`
+  - `docs/standards/testing-standards.md`
+  - `docs/handoff/codex-session-log.md`
+
+### Key Decisions
+
+- TV-Dash-managed floating playback now comes before browser-native PiP in the operator UX.
+- Detached popup windows are treated as real application windows with persisted session identity, not as fake multi-PiP claims.
+- In-page floating playback remains valuable as the popup-blocker fallback and still supports more than one floating player at once.
+- Browser-native PiP remains useful for the browser-owned always-on-top path, but TV-Dash no longer treats it as the main control flow.
+- The implementation stays honest about web limits: popup windows and in-page floating players cannot guarantee OS-level always-on-top behavior.
+
+### Verification Run
+
+- `npm run test -w apps/web -- browser-media.test.ts floating-player.test.ts floating-player-session.test.ts hls-player.test.tsx floating-player-page.test.tsx`
+- `npm run lint -w apps/web`
+
+Both passed on `2026-04-04`.
+
+### Remaining Risk
+
+- The main app currently manages detached players through placeholder state plus local-storage session sync, but there is not yet a global floating-player manager panel for listing every open window across routes.
+- Popup window placement remembers current bounds per live session, but there is no long-lived per-channel remembered placement policy yet.
+- Route-level multiview coverage still does not exist; multiview launch behavior currently relies on `HlsPlayer` and component-level tests rather than a full-page interaction suite.
+- Browser PiP remains constrained by browser UI limits, and detached windows still cannot guarantee true system always-on-top semantics.
+
+### Exact Suggested Next Task
+
+Add a lightweight global floating-player manager surface that lists active detached/in-page floating sessions across the app, then add route-level watch/multiview tests that verify floating-launch and return workflows from the full page boundary rather than only the player component seam.
