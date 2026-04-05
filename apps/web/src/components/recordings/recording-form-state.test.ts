@@ -111,6 +111,7 @@ describe("recording-form-state", () => {
       recordingRule: null,
       channel: null,
       createdByUser: null,
+      archiveContext: null,
       latestRun: null,
       asset: null,
     });

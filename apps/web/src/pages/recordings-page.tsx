@@ -1,7 +1,9 @@
+import { getCatchupBadges, getCatchupCopy } from "@/components/channels/channel-program-catchup-state";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RecordingRuleInput, RecordingWeekday } from "@tv-dash/shared";
 import {
+  Clock3,
   CalendarClock,
   CircleDotDashed,
   PauseCircle,
@@ -33,9 +35,13 @@ import {
   validateRecordingRuleForm,
 } from "@/components/recordings/recording-rule-form-state";
 import {
+  buildRecordingArchiveHref,
+  buildRecordingLibrarySections,
   buildRecordingLibraryQueryParams,
   buildRecordingLibrarySummary,
   createDefaultRecordingLibraryFilters,
+  filterRecordingLibraryJobs,
+  type RecordingLibraryArchiveFilter,
   type RecordingLibraryFilters,
   type RecordingLibraryModeFilter,
   type RecordingLibraryProtectionFilter,
@@ -400,7 +406,12 @@ export function RecordingsPage() {
     [activeJobs],
   );
   const libraryJobs = libraryJobsQuery.data ?? [];
-  const librarySummary = useMemo(() => buildRecordingLibrarySummary(libraryJobs), [libraryJobs]);
+  const visibleLibraryJobs = useMemo(
+    () => filterRecordingLibraryJobs(libraryJobs, libraryFilters.archiveAvailability),
+    [libraryFilters.archiveAvailability, libraryJobs],
+  );
+  const librarySections = useMemo(() => buildRecordingLibrarySections(visibleLibraryJobs), [visibleLibraryJobs]);
+  const librarySummary = useMemo(() => buildRecordingLibrarySummary(visibleLibraryJobs), [visibleLibraryJobs]);
   const activityEvents = useMemo(
     () => buildRecordingActivityEvents(recentActivityQuery.data ?? [], 18),
     [recentActivityQuery.data],
@@ -408,8 +419,8 @@ export function RecordingsPage() {
   const recordingRules = recordingRulesQuery.data ?? [];
   const activeRuleCount = useMemo(() => recordingRules.filter((rule) => rule.isActive).length, [recordingRules]);
   const thumbnailReadyCount = useMemo(
-    () => libraryJobs.filter((job) => Boolean(job.asset?.thumbnailGeneratedAt)).length,
-    [libraryJobs],
+    () => visibleLibraryJobs.filter((job) => Boolean(job.asset?.thumbnailGeneratedAt)).length,
+    [visibleLibraryJobs],
   );
   const ruleProgramPrefill = useMemo(() => buildRulePrefillFromSearchParams(searchParams), [searchParams]);
 
@@ -745,25 +756,28 @@ export function RecordingsPage() {
             <div>
               <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Recordings library</p>
               <p className="mt-1.5 text-sm text-slate-400">
-                Browse completed recording media only. Filters stay compact so the grid remains the visual priority and more thumbnails fit on screen.
+                Browse completed recordings as a channel archive, with guide linkage, retained-window overlap, and original channel context surfaced alongside the media.
               </p>
             </div>
             <div className="text-[12px] text-slate-500">
-              Retention defaults: {libraryJobs[0]?.retention.maxAgeDays ?? 30} days, newest{" "}
-              {libraryJobs[0]?.retention.maxRecordingsPerChannel ?? 25} per channel, failed cleanup after{" "}
-              {libraryJobs[0]?.retention.failedCleanupHours ?? 24} hours.
+              Retention defaults: {visibleLibraryJobs[0]?.retention.maxAgeDays ?? libraryJobs[0]?.retention.maxAgeDays ?? 30} days,
+              newest {visibleLibraryJobs[0]?.retention.maxRecordingsPerChannel ?? libraryJobs[0]?.retention.maxRecordingsPerChannel ?? 25} per
+              channel, failed cleanup after{" "}
+              {visibleLibraryJobs[0]?.retention.failedCleanupHours ?? libraryJobs[0]?.retention.failedCleanupHours ?? 24} hours.
             </div>
           </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             <LibrarySummaryCard label="Visible media" value={String(librarySummary.total)} />
+            <LibrarySummaryCard label="Program linked" value={String(librarySummary.programLinkedCount)} />
+            <LibrarySummaryCard label="Catch-up overlap" value={String(librarySummary.catchupAvailableCount)} />
             <LibrarySummaryCard label="Protected" value={String(librarySummary.protectedCount)} />
             <LibrarySummaryCard label="Preview ready" value={String(thumbnailReadyCount)} />
-            <LibrarySummaryCard label="Channels" value={String(new Set(libraryJobs.map((job) => job.channelId)).size)} />
+            <LibrarySummaryCard label="Channels" value={String(new Set(visibleLibraryJobs.map((job) => job.channelId)).size)} />
           </div>
         </div>
 
-        <div className="grid gap-3 border-b border-slate-800/80 px-4 py-4 lg:grid-cols-5">
+        <div className="grid gap-3 border-b border-slate-800/80 px-4 py-4 lg:grid-cols-6">
           <Input
             onChange={(event) => updateLibraryFilters({ search: event.target.value })}
             placeholder="Search title, programme, channel, or filename"
@@ -802,6 +816,17 @@ export function RecordingsPage() {
             <option value="UNPROTECTED">Auto-retained only</option>
           </Select>
           <Select
+            onChange={(event) =>
+              updateLibraryFilters({ archiveAvailability: event.target.value as RecordingLibraryArchiveFilter })
+            }
+            value={libraryFilters.archiveAvailability}
+          >
+            <option value="ALL">All archive context</option>
+            <option value="PROGRAM_LINKED">Program linked</option>
+            <option value="CATCHUP_AVAILABLE">Catch-up also available</option>
+            <option value="RECORDING_ONLY">Recording only</option>
+          </Select>
+          <Select
             onChange={(event) => updateLibraryFilters({ sort: event.target.value as RecordingLibrarySortOption })}
             value={libraryFilters.sort}
           >
@@ -831,37 +856,61 @@ export function RecordingsPage() {
 
         {libraryJobsQuery.isLoading && !libraryJobs.length ? (
           <EmptyState label="Loading recordings library..." />
-        ) : !libraryJobs.length ? (
+        ) : !visibleLibraryJobs.length ? (
           <EmptyState label="No completed recordings match the current library filter." />
         ) : (
-          <div className="grid gap-3 px-4 py-4 lg:grid-cols-2">
-            {libraryJobs.map((job) => (
-              <RecordingCard
-                actions={
-                  <>
-                    {job.asset ? (
-                      <Link to={`/recordings/${job.id}`}>
-                        <Button size="sm" variant="secondary">
-                          <PlayCircle className="h-4 w-4" />
-                          Play
-                        </Button>
-                      </Link>
-                    ) : null}
-                    <Button onClick={() => toggleProtectionMutation.mutate(job)} size="sm" variant="secondary">
-                      {job.isProtected ? <ShieldOff className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
-                      {job.isProtected ? "Auto retain" : "Keep forever"}
-                    </Button>
-                    <Button onClick={() => deleteMutation.mutate(job)} size="sm" variant="ghost">
-                      <Trash2 className="h-4 w-4" />
-                      Delete
-                    </Button>
-                  </>
-                }
-                job={job}
-                now={now}
-                key={job.id}
-                compact
-              />
+          <div className="space-y-4 px-4 py-4">
+            {librarySections.map((section) => (
+              <div className="space-y-3" key={section.id}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white">{section.label}</p>
+                    <p className="text-[12px] text-slate-500">{section.jobs.length} archive entries in this section</p>
+                  </div>
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {section.jobs.map((job) => {
+                    const archiveHref = buildRecordingArchiveHref(job);
+
+                    return (
+                      <RecordingCard
+                        actions={
+                          <>
+                            {job.asset ? (
+                              <Link to={`/recordings/${job.id}`}>
+                                <Button size="sm" variant="secondary">
+                                  <PlayCircle className="h-4 w-4" />
+                                  Play
+                                </Button>
+                              </Link>
+                            ) : null}
+                            {archiveHref ? (
+                              <Link to={archiveHref}>
+                                <Button size="sm" variant="secondary">
+                                  <Clock3 className="h-4 w-4" />
+                                  Channel archive
+                                </Button>
+                              </Link>
+                            ) : null}
+                            <Button onClick={() => toggleProtectionMutation.mutate(job)} size="sm" variant="secondary">
+                              {job.isProtected ? <ShieldOff className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+                              {job.isProtected ? "Auto retain" : "Keep forever"}
+                            </Button>
+                            <Button onClick={() => deleteMutation.mutate(job)} size="sm" variant="ghost">
+                              <Trash2 className="h-4 w-4" />
+                              Delete
+                            </Button>
+                          </>
+                        }
+                        job={job}
+                        now={now}
+                        key={job.id}
+                        compact
+                      />
+                    );
+                  })}
+                </div>
+              </div>
             ))}
           </div>
         )}
@@ -1347,6 +1396,8 @@ function RecordingCard({
   const timingLabel = isRecording ? "Started" : "Starts";
   const thumbnailUrl = job.asset?.thumbnailUrl ? resolveApiUrl(job.asset.thumbnailUrl) : null;
   const deleteAfterLabel = job.retention.deleteAfter ? formatDateTime(job.retention.deleteAfter) : null;
+  const archiveBadges = getCatchupBadges(job.archiveContext?.catchup ?? null);
+  const archiveCopy = getCatchupCopy(job.archiveContext?.catchup ?? null);
 
   return (
     <div className={cn("rounded-2xl border border-slate-800/80 bg-slate-950/70", compact ? "p-3" : "p-4")}>
@@ -1362,6 +1413,18 @@ function RecordingCard({
         </div>
 
         <div className="min-w-0">
+          {archiveBadges.length ? (
+            <div className="mb-2 flex flex-wrap items-center gap-1.5">
+              {archiveBadges.map((badge) => (
+                <span
+                  className={`rounded-full border px-2 py-1 text-[11px] ${badge.tone === "positive" ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100" : badge.tone === "warning" ? "border-amber-400/30 bg-amber-500/10 text-amber-100" : badge.tone === "live" ? "border-rose-400/30 bg-rose-500/10 text-rose-100" : "border-slate-700/80 bg-slate-900/80 text-slate-300"}`}
+                  key={`${job.id}-${badge.label}`}
+                >
+                  {badge.label}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate text-sm font-semibold text-white">{job.title}</p>
             <RecordingStatusBadge status={job.status} />
@@ -1393,6 +1456,14 @@ function RecordingCard({
               {job.program.startAt ? ` · ${formatDateTime(job.program.startAt)}` : ""}
             </p>
           ) : null}
+          {job.archiveContext ? (
+            <p className="mt-1 text-[12px] text-slate-400">
+              Archive window: {formatDateTime(job.archiveContext.startAt)}
+              {job.archiveContext.endAt ? ` to ${formatDateTime(job.archiveContext.endAt)}` : ""}
+              {job.archiveContext.hasProgramLink ? " · linked to guide history" : " · snapshot-only archive context"}
+            </p>
+          ) : null}
+          {archiveCopy ? <p className="mt-1 text-[12px] text-slate-300">{archiveCopy}</p> : null}
           {!compact && job.program?.description ? <p className="mt-1 text-[12px] text-slate-400">{job.program.description}</p> : null}
           {job.recordingRule?.titleTemplate ? (
             <p className="mt-1 text-[12px] text-amber-100">

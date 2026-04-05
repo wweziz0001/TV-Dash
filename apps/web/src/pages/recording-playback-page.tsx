@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, PlayCircle } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
+import { getCatchupBadges, getCatchupCopy } from "@/components/channels/channel-program-catchup-state";
 import { PageHeader } from "@/components/layout/page-header";
+import { buildRecordingArchiveHref } from "@/components/recordings/recording-library-state";
 import { RecordingOriginBadge } from "@/components/recordings/recording-origin-badge";
 import { RecordingRetentionBadge } from "@/components/recordings/recording-retention-badge";
 import { RecordingStatusBadge } from "@/components/recordings/recording-status-badge";
@@ -27,6 +29,9 @@ export function RecordingPlaybackPage() {
   });
 
   const job = recordingQuery.data;
+  const archiveHref = job ? buildRecordingArchiveHref(job) : null;
+  const archiveBadges = getCatchupBadges(job?.archiveContext?.catchup ?? null);
+  const archiveCopy = getCatchupCopy(job?.archiveContext?.catchup ?? null);
 
   return (
     <div className="space-y-6">
@@ -35,12 +40,21 @@ export function RecordingPlaybackPage() {
         title={job?.title ?? "Recording playback"}
         description="Review the recorded output, confirm the resulting duration and file footprint, and jump back to the broader recordings workspace when you’re done."
         actions={
-          <Link to="/recordings">
-            <Button size="sm" variant="secondary">
-              <ArrowLeft className="h-4 w-4" />
-              Back to library
-            </Button>
-          </Link>
+          <>
+            {archiveHref ? (
+              <Link to={archiveHref}>
+                <Button size="sm" variant="secondary">
+                  Open channel archive
+                </Button>
+              </Link>
+            ) : null}
+            <Link to="/recordings">
+              <Button size="sm" variant="secondary">
+                <ArrowLeft className="h-4 w-4" />
+                Back to library
+              </Button>
+            </Link>
+          </>
         }
       />
 
@@ -80,11 +94,31 @@ export function RecordingPlaybackPage() {
               <RecordingRetentionBadge job={job} />
               <p className="text-sm text-slate-400">{job.channelNameSnapshot}</p>
             </div>
+            {archiveBadges.length ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {archiveBadges.map((badge) => (
+                  <span
+                    className={`rounded-full border px-2 py-1 text-[11px] ${badge.tone === "positive" ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100" : badge.tone === "warning" ? "border-amber-400/30 bg-amber-500/10 text-amber-100" : badge.tone === "live" ? "border-rose-400/30 bg-rose-500/10 text-rose-100" : "border-slate-700/80 bg-slate-900/80 text-slate-300"}`}
+                    key={`${job.id}-${badge.label}`}
+                  >
+                    {badge.label}
+                  </span>
+                ))}
+              </div>
+            ) : null}
             {job.program?.title ? (
               <div className="rounded-2xl border border-fuchsia-400/20 bg-fuchsia-500/10 px-4 py-3 text-sm text-fuchsia-100">
                 {job.program.title}
                 {job.program.category ? ` · ${job.program.category}` : ""}
                 {job.program.description ? ` · ${job.program.description}` : ""}
+              </div>
+            ) : null}
+            {job.archiveContext ? (
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 px-4 py-3 text-sm text-slate-200">
+                Archive context: {formatDateTime(job.archiveContext.startAt)}
+                {job.archiveContext.endAt ? ` to ${formatDateTime(job.archiveContext.endAt)}` : ""}
+                {job.archiveContext.hasProgramLink ? " · linked to the channel guide history" : " · derived from the recording window"}
+                {archiveCopy ? ` · ${archiveCopy}` : ""}
               </div>
             ) : null}
             <DetailRow label="Mode" value={job.mode} />

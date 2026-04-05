@@ -38,6 +38,7 @@ function createJob(overrides: Partial<RecordingJob> = {}): RecordingJob {
     recordingRule: overrides.recordingRule ?? null,
     channel: overrides.channel ?? null,
     createdByUser: overrides.createdByUser ?? null,
+    archiveContext: overrides.archiveContext ?? null,
     latestRun: overrides.latestRun ?? null,
     asset: overrides.asset ?? null,
   };

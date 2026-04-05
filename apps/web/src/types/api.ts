@@ -265,11 +265,30 @@ export interface ProgramCatchupSummary {
     | "PREVIOUS_RECORDING"
     | "PREVIOUS_TIMESHIFT"
     | "PREVIOUS_RECORDING_AND_TIMESHIFT";
+  archiveStatus:
+    | "LIVE_NOW"
+    | "LIVE_RESTARTABLE"
+    | "UPCOMING"
+    | "AIRED_UNAVAILABLE"
+    | "AIRED_CATCHUP"
+    | "AIRED_RECORDED"
+    | "AIRED_ARCHIVED";
+  archiveAccess: "NONE" | "TIMESHIFT" | "RECORDING" | "RECORDING_AND_TIMESHIFT";
+  hasRecordingSource: boolean;
+  hasTimeshiftSource: boolean;
   isCatchupPlayable: boolean;
   watchFromStartAvailable: boolean;
   preferredSourceType: "RECORDING" | "TIMESHIFT" | null;
   availableUntilAt: string | null;
   sources: ProgramCatchupSourceSummary[];
+}
+
+export interface RecordingArchiveContext {
+  programId: string | null;
+  hasProgramLink: boolean;
+  startAt: string;
+  endAt: string | null;
+  catchup: ProgramCatchupSummary;
 }
 
 export interface ChannelNowNext {
@@ -407,6 +426,7 @@ export interface RecordingJob {
     username: string;
     role: UserRole;
   } | null;
+  archiveContext: RecordingArchiveContext | null;
   latestRun: RecordingRun | null;
   asset: RecordingAsset | null;
 }

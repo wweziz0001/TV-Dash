@@ -20,6 +20,20 @@ function buildCatchup(playbackState: "LIVE_WATCH_FROM_START" | "PREVIOUS_RECORDI
   return {
     timingState: playbackState === "LIVE_WATCH_FROM_START" ? ("LIVE_NOW" as const) : ("PREVIOUS" as const),
     playbackState,
+    archiveStatus:
+      playbackState === "LIVE_WATCH_FROM_START"
+        ? ("LIVE_RESTARTABLE" as const)
+        : playbackState === "PREVIOUS_RECORDING_AND_TIMESHIFT"
+          ? ("AIRED_ARCHIVED" as const)
+          : ("AIRED_UNAVAILABLE" as const),
+    archiveAccess:
+      playbackState === "LIVE_WATCH_FROM_START"
+        ? ("TIMESHIFT" as const)
+        : playbackState === "PREVIOUS_RECORDING_AND_TIMESHIFT"
+          ? ("RECORDING_AND_TIMESHIFT" as const)
+          : ("NONE" as const),
+    hasRecordingSource: playbackState === "PREVIOUS_RECORDING_AND_TIMESHIFT",
+    hasTimeshiftSource: playbackState !== "PREVIOUS_NOT_AVAILABLE",
     isCatchupPlayable: playbackState !== "PREVIOUS_NOT_AVAILABLE",
     watchFromStartAvailable: playbackState === "LIVE_WATCH_FROM_START",
     preferredSourceType:
@@ -59,4 +73,3 @@ describe("channel-program-catchup-state", () => {
     expect(getProgramCatchupCopy(buildProgram("PREVIOUS_NOT_AVAILABLE"))).toContain("No linked recording");
   });
 });
-

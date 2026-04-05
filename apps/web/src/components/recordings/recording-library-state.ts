@@ -4,6 +4,7 @@ import type { RecordingJob } from "@/types/api";
 export type RecordingLibraryStatusFilter = "ALL" | RecordingJobStatus;
 export type RecordingLibraryModeFilter = "ALL" | RecordingMode;
 export type RecordingLibraryProtectionFilter = "ALL" | "PROTECTED" | "UNPROTECTED";
+export type RecordingLibraryArchiveFilter = "ALL" | "PROGRAM_LINKED" | "CATCHUP_AVAILABLE" | "RECORDING_ONLY";
 export type RecordingLibrarySortOption =
   | "RECORDED_DESC"
   | "RECORDED_ASC"
@@ -20,6 +21,7 @@ export interface RecordingLibraryFilters {
   channelId: string;
   mode: RecordingLibraryModeFilter;
   protection: RecordingLibraryProtectionFilter;
+  archiveAvailability: RecordingLibraryArchiveFilter;
   recordedFrom: string;
   recordedTo: string;
   sort: RecordingLibrarySortOption;
@@ -30,6 +32,14 @@ export interface RecordingLibrarySummary {
   completed: number;
   failed: number;
   protectedCount: number;
+  catchupAvailableCount: number;
+  programLinkedCount: number;
+}
+
+export interface RecordingLibrarySection {
+  id: string;
+  label: string;
+  jobs: RecordingJob[];
 }
 
 export const DEFAULT_LIBRARY_STATUSES: RecordingJobStatus[] = ["COMPLETED"];
@@ -41,6 +51,7 @@ export function createDefaultRecordingLibraryFilters(): RecordingLibraryFilters 
     channelId: "",
     mode: "ALL",
     protection: "ALL",
+    archiveAvailability: "ALL",
     recordedFrom: "",
     recordedTo: "",
     sort: "RECORDED_DESC",
@@ -113,12 +124,113 @@ export function buildRecordingLibrarySummary(jobs: RecordingJob[]): RecordingLib
       completed: summary.completed + (job.status === "COMPLETED" ? 1 : 0),
       failed: summary.failed + (job.status === "FAILED" ? 1 : 0),
       protectedCount: summary.protectedCount + (job.isProtected ? 1 : 0),
+      catchupAvailableCount: summary.catchupAvailableCount + (job.archiveContext?.catchup.hasTimeshiftSource ? 1 : 0),
+      programLinkedCount: summary.programLinkedCount + (job.archiveContext?.hasProgramLink ? 1 : 0),
     }),
     {
       total: 0,
       completed: 0,
       failed: 0,
       protectedCount: 0,
+      catchupAvailableCount: 0,
+      programLinkedCount: 0,
     },
   );
+}
+
+function getRecordingArchiveDateKey(value: string) {
+  const date = new Date(value);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getRecordingArchiveDateLabel(dateKey: string, now: Date) {
+  const todayKey = getRecordingArchiveDateKey(now.toISOString());
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayKey = getRecordingArchiveDateKey(yesterday.toISOString());
+
+  if (dateKey === todayKey) {
+    return "Today";
+  }
+
+  if (dateKey === yesterdayKey) {
+    return "Yesterday";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(`${dateKey}T12:00:00`));
+}
+
+function getRecordingArchiveStartAt(job: RecordingJob) {
+  return job.archiveContext?.startAt ?? job.program?.startAt ?? job.actualStartAt ?? job.startAt;
+}
+
+export function filterRecordingLibraryJobs(jobs: RecordingJob[], archiveAvailability: RecordingLibraryArchiveFilter) {
+  switch (archiveAvailability) {
+    case "PROGRAM_LINKED":
+      return jobs.filter((job) => job.archiveContext?.hasProgramLink);
+    case "CATCHUP_AVAILABLE":
+      return jobs.filter((job) => job.archiveContext?.catchup.hasTimeshiftSource);
+    case "RECORDING_ONLY":
+      return jobs.filter((job) => job.archiveContext?.catchup.archiveStatus === "AIRED_RECORDED");
+    case "ALL":
+    default:
+      return jobs;
+  }
+}
+
+export function buildRecordingLibrarySections(jobs: RecordingJob[], now = new Date()): RecordingLibrarySection[] {
+  const sections = new Map<string, RecordingJob[]>();
+
+  for (const job of jobs) {
+    const dateKey = getRecordingArchiveDateKey(getRecordingArchiveStartAt(job));
+    const list = sections.get(dateKey);
+
+    if (list) {
+      list.push(job);
+      continue;
+    }
+
+    sections.set(dateKey, [job]);
+  }
+
+  return Array.from(sections.entries())
+    .sort(([left], [right]) => right.localeCompare(left))
+    .map(([id, sectionJobs]) => ({
+      id,
+      label: getRecordingArchiveDateLabel(id, now),
+      jobs: sectionJobs.sort(
+        (left, right) => Date.parse(getRecordingArchiveStartAt(right)) - Date.parse(getRecordingArchiveStartAt(left)),
+      ),
+    }));
+}
+
+export function buildRecordingArchiveHref(job: RecordingJob) {
+  const channelSlug = job.channel?.slug ?? job.channelSlugSnapshot;
+
+  if (!channelSlug) {
+    return null;
+  }
+
+  const params = new URLSearchParams();
+  const archiveStartAt = getRecordingArchiveStartAt(job);
+
+  if (archiveStartAt) {
+    params.set("archiveDate", getRecordingArchiveDateKey(archiveStartAt));
+  }
+
+  if (job.archiveContext?.programId) {
+    params.set("programId", job.archiveContext.programId);
+  }
+
+  const query = params.toString();
+
+  return query ? `/watch/${channelSlug}?${query}` : `/watch/${channelSlug}`;
 }

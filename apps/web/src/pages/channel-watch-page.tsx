@@ -3,9 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Heart, LayoutTemplate, LoaderCircle, Maximize2, Minimize2, PlayCircle, Search, Tv } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
+import { ChannelArchivePanel } from "@/components/channels/channel-archive-panel";
 import { ChannelGuideCard } from "@/components/channels/channel-guide-card";
 import { formatProgrammeTimeWithDay } from "@/components/channels/channel-guide-state";
-import { ChannelPreviousProgramList } from "@/components/channels/channel-previous-program-list";
 import { ChannelProgramList } from "@/components/channels/channel-program-list";
 import { getProgramCatchupBadges, getProgramCatchupCopy } from "@/components/channels/channel-program-catchup-state";
 import { ChannelPickerDialog } from "@/components/channels/channel-picker-dialog";
@@ -64,6 +64,32 @@ function getCatchupPlaybackKindLabel(playback: ChannelProgramPlayback) {
   }
 }
 
+function getArchiveDateKey(value: string) {
+  const date = new Date(value);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function buildArchiveWindow(archiveDate: string | null) {
+  if (!archiveDate) {
+    return {
+      startAt: new Date(Date.now() - 72 * 60 * 60_000),
+      endAt: new Date(Date.now() + 24 * 60 * 60_000),
+    };
+  }
+
+  const startOfDay = new Date(`${archiveDate}T00:00:00`);
+  const endOfDay = new Date(`${archiveDate}T23:59:59.999`);
+
+  return {
+    startAt: new Date(startOfDay.getTime() - 6 * 60 * 60_000),
+    endAt: new Date(endOfDay.getTime() + 6 * 60 * 60_000),
+  };
+}
+
 export function ChannelWatchPage() {
   const { slug = "" } = useParams();
   const navigate = useNavigate();
@@ -86,7 +112,9 @@ export function ChannelWatchPage() {
   const [guidePaddingBeforeMinutes, setGuidePaddingBeforeMinutes] = useState(2);
   const [guidePaddingAfterMinutes, setGuidePaddingAfterMinutes] = useState(5);
   const selectedProgramId = searchParams.get("programId");
+  const selectedArchiveDate = searchParams.get("archiveDate");
   const hasCatchupSelection = Boolean(selectedProgramId);
+  const archiveWindow = useMemo(() => buildArchiveWindow(selectedArchiveDate), [selectedArchiveDate]);
 
   const channelQuery = useQuery({
     queryKey: ["channel", slug, token],
@@ -132,16 +160,20 @@ export function ChannelWatchPage() {
   });
 
   const guideWindowQuery = useQuery({
-    queryKey: ["guide-window", channelQuery.data?.id, token],
+    queryKey: ["guide-window", channelQuery.data?.id, token, archiveWindow.startAt.toISOString(), archiveWindow.endAt.toISOString()],
     queryFn: async () => {
       if (!token || !channelQuery.data) {
         throw new Error("Missing channel context");
       }
 
-      const startAt = new Date(Date.now() - 18 * 60 * 60_000);
-      const endAt = new Date(Date.now() + 24 * 60 * 60_000);
-
-      return (await api.getChannelGuideWindow(channelQuery.data.id, startAt.toISOString(), endAt.toISOString(), token)).guide;
+      return (
+        await api.getChannelGuideWindow(
+          channelQuery.data.id,
+          archiveWindow.startAt.toISOString(),
+          archiveWindow.endAt.toISOString(),
+          token,
+        )
+      ).guide;
     },
     enabled: Boolean(token && channelQuery.data?.id),
   });
@@ -379,6 +411,22 @@ export function ChannelWatchPage() {
   function selectCatchupProgram(programme: Pick<NowNextProgram, "id">) {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set("programId", programme.id);
+    if ("start" in programme && typeof programme.start === "string") {
+      nextParams.set("archiveDate", getArchiveDateKey(programme.start));
+    }
+    setSearchParams(nextParams, { replace: false });
+  }
+
+  function selectArchiveDate(date: string | null) {
+    const nextParams = new URLSearchParams(searchParams);
+
+    if (date) {
+      nextParams.set("archiveDate", date);
+    } else {
+      nextParams.delete("archiveDate");
+    }
+
+    nextParams.delete("programId");
     setSearchParams(nextParams, { replace: false });
   }
 
@@ -941,27 +989,14 @@ export function ChannelWatchPage() {
         </div>
       </div>
 
-      <Panel density="compact">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Earlier programmes</p>
-            <p className="mt-1 text-[13px] text-slate-400">
-              Catch-up appears only when TV-Dash can resolve a linked recording or a still-retained DVR window.
-            </p>
-          </div>
-          <Badge className="border-slate-700/80 bg-slate-900/80 text-slate-200">
-            {playablePreviousProgrammeCount} playable {playablePreviousProgrammeCount === 1 ? "programme" : "programmes"}
-          </Badge>
-        </div>
-        <div className="mt-3">
-          <ChannelPreviousProgramList
-            activeProgramId={isCatchupPlaybackActive && selectedCatchupProgramme?.catchup?.timingState === "PREVIOUS" ? selectedCatchupProgramme.id : null}
-            isLoading={guideWindowQuery.isLoading}
-            onPlayProgram={selectCatchupProgram}
-            programmes={previousProgrammes}
-          />
-        </div>
-      </Panel>
+      <ChannelArchivePanel
+        activeProgramId={isCatchupPlaybackActive && selectedCatchupProgramme?.catchup?.timingState === "PREVIOUS" ? selectedCatchupProgramme.id : null}
+        isLoading={guideWindowQuery.isLoading}
+        onPlayProgram={selectCatchupProgram}
+        onSelectDate={selectArchiveDate}
+        programmes={previousProgrammes}
+        selectedDate={selectedArchiveDate}
+      />
 
       <ChannelPickerDialog
         allowClear={false}
