@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "PlaybackSession_channelId_playbackPositionState_endedAt_lastSee" RENAME TO "PlaybackSession_channelId_playbackPositionState_endedAt_las_idx";
