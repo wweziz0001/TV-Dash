@@ -557,6 +557,85 @@ segment24.ts`),
     expect(response.body).toContain("/api/streams/channels/55555555-5555-5555-5555-555555555555/timeshift/variants/live/index.m3u8");
   });
 
+  it("serves a retained-window archive master playlist for the requested programme range", async () => {
+    mockPrisma.channel.findUnique.mockResolvedValue({
+      id: "56565656-5656-5656-5656-565656565656",
+      name: "Catchup News",
+      slug: "catchup-news",
+      isActive: true,
+      sourceMode: "MASTER_PLAYLIST",
+      masterHlsUrl: "https://origin.example.com/live/master.m3u8",
+      playbackMode: "PROXY",
+      timeshiftEnabled: true,
+      timeshiftWindowMinutes: 30,
+      upstreamUserAgent: null,
+      upstreamReferrer: null,
+      upstreamHeaders: null,
+      qualityVariants: [],
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+
+        if (url === "https://origin.example.com/live/master.m3u8") {
+          return Promise.resolve({
+            ok: true,
+            text: vi.fn().mockResolvedValue("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=900000\nvariant-a.m3u8\n"),
+            headers: {
+              get: vi.fn().mockReturnValue("application/vnd.apple.mpegurl"),
+            },
+          });
+        }
+
+        if (url === "https://origin.example.com/live/variant-a.m3u8") {
+          return Promise.resolve({
+            ok: true,
+            text: vi.fn().mockResolvedValue(`#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:6
+#EXT-X-MEDIA-SEQUENCE:100
+#EXT-X-PROGRAM-DATE-TIME:2026-04-05T09:00:00.000Z
+#EXTINF:6.0,
+segment100.ts
+#EXT-X-PROGRAM-DATE-TIME:2026-04-05T09:00:06.000Z
+#EXTINF:6.0,
+segment101.ts
+#EXT-X-PROGRAM-DATE-TIME:2026-04-05T09:00:12.000Z
+#EXTINF:6.0,
+segment102.ts
+#EXT-X-PROGRAM-DATE-TIME:2026-04-05T09:00:18.000Z
+#EXTINF:6.0,
+segment103.ts
+#EXT-X-PROGRAM-DATE-TIME:2026-04-05T09:00:24.000Z
+#EXTINF:6.0,
+segment104.ts`),
+            headers: {
+              get: vi.fn().mockReturnValue("application/vnd.apple.mpegurl"),
+            },
+          });
+        }
+
+        return Promise.resolve({
+          ok: true,
+          arrayBuffer: vi.fn().mockResolvedValue(Uint8Array.from([1, 2, 3]).buffer),
+          headers: {
+            get: vi.fn().mockReturnValue("video/mp2t"),
+          },
+        });
+      }),
+    );
+
+    const archiveMasterResponse = await server.inject({
+      method: "GET",
+      url: "/api/streams/channels/56565656-5656-5656-5656-565656565656/timeshift/archive/master?startAt=2026-04-05T09:00:06.000Z&endAt=2026-04-05T09:00:24.000Z",
+    });
+
+    expect(archiveMasterResponse.statusCode).toBe(200);
+    expect(archiveMasterResponse.body).toContain("/timeshift/archive/variants/0/index.m3u8?startAt=");
+  });
+
   it("starts a shared delivery session and rewrites the master playlist through shared asset paths", async () => {
     mockPrisma.channel.findUnique.mockResolvedValue({
       id: "66666666-6666-6666-6666-666666666666",

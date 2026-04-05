@@ -47,6 +47,10 @@ export function classifyStreamFailure(error: unknown, context: StreamFailureCont
     return buildClassification("validation", message, false, 400);
   }
 
+  if (message === "Catch-up archive end must be after start") {
+    return buildClassification("validation", message, false, 400);
+  }
+
   if (message === "Channel not found") {
     return buildClassification("misconfiguration", message, false, 404);
   }
@@ -61,11 +65,12 @@ export function classifyStreamFailure(error: unknown, context: StreamFailureCont
     message === "Shared stream delivery is disabled." ||
     message === "Timeshift asset not found" ||
     message === "Timeshift variant not found" ||
+    message === "Requested programme is no longer inside the retained DVR window" ||
     message === "Timeshift is not available for this channel" ||
     message === "Timeshift is disabled for this channel." ||
     message === "Timeshift requires TV-Dash-managed delivery so TV-Dash can retain the live buffer."
   ) {
-    return buildClassification("misconfiguration", message, false, 404);
+    return buildClassification("misconfiguration", message, false, message === "Requested programme is no longer inside the retained DVR window" ? 400 : 404);
   }
 
   if (message === "Timeshift buffer is still empty") {

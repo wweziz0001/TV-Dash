@@ -17,6 +17,11 @@ import {
   recordEpgObservation,
 } from "../diagnostics/diagnostic.service.js";
 import {
+  getRecordingPlaybackAccessForViewer,
+  listRecordingCatchupCandidatesForViewer,
+} from "../recordings/recording.service.js";
+import { getChannelTimeshiftCatchupWindow } from "../streams/timeshift-buffer.js";
+import {
   createEpgSource,
   createManualProgram,
   deleteEpgSource,
@@ -39,6 +44,10 @@ import {
 } from "./epg.repository.js";
 import { classifyEpgFailure } from "./epg-diagnostics.js";
 import { getNowNextProgrammes, resolveGuideProgrammes, type GuideProgramRecord } from "./guide-resolver.js";
+import {
+  resolveProgramCatchupSummary,
+  type ProgramCatchupSummary,
+} from "./program-catchup.js";
 import { parseXmltvDocument } from "./xmltv-parser.js";
 
 type EpgSourceImportConfig = Awaited<ReturnType<typeof findEpgSourceImportConfigById>>;
@@ -70,6 +79,12 @@ type EpgSourceSummaryLike = {
   createdAt: Date;
   updatedAt: Date;
 };
+
+interface EpgViewer {
+  id: string;
+  role: "ADMIN" | "USER";
+  username: string;
+}
 
 function countMappedSourceChannels(
   sourceChannels:
@@ -323,7 +338,11 @@ async function importXmltvDocumentForSource(params: {
   }
 }
 
-function mapGuideProgram(programme: GuideProgramRecord) {
+function buildTimeshiftPlaybackUrl(channelId: string) {
+  return `/api/streams/channels/${channelId}/timeshift/master`;
+}
+
+function mapGuideProgram(programme: GuideProgramRecord, catchup?: ProgramCatchupSummary | null) {
   return {
     id: programme.id,
     sourceKind: programme.sourceKind,
@@ -334,6 +353,7 @@ function mapGuideProgram(programme: GuideProgramRecord) {
     imageUrl: programme.imageUrl,
     start: programme.startAt.toISOString(),
     stop: programme.endAt?.toISOString() ?? null,
+    catchup: catchup ?? null,
   };
 }
 
@@ -434,6 +454,89 @@ async function getResolvedGuideDataForChannels(
       resolved,
     };
   });
+}
+
+async function resolveGuideCatchupSummaries(params: {
+  viewer: EpgViewer;
+  channelId: string;
+  programmes: GuideProgramRecord[];
+  now: Date;
+}) {
+  const completedProgrammes = params.programmes.filter((programme) => programme.endAt && programme.endAt <= params.now);
+  const liveProgrammes = params.programmes.filter((programme) => programme.startAt <= params.now && (!programme.endAt || programme.endAt > params.now));
+  const catchupRangeStart =
+    completedProgrammes.reduce<Date | null>((earliest, programme) => {
+      if (!earliest || programme.startAt < earliest) {
+        return programme.startAt;
+      }
+
+      return earliest;
+    }, null) ?? liveProgrammes[0]?.startAt ?? params.now;
+  const catchupRangeEnd =
+    completedProgrammes.reduce<Date | null>((latest, programme) => {
+      if (programme.endAt && (!latest || programme.endAt > latest)) {
+        return programme.endAt;
+      }
+
+      return latest;
+    }, null) ?? params.now;
+
+  const [recordingCandidates, timeshiftWindow] = await Promise.all([
+    listRecordingCatchupCandidatesForViewer(params.viewer, {
+      channelId: params.channelId,
+      rangeStart: catchupRangeStart,
+      rangeEnd: catchupRangeEnd,
+    }),
+    getChannelTimeshiftCatchupWindow(params.channelId),
+  ]);
+
+  return new Map(
+    params.programmes.map((programme) => [
+      programme.id,
+      resolveProgramCatchupSummary({
+        program: {
+          id: programme.id,
+          startAt: programme.startAt,
+          endAt: programme.endAt,
+        },
+        now: params.now,
+        recordingCandidates,
+        timeshiftWindow,
+      }),
+    ]),
+  );
+}
+
+async function getProgramEntryCatchupContext(channelId: string, programId: string) {
+  const programme = await findProgramEntryById(programId);
+
+  if (!programme) {
+    return null;
+  }
+
+  const resolvedChannel =
+    programme.channelId === channelId
+      ? programme.channel
+      : programme.sourceChannel?.mapping?.channel?.id === channelId
+        ? programme.sourceChannel.mapping.channel
+        : null;
+
+  if (!resolvedChannel) {
+    return null;
+  }
+
+  return {
+    id: programme.id,
+    sourceKind: programme.sourceKind,
+    title: programme.title,
+    subtitle: programme.subtitle ?? null,
+    description: programme.description ?? null,
+    category: programme.category ?? null,
+    imageUrl: programme.imageUrl ?? null,
+    startAt: programme.startAt,
+    endAt: programme.endAt,
+    channel: resolvedChannel,
+  };
 }
 
 export function listConfiguredEpgSources() {
@@ -576,7 +679,7 @@ export async function getProgramEntryById(id: string) {
   };
 }
 
-export async function getResolvedGuideForChannel(channelId: string, startAt: Date, endAt: Date) {
+export async function getResolvedGuideForChannel(viewer: EpgViewer, channelId: string, startAt: Date, endAt: Date) {
   const channelData = (
     await getResolvedGuideDataForChannels([channelId], {
       rangeStart: startAt,
@@ -595,10 +698,130 @@ export async function getResolvedGuideForChannel(channelId: string, startAt: Dat
 
     return !programme.endAt || programme.endAt > startAt;
   });
+  const catchupSummaries = await resolveGuideCatchupSummaries({
+    viewer,
+    channelId,
+    programmes,
+    now: new Date(),
+  });
 
   return {
     channelId,
-    programmes: programmes.map(mapGuideProgram),
+    programmes: programmes.map((programme) => mapGuideProgram(programme, catchupSummaries.get(programme.id) ?? null)),
+  };
+}
+
+export async function getChannelProgramPlaybackForViewer(viewer: EpgViewer, channelId: string, programId: string) {
+  const programme = await getProgramEntryCatchupContext(channelId, programId);
+
+  if (!programme) {
+    return null;
+  }
+
+  if (!programme.endAt) {
+    throw new Error("Programme catch-up playback requires a programme end time");
+  }
+
+  const catchupSummaries = await resolveGuideCatchupSummaries({
+    viewer,
+    channelId,
+    programmes: [
+      {
+        id: programme.id,
+        sourceKind: programme.sourceKind,
+        title: programme.title,
+        subtitle: programme.subtitle,
+        description: programme.description,
+        category: programme.category,
+        imageUrl: programme.imageUrl,
+        startAt: programme.startAt,
+        endAt: programme.endAt,
+      },
+    ],
+    now: new Date(),
+  });
+  const catchup = catchupSummaries.get(programme.id);
+
+  if (!catchup) {
+    throw new Error("Programme catch-up state could not be resolved");
+  }
+
+  if (!catchup.isCatchupPlayable && !catchup.watchFromStartAvailable) {
+    throw new Error("Programme catch-up playback is not available");
+  }
+
+  const selectedSource = catchup.sources.find((source) => source.isPreferred) ?? catchup.sources[0] ?? null;
+
+  if (!selectedSource) {
+    throw new Error("Programme catch-up playback is not available");
+  }
+
+  if (selectedSource.sourceType === "RECORDING") {
+    if (!selectedSource.recordingJobId) {
+      throw new Error("Recording-based catch-up is missing its recording job");
+    }
+
+    const playback = await getRecordingPlaybackAccessForViewer(viewer, selectedSource.recordingJobId);
+    const startOffsetSeconds = Math.max(
+      0,
+      Math.floor((programme.startAt.getTime() - new Date(selectedSource.availableFromAt).getTime()) / 1000),
+    );
+
+    return {
+      channelId,
+      channelSlug: programme.channel.slug,
+      programId: programme.id,
+      title: programme.title,
+      subtitle: programme.subtitle,
+      description: programme.description,
+      category: programme.category,
+      imageUrl: programme.imageUrl,
+      startAt: programme.startAt.toISOString(),
+      endAt: programme.endAt.toISOString(),
+      playbackKind: "CATCHUP_RECORDING" as const,
+      sourceType: "RECORDING" as const,
+      playbackUrl: playback.playbackUrl,
+      playbackMimeType: "video/mp4",
+      startOffsetSeconds,
+      availableUntilAt: selectedSource.availableUntilAt,
+      recording: {
+        recordingJobId: selectedSource.recordingJobId,
+        title: selectedSource.recordingTitle ?? programme.title,
+        matchType: selectedSource.recordingMatchType ?? "OVERLAP",
+      },
+      timeshiftWindow: null,
+      catchup,
+    };
+  }
+
+  const startOffsetSeconds = Math.max(
+    0,
+    Math.floor((programme.startAt.getTime() - new Date(selectedSource.availableFromAt).getTime()) / 1000),
+  );
+
+  return {
+    channelId,
+    channelSlug: programme.channel.slug,
+    programId: programme.id,
+    title: programme.title,
+    subtitle: programme.subtitle,
+    description: programme.description,
+    category: programme.category,
+    imageUrl: programme.imageUrl,
+    startAt: programme.startAt.toISOString(),
+    endAt: programme.endAt.toISOString(),
+    playbackKind: catchup.timingState === "LIVE_NOW" ? ("WATCH_FROM_START" as const) : ("CATCHUP_TIMESHIFT" as const),
+    sourceType: "TIMESHIFT" as const,
+    playbackUrl: buildTimeshiftPlaybackUrl(channelId),
+    playbackMimeType: "application/vnd.apple.mpegurl",
+    startOffsetSeconds,
+    availableUntilAt: selectedSource.availableUntilAt,
+    recording: null,
+    timeshiftWindow: {
+      availableFromAt: selectedSource.availableFromAt,
+      availableUntilAt: selectedSource.availableUntilAt,
+    },
+    catchup,
   };
 }
 

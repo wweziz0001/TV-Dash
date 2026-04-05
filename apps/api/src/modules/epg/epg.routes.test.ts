@@ -37,11 +37,16 @@ const mockPrisma = {
   programEntry: {
     findMany: vi.fn(),
     findFirst: vi.fn(),
+    findUnique: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
     deleteMany: vi.fn(),
     createMany: vi.fn(),
+  },
+  recordingJob: {
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
   },
   favorite: {
     findMany: vi.fn(),
@@ -127,6 +132,9 @@ describe("epgRoutes", () => {
             },
       ),
     );
+    mockPrisma.recordingJob.findMany.mockResolvedValue([]);
+    mockPrisma.recordingJob.findUnique.mockResolvedValue(null);
+    mockPrisma.programEntry.findUnique.mockResolvedValue(null);
     server = await buildServer();
   });
 
@@ -518,6 +526,7 @@ describe("epgRoutes", () => {
             imageUrl: null,
             start: "2026-04-02T09:00:00.000Z",
             stop: "2026-04-02T10:00:00.000Z",
+            catchup: null,
           },
           next: {
             id: "imported-2",
@@ -529,6 +538,7 @@ describe("epgRoutes", () => {
             imageUrl: null,
             start: "2026-04-02T10:00:00.000Z",
             stop: "2026-04-02T11:00:00.000Z",
+            catchup: null,
           },
         },
       ],
@@ -546,5 +556,163 @@ describe("epgRoutes", () => {
 
     expect(response.statusCode).toBe(400);
     expect(mockPrisma.channel.findMany).not.toHaveBeenCalled();
+  });
+
+  it("surfaces previous-program catch-up availability from completed recordings", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-05T10:00:00.000Z"));
+
+    mockPrisma.channel.findMany.mockResolvedValue([
+      {
+        id: "22222222-2222-2222-2222-222222222222",
+        name: "Ops News",
+        epgMapping: null,
+      },
+    ]);
+    mockPrisma.channel.findUnique.mockResolvedValue({
+      id: "22222222-2222-2222-2222-222222222222",
+      name: "Ops News",
+      slug: "ops-news",
+      isActive: true,
+      sourceMode: "MASTER_PLAYLIST",
+      masterHlsUrl: "https://example.com/live/master.m3u8",
+      playbackMode: "DIRECT",
+      timeshiftEnabled: false,
+      timeshiftWindowMinutes: null,
+      upstreamUserAgent: null,
+      upstreamReferrer: null,
+      upstreamHeaders: null,
+      qualityVariants: [],
+    });
+    mockPrisma.programEntry.findMany
+      .mockResolvedValueOnce([
+        {
+          id: "program-1",
+          sourceKind: "MANUAL",
+          channelId: "22222222-2222-2222-2222-222222222222",
+          title: "Morning Brief",
+          subtitle: null,
+          description: "Top stories",
+          category: "News",
+          imageUrl: null,
+          startAt: new Date("2026-04-05T08:00:00.000Z"),
+          endAt: new Date("2026-04-05T09:00:00.000Z"),
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    mockPrisma.recordingJob.findMany.mockResolvedValue([
+      {
+        id: "recording-1",
+        createdByUserId: "11111111-1111-1111-1111-111111111111",
+        programEntryId: "program-1",
+        title: "Morning Brief Recording",
+        asset: {
+          startedAt: new Date("2026-04-05T07:59:00.000Z"),
+          endedAt: new Date("2026-04-05T09:02:00.000Z"),
+        },
+      },
+    ]);
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/epg/channels/22222222-2222-2222-2222-222222222222/guide?startAt=2026-04-05T07:00:00.000Z&endAt=2026-04-05T12:00:00.000Z",
+      headers: createAuthHeaders(server),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      guide: {
+        channelId: "22222222-2222-2222-2222-222222222222",
+        programmes: [
+          {
+            id: "program-1",
+            catchup: {
+              playbackState: "PREVIOUS_RECORDING",
+              isCatchupPlayable: true,
+              preferredSourceType: "RECORDING",
+            },
+          },
+        ],
+      },
+    });
+
+    vi.useRealTimers();
+  });
+
+  it("resolves programme playback through the preferred recording source", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-05T10:00:00.000Z"));
+
+    mockPrisma.channel.findUnique.mockResolvedValue({
+      id: "22222222-2222-2222-2222-222222222222",
+      name: "Ops News",
+      slug: "ops-news",
+      isActive: true,
+      sourceMode: "MASTER_PLAYLIST",
+      masterHlsUrl: "https://example.com/live/master.m3u8",
+      playbackMode: "DIRECT",
+      timeshiftEnabled: false,
+      timeshiftWindowMinutes: null,
+      upstreamUserAgent: null,
+      upstreamReferrer: null,
+      upstreamHeaders: null,
+      qualityVariants: [],
+    });
+    mockPrisma.programEntry.findUnique.mockResolvedValue({
+      id: "44444444-4444-4444-4444-444444444444",
+      sourceKind: "MANUAL",
+      channelId: "22222222-2222-2222-2222-222222222222",
+      title: "Morning Brief",
+      subtitle: null,
+      description: "Top stories",
+      category: "News",
+      imageUrl: null,
+      startAt: new Date("2026-04-05T08:00:00.000Z"),
+      endAt: new Date("2026-04-05T09:00:00.000Z"),
+      channel: {
+        id: "22222222-2222-2222-2222-222222222222",
+        name: "Ops News",
+        slug: "ops-news",
+        isActive: true,
+      },
+      sourceChannel: null,
+    });
+    mockPrisma.recordingJob.findMany.mockResolvedValue([
+      {
+        id: "recording-1",
+        createdByUserId: "11111111-1111-1111-1111-111111111111",
+        programEntryId: "44444444-4444-4444-4444-444444444444",
+        title: "Morning Brief Recording",
+        asset: {
+          startedAt: new Date("2026-04-05T07:58:00.000Z"),
+          endedAt: new Date("2026-04-05T09:03:00.000Z"),
+        },
+      },
+    ]);
+    mockPrisma.recordingJob.findUnique.mockResolvedValue({
+      id: "recording-1",
+      createdByUserId: "11111111-1111-1111-1111-111111111111",
+      asset: {
+        id: "asset-1",
+      },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/epg/channels/22222222-2222-2222-2222-222222222222/programs/44444444-4444-4444-4444-444444444444/playback",
+      headers: createAuthHeaders(server),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      playback: {
+        programId: "44444444-4444-4444-4444-444444444444",
+        sourceType: "RECORDING",
+        playbackKind: "CATCHUP_RECORDING",
+        playbackUrl: expect.stringContaining("/api/recordings/recording-1/media?token="),
+      },
+    });
+
+    vi.useRealTimers();
   });
 });

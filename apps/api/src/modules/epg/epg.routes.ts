@@ -9,6 +9,7 @@ import { requirePermission } from "../../app/auth-guards.js";
 import { getPrismaErrorCode } from "../../app/prisma-errors.js";
 import {
   channelIdParamSchema,
+  channelProgramParamSchema,
   epgGuideWindowQuerySchema,
   epgManualProgramsQuerySchema,
   epgNowNextQuerySchema,
@@ -26,6 +27,7 @@ import {
   getEpgSource,
   getManualProgramEntry,
   getNowNextForChannels,
+  getChannelProgramPlaybackForViewer,
   getResolvedGuideForChannel,
   importConfiguredEpgSourceFromFile,
   importConfiguredEpgSourceFromUrl,
@@ -421,12 +423,49 @@ export const epgRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(400).send({ message: "Guide window end must be after start" });
     }
 
-    const guide = await getResolvedGuideForChannel(params.channelId, query.startAt, query.endAt);
+    if (!request.authUser) {
+      return reply.status(401).send({ message: "Unauthorized" });
+    }
+
+    const guide = await getResolvedGuideForChannel(request.authUser, params.channelId, query.startAt, query.endAt);
     if (!guide) {
       return reply.status(404).send({ message: "Channel not found" });
     }
 
     return { guide };
+  });
+
+  fastify.get("/epg/channels/:channelId/programs/:programId/playback", { preHandler: [requirePermission("epg:read")] }, async (request, reply) => {
+    const params = parseWithSchema(channelProgramParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    if (!request.authUser) {
+      return reply.status(401).send({ message: "Unauthorized" });
+    }
+
+    try {
+      const playback = await getChannelProgramPlaybackForViewer(request.authUser, params.channelId, params.programId);
+
+      if (!playback) {
+        return reply.status(404).send({ message: "Programme not found for this channel" });
+      }
+
+      return { playback };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to resolve programme playback";
+      const statusCode =
+        message === "Programme catch-up playback is not available" || message === "Programme catch-up playback requires a programme end time"
+          ? 409
+          : message === "Recording-based catch-up is missing its recording job"
+            ? 500
+            : message.includes("retained DVR window")
+              ? 409
+              : 500;
+
+      return reply.status(statusCode).send({ message });
+    }
   });
 
   fastify.get("/epg/now-next", { preHandler: [requirePermission("epg:read")] }, async (request, reply) => {

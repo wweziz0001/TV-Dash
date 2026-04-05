@@ -415,6 +415,18 @@ export function findProgramEntryById(id: string) {
         select: {
           id: true,
           externalId: true,
+          mapping: {
+            select: {
+              channel: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                  isActive: true,
+                },
+              },
+            },
+          },
           source: {
             select: {
               id: true,

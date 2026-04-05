@@ -23,6 +23,7 @@ import {
   findRecordingJobById,
   findRecordingPlaybackJobById,
   findRecordingRuleById,
+  listRecordingCatchupCandidates,
   listRecordingJobs,
   type RecordingJobListSort,
   listRecordingJobsForRulesInWindow,
@@ -940,6 +941,39 @@ export async function getRecordingPlaybackAccessForViewer(viewer: RecordingViewe
   return {
     playbackUrl: buildRecordingAssetAccess(recordingJobId, playbackJob.asset.id).playbackUrl,
   };
+}
+
+export async function listRecordingCatchupCandidatesForViewer(
+  viewer: RecordingViewer,
+  params: {
+    channelId: string;
+    rangeStart: Date;
+    rangeEnd: Date;
+  },
+) {
+  const candidates = await listRecordingCatchupCandidates({
+    channelId: params.channelId,
+    rangeStart: params.rangeStart,
+    rangeEnd: params.rangeEnd,
+    userId: viewer.id,
+    includeAllUsers: canViewAllRecordings(viewer),
+  });
+
+  return candidates.flatMap((candidate) => {
+    if (!candidate.asset) {
+      return [];
+    }
+
+    return [
+      {
+        recordingJobId: candidate.id,
+        programEntryId: candidate.programEntryId,
+        title: candidate.title,
+        startsAt: candidate.asset.startedAt,
+        endsAt: candidate.asset.endedAt,
+      },
+    ];
+  });
 }
 
 export async function getRecordingQualityOptionsForViewer(_viewer: RecordingViewer, channelId: string) {

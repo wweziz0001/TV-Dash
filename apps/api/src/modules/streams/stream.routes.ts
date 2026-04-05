@@ -8,6 +8,7 @@ import {
   channelTimeshiftVariantParamSchema,
   streamMasterQuerySchema,
   streamProxyQuerySchema,
+  timeshiftCatchupQuerySchema,
 } from "../../app/request-schemas.js";
 import { parseWithSchema } from "../../app/validation.js";
 import { classifyStreamFailure } from "./stream-diagnostics.js";
@@ -19,6 +20,8 @@ import {
 } from "./shared-stream-session.js";
 import { getChannelProxyAssetResponse, getChannelProxyMasterResponse, inspectStream } from "./stream.service.js";
 import {
+  getChannelTimeshiftArchiveMasterResponse,
+  getChannelTimeshiftArchiveVariantResponse,
   getChannelTimeshiftAssetResponse,
   getChannelTimeshiftMasterResponse,
   getChannelTimeshiftStatus,
@@ -220,6 +223,40 @@ export const streamRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  fastify.get("/streams/channels/:channelId/timeshift/archive/master", async (request, reply) => {
+    const params = parseWithSchema(channelIdParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const query = parseWithSchema(timeshiftCatchupQuerySchema, request.query, reply);
+    if (!query) {
+      return;
+    }
+
+    if (query.endAt <= query.startAt) {
+      return reply.status(400).send({ message: "Catch-up archive end must be after start" });
+    }
+
+    try {
+      const proxied = await getChannelTimeshiftArchiveMasterResponse(params.channelId, query.startAt, query.endAt);
+      reply.header("content-type", proxied.contentType);
+      reply.header("cache-control", "no-store");
+      return reply.send(proxied.body);
+    } catch (error) {
+      const classification = classifyStreamFailure(error, { operation: "timeshift" });
+      const statusCode =
+        classification.statusCode === 404
+          ? 404
+          : classification.statusCode === 400
+            ? 400
+            : 502;
+      return reply.status(statusCode).send({
+        message: classification.message,
+      });
+    }
+  });
+
   fastify.get("/streams/channels/:channelId/timeshift/variants/:variantId/index.m3u8", async (request, reply) => {
     const params = parseWithSchema(channelTimeshiftVariantParamSchema, request.params, reply);
     if (!params) {
@@ -228,6 +265,45 @@ export const streamRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       const proxied = await getChannelTimeshiftVariantResponse(params.channelId, params.variantId);
+      reply.header("content-type", proxied.contentType);
+      reply.header("cache-control", "no-store");
+      return reply.send(proxied.body);
+    } catch (error) {
+      const classification = classifyStreamFailure(error, { operation: "timeshift" });
+      const statusCode =
+        classification.statusCode === 404
+          ? 404
+          : classification.statusCode === 400
+            ? 400
+            : 502;
+      return reply.status(statusCode).send({
+        message: classification.message,
+      });
+    }
+  });
+
+  fastify.get("/streams/channels/:channelId/timeshift/archive/variants/:variantId/index.m3u8", async (request, reply) => {
+    const params = parseWithSchema(channelTimeshiftVariantParamSchema, request.params, reply);
+    if (!params) {
+      return;
+    }
+
+    const query = parseWithSchema(timeshiftCatchupQuerySchema, request.query, reply);
+    if (!query) {
+      return;
+    }
+
+    if (query.endAt <= query.startAt) {
+      return reply.status(400).send({ message: "Catch-up archive end must be after start" });
+    }
+
+    try {
+      const proxied = await getChannelTimeshiftArchiveVariantResponse(
+        params.channelId,
+        params.variantId,
+        query.startAt,
+        query.endAt,
+      );
       reply.header("content-type", proxied.contentType);
       reply.header("cache-control", "no-store");
       return reply.send(proxied.body);

@@ -20,6 +20,11 @@ export const channelTimeshiftAssetParamSchema = z.object({
   assetId: z.string().trim().min(1).max(200),
 });
 
+export const channelProgramParamSchema = z.object({
+  channelId: z.string().uuid(),
+  programId: z.string().uuid(),
+});
+
 export const channelSharedAssetParamSchema = z.object({
   channelId: z.string().uuid(),
   assetId: z.string().trim().min(1).max(120),
@@ -59,6 +64,11 @@ export const epgManualProgramsQuerySchema = z.object({
 });
 
 export const epgGuideWindowQuerySchema = z.object({
+  startAt: z.string().datetime({ offset: true }).transform((value) => new Date(value)),
+  endAt: z.string().datetime({ offset: true }).transform((value) => new Date(value)),
+});
+
+export const timeshiftCatchupQuerySchema = z.object({
   startAt: z.string().datetime({ offset: true }).transform((value) => new Date(value)),
   endAt: z.string().datetime({ offset: true }).transform((value) => new Date(value)),
 });

@@ -201,10 +201,24 @@ const recordingPlaybackJobSelect = {
   },
 } satisfies Prisma.RecordingJobSelect;
 
+const recordingCatchupCandidateSelect = {
+  id: true,
+  createdByUserId: true,
+  programEntryId: true,
+  title: true,
+  asset: {
+    select: {
+      startedAt: true,
+      endedAt: true,
+    },
+  },
+} satisfies Prisma.RecordingJobSelect;
+
 export type RecordingJobRecord = Prisma.RecordingJobGetPayload<{ include: typeof recordingJobInclude }>;
 export type RecordingRuntimeJobRecord = Prisma.RecordingJobGetPayload<{ select: typeof recordingRuntimeJobSelect }>;
 export type RecordingPlaybackJobRecord = Prisma.RecordingJobGetPayload<{ select: typeof recordingPlaybackJobSelect }>;
 export type RecordingRuleRecord = Prisma.RecordingRuleGetPayload<{ include: typeof recordingRuleInclude }>;
+export type RecordingCatchupCandidateRecord = Prisma.RecordingJobGetPayload<{ select: typeof recordingCatchupCandidateSelect }>;
 
 interface RecordingJobListFilters {
   userId: string;
@@ -310,6 +324,34 @@ export function findRecordingPlaybackJobById(id: string) {
   return prisma.recordingJob.findUnique({
     where: { id },
     select: recordingPlaybackJobSelect,
+  });
+}
+
+export function listRecordingCatchupCandidates(params: {
+  channelId: string;
+  rangeStart: Date;
+  rangeEnd: Date;
+  userId: string;
+  includeAllUsers?: boolean;
+}) {
+  return prisma.recordingJob.findMany({
+    where: {
+      channelId: params.channelId,
+      status: "COMPLETED",
+      ...(params.includeAllUsers ? {} : { createdByUserId: params.userId }),
+      asset: {
+        is: {
+          startedAt: {
+            lt: params.rangeEnd,
+          },
+          endedAt: {
+            gt: params.rangeStart,
+          },
+        },
+      },
+    },
+    orderBy: [{ actualEndAt: "desc" }, { updatedAt: "desc" }],
+    select: recordingCatchupCandidateSelect,
   });
 }
 

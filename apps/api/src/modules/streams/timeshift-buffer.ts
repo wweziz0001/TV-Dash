@@ -31,6 +31,8 @@ export interface TimeshiftStatus {
   windowSeconds: number;
   minimumReadyWindowSeconds: number;
   availableWindowSeconds: number;
+  availableFromAt: string | null;
+  availableUntilAt: string | null;
   bufferedSegmentCount: number;
   lastUpdatedAt: string | null;
   lastError: string | null;
@@ -107,6 +109,11 @@ interface ChannelTimeshiftState {
 }
 
 const timeshiftStates = new Map<string, ChannelTimeshiftState>();
+
+interface TimeshiftRangeBounds {
+  availableFromAt: Date;
+  availableUntilAt: Date;
+}
 
 function createAssetId(sequence: number, absoluteUrl: string) {
   const hash = createHash("sha1").update(absoluteUrl).digest("hex").slice(0, 12);
@@ -320,6 +327,58 @@ function getVariantWindowSeconds(variant: TimeshiftVariantState) {
   return getAvailableTimeshiftWindowSeconds(variant.segments);
 }
 
+function getSegmentStartAtMs(segment: TimeshiftSegmentRecord) {
+  if (segment.programDateTime) {
+    const parsedMs = Date.parse(segment.programDateTime);
+
+    if (Number.isFinite(parsedMs)) {
+      return parsedMs;
+    }
+  }
+
+  return segment.capturedAtMs - segment.durationSeconds * 1000;
+}
+
+function getSegmentEndAtMs(segment: TimeshiftSegmentRecord) {
+  return getSegmentStartAtMs(segment) + segment.durationSeconds * 1000;
+}
+
+function getVariantRangeBounds(variant: TimeshiftVariantState): TimeshiftRangeBounds | null {
+  const firstSegment = variant.segments[0];
+  const lastSegment = variant.segments[variant.segments.length - 1];
+
+  if (!firstSegment || !lastSegment) {
+    return null;
+  }
+
+  return {
+    availableFromAt: new Date(getSegmentStartAtMs(firstSegment)),
+    availableUntilAt: new Date(getSegmentEndAtMs(lastSegment)),
+  };
+}
+
+function getCommonTimeshiftRangeBounds(state: ChannelTimeshiftState): TimeshiftRangeBounds | null {
+  const variantRanges = state.variants
+    .map(getVariantRangeBounds)
+    .filter((range): range is TimeshiftRangeBounds => Boolean(range));
+
+  if (variantRanges.length === 0) {
+    return null;
+  }
+
+  const availableFromMs = Math.max(...variantRanges.map((range) => range.availableFromAt.getTime()));
+  const availableUntilMs = Math.min(...variantRanges.map((range) => range.availableUntilAt.getTime()));
+
+  if (!Number.isFinite(availableFromMs) || !Number.isFinite(availableUntilMs) || availableFromMs >= availableUntilMs) {
+    return null;
+  }
+
+  return {
+    availableFromAt: new Date(availableFromMs),
+    availableUntilAt: new Date(availableUntilMs),
+  };
+}
+
 function buildDisabledStatus(state: ChannelTimeshiftState): TimeshiftStatus {
   if (!state.configured) {
     return {
@@ -333,6 +392,8 @@ function buildDisabledStatus(state: ChannelTimeshiftState): TimeshiftStatus {
       windowSeconds: state.windowSeconds,
       minimumReadyWindowSeconds: env.TIMESHIFT_MIN_AVAILABLE_WINDOW_SECONDS,
       availableWindowSeconds: 0,
+      availableFromAt: null,
+      availableUntilAt: null,
       bufferedSegmentCount: 0,
       lastUpdatedAt: null,
       lastError: null,
@@ -350,6 +411,8 @@ function buildDisabledStatus(state: ChannelTimeshiftState): TimeshiftStatus {
     windowSeconds: state.windowSeconds,
     minimumReadyWindowSeconds: env.TIMESHIFT_MIN_AVAILABLE_WINDOW_SECONDS,
     availableWindowSeconds: 0,
+    availableFromAt: null,
+    availableUntilAt: null,
     bufferedSegmentCount: 0,
     lastUpdatedAt: null,
     lastError: null,
@@ -368,6 +431,7 @@ function buildReadyStatus(state: ChannelTimeshiftState): TimeshiftStatus {
   const bufferedSegmentCount = bufferedVariants.length
     ? Math.min(...bufferedVariants.map((variant) => variant.segments.length))
     : 0;
+  const rangeBounds = getCommonTimeshiftRangeBounds(state);
   const lastUpdatedAtMs = bufferedVariants.reduce<number | null>((latest, variant) => {
     if (variant.lastUpdatedAtMs === null) {
       return latest;
@@ -398,6 +462,8 @@ function buildReadyStatus(state: ChannelTimeshiftState): TimeshiftStatus {
     windowSeconds: state.windowSeconds,
     minimumReadyWindowSeconds: env.TIMESHIFT_MIN_AVAILABLE_WINDOW_SECONDS,
     availableWindowSeconds,
+    availableFromAt: rangeBounds?.availableFromAt.toISOString() ?? null,
+    availableUntilAt: rangeBounds?.availableUntilAt.toISOString() ?? null,
     bufferedSegmentCount,
     lastUpdatedAt: lastUpdatedAtMs === null ? null : new Date(lastUpdatedAtMs).toISOString(),
     lastError: state.lastError,
@@ -624,6 +690,17 @@ function buildTimeshiftAssetPath(channelId: string, assetId: string) {
   return `${API_PREFIX}/streams/channels/${channelId}/timeshift/assets/${encodeURIComponent(assetId)}`;
 }
 
+function buildTimeshiftArchiveQueryString(startAt: Date, endAt: Date) {
+  return new URLSearchParams({
+    startAt: startAt.toISOString(),
+    endAt: endAt.toISOString(),
+  }).toString();
+}
+
+function buildTimeshiftArchiveVariantPath(channelId: string, variantId: string, startAt: Date, endAt: Date) {
+  return `${API_PREFIX}/streams/channels/${channelId}/timeshift/archive/variants/${encodeURIComponent(variantId)}/index.m3u8?${buildTimeshiftArchiveQueryString(startAt, endAt)}`;
+}
+
 function buildTimeshiftVariantPlaylist(state: ChannelTimeshiftState, variant: TimeshiftVariantState) {
   if (!variant.segments.length) {
     throw new Error("Timeshift buffer is still empty");
@@ -653,9 +730,92 @@ function buildTimeshiftVariantPlaylist(state: ChannelTimeshiftState, variant: Ti
   return `${lines.join("\n")}\n`;
 }
 
+function selectArchiveSegments(variant: TimeshiftVariantState, rangeStartAt: Date, rangeEndAt: Date) {
+  return variant.segments.filter((segment) => {
+    const segmentStartAtMs = getSegmentStartAtMs(segment);
+    const segmentEndAtMs = getSegmentEndAtMs(segment);
+
+    return segmentStartAtMs < rangeEndAt.getTime() && segmentEndAtMs > rangeStartAt.getTime();
+  });
+}
+
+function buildTimeshiftArchiveVariantPlaylist(params: {
+  state: ChannelTimeshiftState;
+  variant: TimeshiftVariantState;
+  rangeStartAt: Date;
+  rangeEndAt: Date;
+}) {
+  const selectedSegments = selectArchiveSegments(params.variant, params.rangeStartAt, params.rangeEndAt);
+
+  if (selectedSegments.length === 0) {
+    throw new Error("Requested programme is no longer inside the retained DVR window");
+  }
+
+  const firstSequence = selectedSegments[0]?.sequence ?? 0;
+  const headerLines = params.variant.headerLines.filter(
+    (line) =>
+      line !== "#EXTM3U" &&
+      !line.startsWith("#EXT-X-MEDIA-SEQUENCE") &&
+      !line.startsWith("#EXT-X-PLAYLIST-TYPE"),
+  );
+  const lines = [
+    "#EXTM3U",
+    ...headerLines,
+    `#EXT-X-TARGETDURATION:${Math.max(1, params.variant.targetDurationSeconds)}`,
+    `#EXT-X-MEDIA-SEQUENCE:${firstSequence}`,
+    "#EXT-X-PLAYLIST-TYPE:VOD",
+  ];
+
+  selectedSegments.forEach((segment) => {
+    segment.tagLines.forEach((line) => {
+      lines.push(
+        rewriteAttributeUris(line, segment.absoluteUrl, () => buildTimeshiftAssetPath(params.state.channelId, segment.assetId)),
+      );
+    });
+    lines.push(buildTimeshiftAssetPath(params.state.channelId, segment.assetId));
+  });
+
+  lines.push("#EXT-X-ENDLIST");
+
+  return `${lines.join("\n")}\n`;
+}
+
+function assertArchiveRangeAvailable(state: ChannelTimeshiftState, rangeStartAt: Date, rangeEndAt: Date) {
+  const status = buildReadyStatus(state);
+  const rangeBounds = getCommonTimeshiftRangeBounds(state);
+
+  if (!status.supported || !rangeBounds) {
+    throw new Error("Requested programme is no longer inside the retained DVR window");
+  }
+
+  if (rangeEndAt <= rangeStartAt) {
+    throw new Error("Catch-up archive end must be after start");
+  }
+
+  if (
+    rangeStartAt.getTime() < rangeBounds.availableFromAt.getTime() ||
+    rangeEndAt.getTime() > rangeBounds.availableUntilAt.getTime()
+  ) {
+    throw new Error("Requested programme is no longer inside the retained DVR window");
+  }
+}
+
 export async function getChannelTimeshiftStatus(channelId: string) {
   const state = await getOrCreateState(channelId);
   return buildReadyStatus(state);
+}
+
+export async function getChannelTimeshiftCatchupWindow(channelId: string) {
+  const status = await getChannelTimeshiftStatus(channelId);
+
+  if (!status.available || !status.availableFromAt || !status.availableUntilAt) {
+    return null;
+  }
+
+  return {
+    availableFromAt: new Date(status.availableFromAt),
+    availableUntilAt: new Date(status.availableUntilAt),
+  };
 }
 
 export async function getChannelTimeshiftMasterResponse(channelId: string) {
@@ -671,6 +831,32 @@ export async function getChannelTimeshiftMasterResponse(channelId: string) {
       label: variant.label,
       sortOrder: variant.sortOrder,
       playlistUrl: `${API_PREFIX}/streams/channels/${state.channelId}/timeshift/variants/${encodeURIComponent(variant.variantId)}/index.m3u8`,
+      width: variant.width,
+      height: variant.height,
+      bandwidth: variant.bandwidth,
+      codecs: variant.codecs,
+    })),
+  );
+
+  return {
+    body,
+    contentType: "application/vnd.apple.mpegurl",
+  };
+}
+
+export async function getChannelTimeshiftArchiveMasterResponse(channelId: string, rangeStartAt: Date, rangeEndAt: Date) {
+  const state = await getOrCreateState(channelId);
+  const status = buildReadyStatus(state);
+
+  if (!status.supported) {
+    throw new Error(status.message);
+  }
+
+  const body = buildSyntheticMasterPlaylist(
+    state.variants.map((variant) => ({
+      label: variant.label,
+      sortOrder: variant.sortOrder,
+      playlistUrl: buildTimeshiftArchiveVariantPath(state.channelId, variant.variantId, rangeStartAt, rangeEndAt),
       width: variant.width,
       height: variant.height,
       bandwidth: variant.bandwidth,
@@ -704,6 +890,36 @@ export async function getChannelTimeshiftVariantResponse(channelId: string, vari
 
   return {
     body: buildTimeshiftVariantPlaylist(state, variant),
+    contentType: "application/vnd.apple.mpegurl",
+  };
+}
+
+export async function getChannelTimeshiftArchiveVariantResponse(
+  channelId: string,
+  variantId: string,
+  rangeStartAt: Date,
+  rangeEndAt: Date,
+) {
+  const state = await getOrCreateState(channelId);
+  const variant = state.variants.find((entry) => entry.variantId === variantId);
+
+  if (!variant) {
+    throw new Error("Timeshift variant not found");
+  }
+
+  if (!state.supported) {
+    throw new Error("Timeshift is not available for this channel");
+  }
+
+  markVariantAccessed(variant);
+
+  return {
+    body: buildTimeshiftArchiveVariantPlaylist({
+      state,
+      variant,
+      rangeStartAt,
+      rangeEndAt,
+    }),
     contentType: "application/vnd.apple.mpegurl",
   };
 }
