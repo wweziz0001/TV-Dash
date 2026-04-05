@@ -353,6 +353,8 @@ describe("MultiviewTileCard", () => {
           windowSeconds: 1800,
           minimumReadyWindowSeconds: 30,
           availableWindowSeconds: 300,
+          availableFromAt: "2026-04-04T23:55:00.000Z",
+          availableUntilAt: "2026-04-05T00:00:00.000Z",
           bufferedSegmentCount: 40,
           lastUpdatedAt: "2026-04-05T00:00:00.000Z",
           lastError: null,

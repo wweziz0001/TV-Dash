@@ -25,6 +25,7 @@ import type {
   ChannelDiagnostics,
   ChannelGroup,
   ChannelNowNext,
+  ChannelProgramPlayback,
   ChannelGuideWindow,
   ChannelStreamSessionStatus,
   EpgSourceChannel,
@@ -243,6 +244,8 @@ export const api = {
       {},
       token,
     ),
+  getChannelProgramPlayback: (channelId: string, programId: string, token: string) =>
+    request<{ playback: ChannelProgramPlayback }>(`/epg/channels/${channelId}/programs/${programId}/playback`, {}, token),
   getNowNext: (channelIds: string[], token: string) =>
     request<{ items: ChannelNowNext[] }>(
       `/epg/now-next?${new URLSearchParams({ channelIds: channelIds.join(",") }).toString()}`,

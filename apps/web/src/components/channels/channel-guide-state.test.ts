@@ -12,6 +12,7 @@ function buildProgram(start: string, stop: string, title = "Morning News") {
     imageUrl: null,
     start,
     stop,
+    catchup: null,
   };
 }
 

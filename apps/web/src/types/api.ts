@@ -242,6 +242,34 @@ export interface NowNextProgram {
   imageUrl: string | null;
   start: string;
   stop: string | null;
+  catchup: ProgramCatchupSummary | null;
+}
+
+export interface ProgramCatchupSourceSummary {
+  sourceType: "RECORDING" | "TIMESHIFT";
+  isPreferred: boolean;
+  availableFromAt: string;
+  availableUntilAt: string;
+  recordingJobId?: string;
+  recordingTitle?: string;
+  recordingMatchType?: "LINKED" | "OVERLAP";
+}
+
+export interface ProgramCatchupSummary {
+  timingState: "PREVIOUS" | "LIVE_NOW" | "UPCOMING";
+  playbackState:
+    | "LIVE_NOW"
+    | "LIVE_WATCH_FROM_START"
+    | "UPCOMING"
+    | "PREVIOUS_NOT_AVAILABLE"
+    | "PREVIOUS_RECORDING"
+    | "PREVIOUS_TIMESHIFT"
+    | "PREVIOUS_RECORDING_AND_TIMESHIFT";
+  isCatchupPlayable: boolean;
+  watchFromStartAvailable: boolean;
+  preferredSourceType: "RECORDING" | "TIMESHIFT" | null;
+  availableUntilAt: string | null;
+  sources: ProgramCatchupSourceSummary[];
 }
 
 export interface ChannelNowNext {
@@ -452,9 +480,40 @@ export interface LiveTimeshiftStatus {
   windowSeconds: number;
   minimumReadyWindowSeconds: number;
   availableWindowSeconds: number;
+  availableFromAt: string | null;
+  availableUntilAt: string | null;
   bufferedSegmentCount: number;
   lastUpdatedAt: string | null;
   lastError: string | null;
+}
+
+export interface ChannelProgramPlayback {
+  channelId: string;
+  channelSlug: string;
+  programId: string;
+  title: string;
+  subtitle: string | null;
+  description: string | null;
+  category: string | null;
+  imageUrl: string | null;
+  startAt: string;
+  endAt: string;
+  playbackKind: "CATCHUP_RECORDING" | "CATCHUP_TIMESHIFT" | "WATCH_FROM_START";
+  sourceType: "RECORDING" | "TIMESHIFT";
+  playbackUrl: string;
+  playbackMimeType: string;
+  startOffsetSeconds: number;
+  availableUntilAt: string | null;
+  recording: {
+    recordingJobId: string;
+    title: string;
+    matchType: "LINKED" | "OVERLAP";
+  } | null;
+  timeshiftWindow: {
+    availableFromAt: string;
+    availableUntilAt: string;
+  } | null;
+  catchup: ProgramCatchupSummary;
 }
 
 export interface ChannelStreamSessionStatus {

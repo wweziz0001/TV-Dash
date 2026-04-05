@@ -123,6 +123,8 @@ describe("getChannelPlaybackTargets", () => {
               windowSeconds: 1800,
               minimumReadyWindowSeconds: 30,
               availableWindowSeconds: 60,
+              availableFromAt: "2026-04-03T23:59:00.000Z",
+              availableUntilAt: "2026-04-04T00:00:00.000Z",
               bufferedSegmentCount: 10,
               lastUpdatedAt: "2026-04-04T00:00:00.000Z",
               lastError: null,

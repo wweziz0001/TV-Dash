@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Heart, LayoutTemplate, Maximize2, Minimize2, Search, Tv } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Heart, LayoutTemplate, LoaderCircle, Maximize2, Minimize2, PlayCircle, Search, Tv } from "lucide-react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { ChannelGuideCard } from "@/components/channels/channel-guide-card";
+import { formatProgrammeTimeWithDay } from "@/components/channels/channel-guide-state";
+import { ChannelPreviousProgramList } from "@/components/channels/channel-previous-program-list";
 import { ChannelProgramList } from "@/components/channels/channel-program-list";
+import { getProgramCatchupBadges, getProgramCatchupCopy } from "@/components/channels/channel-program-catchup-state";
 import { ChannelPickerDialog } from "@/components/channels/channel-picker-dialog";
 import { PageHeader } from "@/components/layout/page-header";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
@@ -15,16 +19,55 @@ import { buildPlaybackSessionSemantics } from "@/features/observability/playback
 import { usePlaybackSessionHeartbeat } from "@/features/observability/use-playback-session-heartbeat";
 import { isEditableKeyboardTarget } from "@/lib/keyboard";
 import { getPlaybackModeLabel } from "@/lib/playback-mode";
+import { ArchivePlayer } from "@/player/archive-player";
 import { HlsPlayer, type PlayerDiagnostics } from "@/player/hls-player";
 import { buildPlayerDiagnostics } from "@/player/playback-diagnostics";
 import { defaultQualityOptions } from "@/player/quality-options";
 import { buildPlayerTimeshiftUiModel } from "@/player/timeshift-ui";
 import { api, getChannelPlaybackTargets, resolveApiUrl } from "@/services/api";
-import type { LiveTimeshiftStatus, QualityOption, RecordingJob } from "@/types/api";
+import type { ChannelProgramPlayback, LiveTimeshiftStatus, NowNextProgram, QualityOption, RecordingJob } from "@/types/api";
+
+function getCatchupBadgeClassName(tone: "live" | "positive" | "warning" | "neutral") {
+  switch (tone) {
+    case "live":
+      return "border-rose-400/30 bg-rose-500/10 text-rose-100";
+    case "positive":
+      return "border-emerald-400/30 bg-emerald-500/10 text-emerald-100";
+    case "warning":
+      return "border-amber-400/30 bg-amber-500/10 text-amber-100";
+    default:
+      return "border-slate-700/80 bg-slate-900/80 text-slate-300";
+  }
+}
+
+function formatAvailabilityTime(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function getCatchupPlaybackKindLabel(playback: ChannelProgramPlayback) {
+  switch (playback.playbackKind) {
+    case "WATCH_FROM_START":
+      return "Watching the current programme from its start";
+    case "CATCHUP_RECORDING":
+      return "Catch-up playback from a recording";
+    case "CATCHUP_TIMESHIFT":
+      return "Catch-up playback from the retained DVR window";
+    default:
+      return "Catch-up playback";
+  }
+}
 
 export function ChannelWatchPage() {
   const { slug = "" } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const playerFrameRef = useRef<HTMLDivElement | null>(null);
@@ -42,6 +85,8 @@ export function ChannelWatchPage() {
   const [isPlayerFullscreen, setIsPlayerFullscreen] = useState(false);
   const [guidePaddingBeforeMinutes, setGuidePaddingBeforeMinutes] = useState(2);
   const [guidePaddingAfterMinutes, setGuidePaddingAfterMinutes] = useState(5);
+  const selectedProgramId = searchParams.get("programId");
+  const hasCatchupSelection = Boolean(selectedProgramId);
 
   const channelQuery = useQuery({
     queryKey: ["channel", slug, token],
@@ -93,12 +138,25 @@ export function ChannelWatchPage() {
         throw new Error("Missing channel context");
       }
 
-      const startAt = new Date();
-      const endAt = new Date(startAt.getTime() + 24 * 60 * 60_000);
+      const startAt = new Date(Date.now() - 18 * 60 * 60_000);
+      const endAt = new Date(Date.now() + 24 * 60 * 60_000);
 
       return (await api.getChannelGuideWindow(channelQuery.data.id, startAt.toISOString(), endAt.toISOString(), token)).guide;
     },
     enabled: Boolean(token && channelQuery.data?.id),
+  });
+
+  const catchupPlaybackQuery = useQuery({
+    queryKey: ["channel-program-playback", channelQuery.data?.id, selectedProgramId, token],
+    queryFn: async () => {
+      if (!token || !channelQuery.data || !selectedProgramId) {
+        throw new Error("Missing catch-up playback context");
+      }
+
+      return (await api.getChannelProgramPlayback(channelQuery.data.id, selectedProgramId, token)).playback;
+    },
+    enabled: Boolean(token && channelQuery.data?.id && selectedProgramId),
+    retry: false,
   });
 
   const recordingJobsQuery = useQuery({
@@ -229,7 +287,7 @@ export function ChannelWatchPage() {
     return (recordingJobsQuery.data ?? []).find((job) => job.status === "RECORDING") ?? recordingJobsQuery.data?.[0] ?? null;
   }, [recordingJobsQuery.data]);
   const playbackSessionDescriptors = useMemo(() => {
-    if (!channelQuery.data) {
+    if (!channelQuery.data || hasCatchupSelection) {
       return [];
     }
 
@@ -248,7 +306,7 @@ export function ChannelWatchPage() {
         failureKind: playerDiagnostics.failureKind,
       },
     ];
-  }, [channelQuery.data, playerDiagnostics.failureKind, playerDiagnostics.isMuted, playerDiagnostics.status, selectedQuality]);
+  }, [channelQuery.data, hasCatchupSelection, playerDiagnostics.failureKind, playerDiagnostics.isMuted, playerDiagnostics.status, selectedQuality]);
 
   usePlaybackSessionHeartbeat(token, playbackSessionDescriptors);
 
@@ -318,6 +376,18 @@ export function ChannelWatchPage() {
     await playerFrame.requestFullscreen?.();
   }
 
+  function selectCatchupProgram(programme: Pick<NowNextProgram, "id">) {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("programId", programme.id);
+    setSearchParams(nextParams, { replace: false });
+  }
+
+  function returnToLivePlayback() {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("programId");
+    setSearchParams(nextParams, { replace: false });
+  }
+
   if (!channelQuery.data) {
     return (
       <Panel>
@@ -329,19 +399,56 @@ export function ChannelWatchPage() {
   const channel = channelQuery.data;
   const streamSessionStatus = streamSessionQuery.data ?? null;
   const timeshiftStatus: LiveTimeshiftStatus | null = streamSessionStatus?.timeshift ?? null;
+  const catchupPlayback = catchupPlaybackQuery.data ?? null;
+  const catchupPlaybackError =
+    hasCatchupSelection && catchupPlaybackQuery.error instanceof Error ? catchupPlaybackQuery.error.message : null;
   const playbackTargets = getChannelPlaybackTargets(channel, {
     sessionStatus: streamSessionStatus,
     timeshiftStatus,
   });
-  const playbackUrl = playbackTargets.defaultPlaybackUrl ? resolveApiUrl(playbackTargets.defaultPlaybackUrl) : null;
+  const livePlaybackUrl = playbackTargets.defaultPlaybackUrl ? resolveApiUrl(playbackTargets.defaultPlaybackUrl) : null;
   const playerTimeshiftUi = buildPlayerTimeshiftUiModel({
     diagnostics: playerDiagnostics,
     timeshiftStatus,
   });
   const nowNext = nowNextQuery.data;
-  const guideProgrammes = (guideWindowQuery.data?.programmes ?? []).filter((programme) => {
-    return !nowNext?.now || programme.id !== nowNext.now.id;
-  });
+  const guideProgrammes = guideWindowQuery.data?.programmes ?? [];
+  const previousProgrammes = guideProgrammes.filter((programme) => programme.catchup?.timingState === "PREVIOUS");
+  const upcomingProgrammes = guideProgrammes.filter((programme) => programme.catchup?.timingState === "UPCOMING");
+  const currentGuideProgram =
+    guideProgrammes.find((programme) => programme.id === nowNext?.now?.id) ??
+    guideProgrammes.find((programme) => programme.catchup?.timingState === "LIVE_NOW") ??
+    null;
+  const selectedCatchupProgramme =
+    guideProgrammes.find((programme) => programme.id === selectedProgramId) ??
+    (catchupPlaybackQuery.data
+      ? ({
+          id: catchupPlaybackQuery.data.programId,
+          sourceKind: "IMPORTED",
+          title: catchupPlaybackQuery.data.title,
+          subtitle: catchupPlaybackQuery.data.subtitle,
+          description: catchupPlaybackQuery.data.description,
+          category: catchupPlaybackQuery.data.category,
+          imageUrl: catchupPlaybackQuery.data.imageUrl,
+          start: catchupPlaybackQuery.data.startAt,
+          stop: catchupPlaybackQuery.data.endAt,
+          catchup: catchupPlaybackQuery.data.catchup,
+        } satisfies NowNextProgram)
+      : null);
+  const isCatchupPlaybackActive = Boolean(selectedProgramId && catchupPlayback);
+  const archivePlaybackUrl = catchupPlayback?.playbackUrl ? resolveApiUrl(catchupPlayback.playbackUrl) : null;
+  const archivePosterUrl =
+    catchupPlayback?.sourceType === "RECORDING" && selectedCatchupProgramme?.imageUrl
+      ? resolveApiUrl(selectedCatchupProgramme.imageUrl)
+      : undefined;
+  const archiveMediaType = catchupPlayback?.sourceType === "TIMESHIFT" ? "HLS" : "FILE";
+  const playbackUrl = isCatchupPlaybackActive ? archivePlaybackUrl : livePlaybackUrl;
+  const activePlaybackProgramme = isCatchupPlaybackActive ? selectedCatchupProgramme : currentGuideProgram;
+  const activePlaybackBadges = activePlaybackProgramme ? getProgramCatchupBadges(activePlaybackProgramme) : [];
+  const activePlaybackCopy = activePlaybackProgramme ? getProgramCatchupCopy(activePlaybackProgramme) : null;
+  const playablePreviousProgrammeCount = previousProgrammes.filter((programme) => programme.catchup?.isCatchupPlayable).length;
+  const watchFromStartExpiresAt = formatAvailabilityTime(currentGuideProgram?.catchup?.availableUntilAt ?? null);
+  const catchupAvailableUntil = formatAvailabilityTime(catchupPlayback?.availableUntilAt ?? null);
 
   return (
     <div className="space-y-4">
@@ -349,9 +456,18 @@ export function ChannelWatchPage() {
         density="compact"
         eyebrow="Single View"
         title={channel.name}
-        description="Real HLS playback with manual quality switching, optional proxy delivery, and live now/next guide context."
+        description={
+          hasCatchupSelection
+            ? "Catch-up playback stays explicit about whether you are watching a linked recording or a retained DVR window."
+            : "Real HLS playback with manual quality switching, optional proxy delivery, and live/catch-up guide context."
+        }
         actions={
           <>
+            {hasCatchupSelection ? (
+              <Button className="w-full sm:w-auto" onClick={returnToLivePlayback} size="sm" variant="primary">
+                Return to live
+              </Button>
+            ) : null}
             <Button className="w-full sm:w-auto" onClick={() => setPickerOpen(true)} size="sm" variant="secondary">
               <Search className="h-4 w-4" />
               Quick switch
@@ -398,39 +514,141 @@ export function ChannelWatchPage() {
             className="aspect-video min-h-[220px] max-h-[72vh] sm:min-h-[280px] lg:min-h-[360px] lg:max-h-none lg:aspect-auto lg:h-[calc(100vh-12rem)] xl:h-[calc(100vh-10.5rem)]"
             ref={playerFrameRef}
           >
-            <HlsPlayer
-              autoPlay
-              fullscreenTargetRef={playerFrameRef}
-              muted={isPlayerMuted}
-              onMutedChange={setIsPlayerMuted}
-              onQualityOptionsChange={setQualities}
-              onSelectedQualityChange={setSelectedQuality}
-              onDiagnosticsChange={setPlayerDiagnostics}
-              preferredQuality={selectedQuality}
-              src={playbackUrl}
-              timeshiftStatus={timeshiftStatus}
-              title={channel.name}
-            />
+            {isCatchupPlaybackActive ? (
+              <ArchivePlayer
+                autoPlay
+                className="h-full"
+                initialSeekSeconds={catchupPlayback?.startOffsetSeconds ?? 0}
+                mediaType={archiveMediaType}
+                posterUrl={archivePosterUrl}
+                src={archivePlaybackUrl}
+                title={selectedCatchupProgramme?.title ?? channel.name}
+              />
+            ) : hasCatchupSelection ? (
+              <div className="flex h-full items-center justify-center rounded-[1.1rem] bg-black px-4 text-center">
+                {catchupPlaybackQuery.isLoading ? (
+                  <div className="rounded-2xl border border-slate-700/70 bg-slate-950/90 px-4 py-3 text-sm text-slate-100">
+                    <div className="flex items-center gap-2">
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                      Resolving a real playback source for this programme...
+                    </div>
+                  </div>
+                ) : (
+                  <div className="max-w-md rounded-2xl border border-rose-500/20 bg-slate-950/90 p-4 text-left">
+                    <p className="text-sm font-semibold text-white">Catch-up playback is unavailable</p>
+                    <p className="mt-1.5 text-[13px] text-slate-300">
+                      {catchupPlaybackError ?? "TV-Dash could not resolve a linked recording or retained DVR window for this programme."}
+                    </p>
+                    <p className="mt-2 text-[12px] text-slate-500">
+                      Use Return to live to go back to the channel feed, or try another earlier programme with a real source.
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <HlsPlayer
+                autoPlay
+                fullscreenTargetRef={playerFrameRef}
+                muted={isPlayerMuted}
+                onMutedChange={setIsPlayerMuted}
+                onQualityOptionsChange={setQualities}
+                onSelectedQualityChange={setSelectedQuality}
+                onDiagnosticsChange={setPlayerDiagnostics}
+                preferredQuality={selectedQuality}
+                src={playbackUrl}
+                timeshiftStatus={timeshiftStatus}
+                title={channel.name}
+              />
+            )}
+          </div>
+
+          <div className="mt-2 rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {activePlaybackBadges.map((badge) => (
+                <Badge className={getCatchupBadgeClassName(badge.tone)} key={badge.label} size="sm">
+                  {badge.label}
+                </Badge>
+              ))}
+              {isCatchupPlaybackActive ? (
+                <Badge className="border-cyan-400/30 bg-cyan-500/10 text-cyan-100" size="sm">
+                  {catchupPlayback?.sourceType === "RECORDING" ? "Archive recording" : "Retained DVR window"}
+                </Badge>
+              ) : null}
+            </div>
+
+            {isCatchupPlaybackActive && selectedCatchupProgramme ? (
+              <>
+                <p className="mt-2 text-sm font-semibold text-white">{selectedCatchupProgramme.title}</p>
+                <p className="mt-1 text-[12px] text-slate-400">{formatProgrammeTimeWithDay(selectedCatchupProgramme)}</p>
+                <p className="mt-2 text-[13px] text-slate-200">{getCatchupPlaybackKindLabel(catchupPlayback!)}</p>
+                {activePlaybackCopy ? <p className="mt-1.5 text-[12px] text-slate-400">{activePlaybackCopy}</p> : null}
+                {catchupPlayback?.recording ? (
+                  <p className="mt-1.5 text-[12px] text-slate-400">
+                    Source: recording {catchupPlayback.recording.title} ({catchupPlayback.recording.matchType.toLowerCase()} match)
+                  </p>
+                ) : null}
+                {catchupPlayback?.timeshiftWindow ? (
+                  <p className="mt-1.5 text-[12px] text-slate-400">
+                    Source: retained DVR window from {formatAvailabilityTime(catchupPlayback.timeshiftWindow.availableFromAt)} until{" "}
+                    {formatAvailabilityTime(catchupPlayback.timeshiftWindow.availableUntilAt)}
+                  </p>
+                ) : null}
+                {catchupAvailableUntil ? (
+                  <p className="mt-1.5 text-[11px] text-amber-200">Available until {catchupAvailableUntil}</p>
+                ) : null}
+              </>
+            ) : hasCatchupSelection ? (
+              <>
+                <p className="mt-2 text-sm font-semibold text-white">Requested catch-up programme</p>
+                <p className="mt-1.5 text-[13px] text-slate-300">
+                  {catchupPlaybackQuery.isLoading
+                    ? "TV-Dash is checking recordings and the retained DVR window before it starts playback."
+                    : catchupPlaybackError ?? "No real catch-up source was available for this programme."}
+                </p>
+              </>
+            ) : currentGuideProgram ? (
+              <>
+                <p className="mt-2 text-sm font-semibold text-white">{currentGuideProgram.title}</p>
+                <p className="mt-1 text-[12px] text-slate-400">{formatProgrammeTimeWithDay(currentGuideProgram)}</p>
+                {activePlaybackCopy ? <p className="mt-2 text-[12px] text-slate-300">{activePlaybackCopy}</p> : null}
+                {currentGuideProgram.catchup?.watchFromStartAvailable ? (
+                  <p className="mt-1.5 text-[11px] text-amber-200">
+                    Watch from start is currently available{watchFromStartExpiresAt ? ` until ${watchFromStartExpiresAt}` : ""}.
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <p className="mt-2 text-sm font-semibold text-white">Live playback</p>
+                <p className="mt-1.5 text-[13px] text-slate-300">
+                  Guide data is still loading, but the channel feed remains available.
+                </p>
+              </>
+            )}
           </div>
         </Panel>
 
         <div className="grid gap-3 md:grid-cols-2 2xl:sticky 2xl:top-3 2xl:grid-cols-1 2xl:self-start">
           <Panel className="md:col-span-2 2xl:col-span-1" density="compact">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Playback Controls</p>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">
+              {hasCatchupSelection ? "Catch-up Controls" : "Playback Controls"}
+            </p>
             <div className="mt-3 space-y-3">
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-                <div>
-                  <label className="mb-1.5 block text-[13px] text-slate-400" htmlFor="quality">
-                    Playback quality
-                  </label>
-                  <Select id="quality" onChange={(event) => setSelectedQuality(event.target.value)} uiSize="sm" value={selectedQuality}>
-                    {qualities.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
+              <div className={`grid gap-3 ${hasCatchupSelection ? "lg:grid-cols-[minmax(0,1fr)_auto]" : "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"}`}>
+                {hasCatchupSelection ? null : (
+                  <div>
+                    <label className="mb-1.5 block text-[13px] text-slate-400" htmlFor="quality">
+                      Playback quality
+                    </label>
+                    <Select id="quality" onChange={(event) => setSelectedQuality(event.target.value)} uiSize="sm" value={selectedQuality}>
+                      {qualities.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                )}
                 <div>
                   <label className="mb-1.5 block text-[13px] text-slate-400" htmlFor="recording-quality">
                     Recording quality
@@ -457,79 +675,130 @@ export function ChannelWatchPage() {
               </div>
               <div className="rounded-xl border border-slate-800/80 bg-slate-950/80 p-3">
                 <p className="text-[13px] font-semibold text-white">Current state</p>
-                <p className="mt-1.5 text-[13px] text-slate-400">
-                  {playerDiagnostics.label} · {playerTimeshiftUi.viewerPositionLabel} ·{" "}
-                  {selectedQuality === "AUTO" ? "Auto quality" : `Manual quality ${selectedQuality}`}
-                </p>
-                <p className="mt-1.5 text-[12px] text-slate-300">{playerDiagnostics.summary}</p>
-                <p className="mt-2 text-[12px] text-slate-400">
-                  Recording:{" "}
-                  {activeRecording
-                    ? activeRecording.status === "RECORDING"
-                      ? "running now"
-                      : activeRecording.status.toLowerCase()
-                    : "not active"}
-                </p>
-                <p className="mt-1 text-[12px] text-slate-400">
-                  Record now quality:{" "}
-                  {qualities.find((option) => option.value === (recordingQuality === "AUTO" ? selectedQuality : recordingQuality))
-                    ?.label ?? "Source default"}
-                </p>
-                {playerDiagnostics.failureKind ? (
-                  <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-slate-500">
-                    Likely issue: {playerDiagnostics.failureKind}
-                  </p>
-                ) : null}
-                <p className="mt-1.5 text-[11px] text-slate-500">
-                  {streamSessionStatus?.message ??
-                    (channel.playbackMode === "SHARED"
-                      ? "Playback is routed through TV-Dash shared local delivery with per-channel edge caching."
-                      : channel.playbackMode === "PROXY"
-                        ? "Playback is routed through the TV-Dash stream gateway."
-                        : "Playback uses the channel's direct upstream HLS URL.")}
-                </p>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Audio: {playerDiagnostics.isMuted ? "Muted by player" : `Live audio enabled at ${Math.round(playerDiagnostics.volume * 100)}%`}
-                </p>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Picture-in-Picture:{" "}
-                  {playerDiagnostics.isPictureInPictureActive
-                    ? "active now"
-                    : playerDiagnostics.canPictureInPicture
-                      ? "available from the in-player controls"
-                      : "not available in this browser"}
-                </p>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  DVR capability: {playerTimeshiftUi.capabilityLabel}
-                </p>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Viewer position: {playerTimeshiftUi.viewerPositionLabel}
-                </p>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Retained window: {playerTimeshiftUi.bufferWindowLabel}
-                </p>
-                {streamSessionStatus ? (
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    Session model:{" "}
-                    {streamSessionStatus.sessionMode === "SHARED_DVR"
-                      ? "shared relay + retained DVR window"
-                      : streamSessionStatus.sessionMode === "SHARED_RELAY"
-                        ? "shared relay only"
-                        : streamSessionStatus.sessionMode === "PROXY_DVR"
-                          ? "proxy relay + retained DVR window"
-                          : streamSessionStatus.sessionMode === "PROXY_RELAY"
-                            ? "proxy relay only"
-                            : "direct upstream playback"}
-                    {timeshiftStatus?.supported
-                      ? ` · buffer acquisition ${timeshiftStatus.acquisitionMode === "SHARED_SESSION" ? "reuses the shared channel session" : "runs through TV-Dash-managed upstream polling"}`
-                      : ""}
-                  </p>
-                ) : null}
-                <p className="mt-1 text-[11px] text-slate-500">
-                  {isPlayerFullscreen || playerDiagnostics.isFullscreenActive
-                    ? "Fullscreen keeps the operator overlays visible and returns to the same state when you exit."
-                    : "Use fullscreen for cleaner mobile viewing or large-screen monitoring without losing playback state."}
-                </p>
+                {hasCatchupSelection ? (
+                  <>
+                    <p className="mt-1.5 text-[13px] text-slate-400">
+                      {isCatchupPlaybackActive
+                        ? getCatchupPlaybackKindLabel(catchupPlayback!)
+                        : catchupPlaybackQuery.isLoading
+                          ? "Resolving archive source"
+                          : "Catch-up request could not be fulfilled"}
+                    </p>
+                    <p className="mt-1.5 text-[12px] text-slate-300">
+                      {isCatchupPlaybackActive
+                        ? catchupPlayback!.sourceType === "RECORDING"
+                          ? "Playback is using a recording-backed archive source, which is preferred over the DVR window for stability."
+                          : "Playback is using the retained DVR window because no preferred recording source was available."
+                        : catchupPlaybackError ??
+                          "This programme does not currently resolve to a linked recording or retained DVR window."}
+                    </p>
+                    {selectedCatchupProgramme ? (
+                      <p className="mt-2 text-[12px] text-slate-400">
+                        Programme: {selectedCatchupProgramme.title} · {formatProgrammeTimeWithDay(selectedCatchupProgramme)}
+                      </p>
+                    ) : null}
+                    {catchupPlayback?.recording ? (
+                      <p className="mt-1 text-[12px] text-slate-400">
+                        Recording source: {catchupPlayback.recording.title} ({catchupPlayback.recording.matchType.toLowerCase()} match)
+                      </p>
+                    ) : null}
+                    {catchupPlayback?.timeshiftWindow ? (
+                      <p className="mt-1 text-[12px] text-slate-400">
+                        Retained window: {formatAvailabilityTime(catchupPlayback.timeshiftWindow.availableFromAt)} to{" "}
+                        {formatAvailabilityTime(catchupPlayback.timeshiftWindow.availableUntilAt)}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-[12px] text-slate-400">
+                      Record now quality:{" "}
+                      {qualities.find((option) => option.value === (recordingQuality === "AUTO" ? selectedQuality : recordingQuality))
+                        ?.label ?? "Source default"}
+                    </p>
+                    <p className="mt-1.5 text-[11px] text-slate-500">
+                      Catch-up playback uses native archive controls and keeps live-edge diagnostics separate so the state never looks like live TV.
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {isPlayerFullscreen
+                        ? "Fullscreen stays available for archive playback and returns to the same catch-up context when you exit."
+                        : "Use fullscreen for cleaner archive viewing without losing the programme context."}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-1.5 text-[13px] text-slate-400">
+                      {playerDiagnostics.label} · {playerTimeshiftUi.viewerPositionLabel} ·{" "}
+                      {selectedQuality === "AUTO" ? "Auto quality" : `Manual quality ${selectedQuality}`}
+                    </p>
+                    <p className="mt-1.5 text-[12px] text-slate-300">{playerDiagnostics.summary}</p>
+                    <p className="mt-2 text-[12px] text-slate-400">
+                      Recording:{" "}
+                      {activeRecording
+                        ? activeRecording.status === "RECORDING"
+                          ? "running now"
+                          : activeRecording.status.toLowerCase()
+                        : "not active"}
+                    </p>
+                    <p className="mt-1 text-[12px] text-slate-400">
+                      Record now quality:{" "}
+                      {qualities.find((option) => option.value === (recordingQuality === "AUTO" ? selectedQuality : recordingQuality))
+                        ?.label ?? "Source default"}
+                    </p>
+                    {playerDiagnostics.failureKind ? (
+                      <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-slate-500">
+                        Likely issue: {playerDiagnostics.failureKind}
+                      </p>
+                    ) : null}
+                    <p className="mt-1.5 text-[11px] text-slate-500">
+                      {streamSessionStatus?.message ??
+                        (channel.playbackMode === "SHARED"
+                          ? "Playback is routed through TV-Dash shared local delivery with per-channel edge caching."
+                          : channel.playbackMode === "PROXY"
+                            ? "Playback is routed through the TV-Dash stream gateway."
+                            : "Playback uses the channel's direct upstream HLS URL.")}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Audio: {playerDiagnostics.isMuted ? "Muted by player" : `Live audio enabled at ${Math.round(playerDiagnostics.volume * 100)}%`}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Picture-in-Picture:{" "}
+                      {playerDiagnostics.isPictureInPictureActive
+                        ? "active now"
+                        : playerDiagnostics.canPictureInPicture
+                          ? "available from the in-player controls"
+                          : "not available in this browser"}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      DVR capability: {playerTimeshiftUi.capabilityLabel}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Viewer position: {playerTimeshiftUi.viewerPositionLabel}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Retained window: {playerTimeshiftUi.bufferWindowLabel}
+                    </p>
+                    {streamSessionStatus ? (
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Session model:{" "}
+                        {streamSessionStatus.sessionMode === "SHARED_DVR"
+                          ? "shared relay + retained DVR window"
+                          : streamSessionStatus.sessionMode === "SHARED_RELAY"
+                            ? "shared relay only"
+                            : streamSessionStatus.sessionMode === "PROXY_DVR"
+                              ? "proxy relay + retained DVR window"
+                              : streamSessionStatus.sessionMode === "PROXY_RELAY"
+                                ? "proxy relay only"
+                                : "direct upstream playback"}
+                        {timeshiftStatus?.supported
+                          ? ` · buffer acquisition ${timeshiftStatus.acquisitionMode === "SHARED_SESSION" ? "reuses the shared channel session" : "runs through TV-Dash-managed upstream polling"}`
+                          : ""}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {isPlayerFullscreen || playerDiagnostics.isFullscreenActive
+                        ? "Fullscreen keeps the operator overlays visible and returns to the same state when you exit."
+                        : "Use fullscreen for cleaner mobile viewing or large-screen monitoring without losing playback state."}
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           </Panel>
@@ -550,6 +819,17 @@ export function ChannelWatchPage() {
                     <Button onClick={() => programRecordingMutation.mutate(nowNext.now!.id)} size="sm" variant="secondary">
                       Record current program
                     </Button>
+                    {currentGuideProgram?.catchup?.watchFromStartAvailable ? (
+                      <Button
+                        disabled={selectedProgramId === currentGuideProgram.id}
+                        onClick={() => selectCatchupProgram(currentGuideProgram)}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        <PlayCircle className="h-4 w-4" />
+                        {selectedProgramId === currentGuideProgram.id ? "Watching from start" : "Watch current from start"}
+                      </Button>
+                    ) : null}
                     <Link
                       to={`/recordings?workflow=rule&channelId=${encodeURIComponent(channel.id)}&programId=${encodeURIComponent(nowNext.now.id)}&programTitle=${encodeURIComponent(nowNext.now.title)}&startAt=${encodeURIComponent(nowNext.now.start)}&endAt=${encodeURIComponent(nowNext.now.stop ?? nowNext.now.start)}`}
                     >
@@ -625,7 +905,7 @@ export function ChannelWatchPage() {
                 }
                 isLoading={guideWindowQuery.isLoading}
                 onRecordProgram={(programme) => programRecordingMutation.mutate(programme.id)}
-                programmes={guideProgrammes}
+                programmes={upcomingProgrammes}
               />
             </div>
           </Panel>
@@ -660,6 +940,28 @@ export function ChannelWatchPage() {
           </Panel>
         </div>
       </div>
+
+      <Panel density="compact">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Earlier programmes</p>
+            <p className="mt-1 text-[13px] text-slate-400">
+              Catch-up appears only when TV-Dash can resolve a linked recording or a still-retained DVR window.
+            </p>
+          </div>
+          <Badge className="border-slate-700/80 bg-slate-900/80 text-slate-200">
+            {playablePreviousProgrammeCount} playable {playablePreviousProgrammeCount === 1 ? "programme" : "programmes"}
+          </Badge>
+        </div>
+        <div className="mt-3">
+          <ChannelPreviousProgramList
+            activeProgramId={isCatchupPlaybackActive && selectedCatchupProgramme?.catchup?.timingState === "PREVIOUS" ? selectedCatchupProgramme.id : null}
+            isLoading={guideWindowQuery.isLoading}
+            onPlayProgram={selectCatchupProgram}
+            programmes={previousProgrammes}
+          />
+        </div>
+      </Panel>
 
       <ChannelPickerDialog
         allowClear={false}
