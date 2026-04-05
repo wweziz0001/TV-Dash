@@ -82,6 +82,7 @@ Current stable module ownership:
 
 - `auth`: login and authenticated-user lookup
 - `audit`: durable admin governance events and audit listing
+- `alerts`: persisted operational alert state, deduplicated operator notifications, and alert lifecycle actions
 - `channels`: logical channel catalog CRUD, browse lookups, ingest-mode metadata, manual quality variants, playback-mode metadata, and playback-facing guide hints
 - `epg`: EPG source CRUD, XMLTV import orchestration, source-channel discovery, channel mapping, manual program CRUD, guide resolution, and now/next lookup
 - `groups`: channel group CRUD and counts
@@ -258,6 +259,18 @@ Recording additions:
   - approximate offset from live where practical
 - High-volume heartbeat updates should update session state without emitting a new structured log on every refresh.
 - Session lifecycle logs should stay focused on useful state changes such as started, failed, recovered, and ended.
+
+## Alerts Rules
+
+- Alert APIs belong in the `alerts` module and should return stable operator-facing shapes rather than raw log entries.
+- New alert endpoints must preserve the distinction between:
+  - active unresolved issues
+  - acknowledged issues
+  - resolved historical alerts
+  - dismissed historical alerts
+- Alert creation should reuse durable dedupe keys for repeated failures so the same outage updates one active alert instead of spamming many rows.
+- Recovery and success notifications should be emitted only when the subsystem can honestly prove recovery or meaningful completion.
+- Alert routes that change operator-visible alert state, such as acknowledge, resolve, or dismiss, should remain admin-protected and create durable audit records.
 - For upstream failures, classify the failure before logging or returning it when practical.
 - Runtime diagnostics are allowed to stay in-memory for now, but they must summarize real observations instead of decorative placeholder states.
 - High-volume success paths such as proxied asset delivery should record lightweight diagnostics without emitting noisy success logs on every request.

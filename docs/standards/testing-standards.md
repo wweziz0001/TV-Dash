@@ -11,6 +11,7 @@ Current automated coverage already exists for:
 - Fastify boot and health wiring
 - HLS master playlist parsing and synthetic master generation
 - runtime diagnostics snapshots and stream/EPG failure classification helpers
+- operational alert creation, alert dedupe, recovery linkage, and alert-center route coverage
 - XMLTV parsing, guide resolution, and now/next lookup
 - quality option resolution
 - player diagnostics mapping for loading, retrying, buffering, failed, and recovered states
@@ -89,6 +90,7 @@ These areas are release-critical and should gain or maintain automated coverage 
 - saved layouts create/update/delete/apply
 - EPG source import, mapping, manual entry, and now/next resolution
 - recording job creation, runtime status, scheduling, library, and playback access
+- operational alert creation, acknowledgement, dismissal, and recovery resolution
 - quality switching logic
 - multi-view layout resizing and audio ownership
 - device-aware multi-view layout fallback and viewport policy
@@ -158,6 +160,7 @@ These areas are release-critical and should gain or maintain automated coverage 
 - channel and EPG diagnostics response behavior for changed admin inspection endpoints
 - failure classification helpers for stream and XMLTV errors
 - playback session tracking, stale-session cleanup, and per-channel viewer-count aggregation when monitoring behavior changes
+- repeated playback-failure alert thresholds and recovery resolution when playback monitoring now drives operator alerts
 - multi-user timeshift semantics when heartbeat or monitoring contracts change:
   - one viewer behind live does not drag another viewer behind live
   - one viewer returning to live does not force another viewer to live
@@ -206,6 +209,14 @@ These areas are release-critical and should gain or maintain automated coverage 
 - admin-only endpoint rejection for non-admin/operator users
 - durable audit event creation for sensitive admin mutations
 - audit-event listing behavior when the admin observability contract changes
+
+### Alerts
+
+- alert creation for meaningful recording, EPG, proxy, channel-health, and playback-monitoring events
+- dedupe behavior for repeated identical failures
+- recovery linkage that resolves the active alert when the subsystem genuinely recovers
+- acknowledge, resolve, and dismiss route behavior plus audit creation for those admin actions
+- alert-center rendering and action behavior where the UI contract changes
 
 ## Deferral Rule
 

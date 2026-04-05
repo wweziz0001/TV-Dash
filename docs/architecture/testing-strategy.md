@@ -7,6 +7,7 @@ As of `2026-04-02`, TV-Dash has:
 - backend unit/integration foundation with Vitest
 - frontend unit and component test foundation with Vitest + jsdom
 - representative tests for:
+  - operational alert creation, deduplication, recovery linkage, and admin alert-route behavior
   - auth login/me/logout session-version handling
   - API health server boot path
   - channel, group, favorite, layout, and stream route validation/contract behavior via Fastify `inject`
@@ -113,6 +114,7 @@ If a change touches one of those flows and no automated regression exists yet, e
 - guide-state and channel-picker component coverage now exists for operator workflow seams
 - responsive multi-view viewport policy coverage now exists for device-class layout fallbacks plus touch-first tile affordance behavior
 - next step is adding React route-level coverage for multi-view keyboard/reassignment flows plus dashboard/watch now-next orchestration
+- admin alert-center page coverage now exists for rendered alert actions and acknowledgement flow
 - add route-level regression coverage for critical operator flows
 
 ### Phase 4: Cross-App Regression

@@ -25,6 +25,7 @@ The current operator milestone also adds:
 - a first integrated shared-session + live-DVR model where one shared local channel session can also back a retained rolling live buffer when DVR is enabled
 - a first real Catch-up TV milestone where previous programmes can be played from honest EPG-linked recording matches or still-retained DVR windows, with live vs archive playback kept explicit in the watch experience
 - a first program-aware archive/library milestone where channel history, catch-up availability, and the recordings library now share one explicit archive-status model and cross-navigation path
+- a first real operational alerts and notifications system with persisted alert state, in-app admin alert center UX, active-vs-historical lifecycle handling, and deduplicated operational event generation
 
 ## Current Architecture Summary
 
@@ -33,6 +34,7 @@ The current operator milestone also adds:
 - Backend auth now resolves the current user for protected requests so stale or revoked sessions fail server-side instead of trusting old token claims indefinitely
 - Backend observability now includes a dedicated `diagnostics` module for admin inspection endpoints plus shared structured-log helpers
 - Backend governance now also includes an `audit` module for durable admin action records with sanitized detail fields
+- Backend now also includes an `alerts` module for persisted operational alerts, alert deduplication, acknowledgement/dismissal/resolution, and in-app notification-center data
 - Backend now also includes a `recordings` module for real ffmpeg-backed capture, guide/recurrence-aware scheduling, storage-backed media assets, and playback access tokens
 - Backend stream handling now also includes a real first-version live-timeshift path that retains rolling HLS buffers on disk for eligible proxy channels and serves DVR manifests from the `streams` module
 - Backend stream handling now also includes a real first-version shared local-delivery path that keeps channel-local shared sessions plus manifest/segment edge caching in the `streams` module
@@ -104,6 +106,7 @@ tests/
 
 - `auth`: login and current user lookup
 - `audit`: durable admin governance events and audit listing
+- `alerts`: persisted operational alerts, in-app notification-center state, alert lifecycle actions, and dedupe/recovery handling
 - `channels`: logical channel catalog CRUD, browse lookups, ingest-mode metadata, manual quality variants, playback-mode metadata, and playback-facing guide hints
 - `epg`: EPG source CRUD, XMLTV import, source-channel discovery, channel mapping, manual program entry, resolved guide windows, now/next lookup, catch-up availability resolution, and programme-to-playback source selection
 - `groups`: category/group CRUD
@@ -133,6 +136,7 @@ Main models:
 - `RecordingRule`
 - `RecordingRun`
 - `RecordingAsset`
+- `OperationalAlert`
 - `Favorite`
 - `SavedLayout`
 - `SavedLayoutItem`
@@ -157,6 +161,59 @@ Key relationship rules:
 - saved layouts are per-user and contain ordered tile items
 - each logical channel resolves to one player-facing master source plus optional upstream request metadata
 - users now carry a `sessionVersion` field so logout and future auth-sensitive changes can invalidate stale JWT-backed sessions server-side
+
+## Operational Alerts And Notifications
+
+TV-Dash now has one persisted operational-alert model that powers both active alerts and historical notifications.
+
+Alert model highlights:
+
+- explicit type, category, severity, status, source subsystem, related entity, timestamps, and metadata
+- explicit lifecycle:
+  - `NEW`
+  - `ACKNOWLEDGED`
+  - `RESOLVED`
+  - `DISMISSED`
+- explicit `isActive` state so active issues are not confused with historical success/info notifications
+- dedupe keys plus `occurrenceCount` for repeated identical failures
+
+Events that now create alerts or notifications:
+
+- channel playback-master failures after repeated consecutive failures
+- channel playback-master recovery after a real repeated-failure alert
+- shared relay / shared-timeshift proxy failures and recoveries
+- recording started
+- recording completed
+- recording failed
+- EPG import failed
+- EPG parse failed
+- EPG import succeeded
+- repeated playback failures affecting multiple active viewer surfaces on one channel
+- playback recovery once that clustered failure condition clears
+
+Alert UX now available:
+
+- dedicated admin alert center at `/admin/alerts`
+- sidebar unread/active badge on the admin alerts navigation item
+- filtering by active/history, severity, category, status, and free-text search
+- per-alert actions for acknowledge, resolve, and dismiss
+- context expansion plus quick links back to the related channel, recording, EPG area, or observability area when TV-Dash can resolve an honest link
+
+Current dedupe and recovery behavior:
+
+- repeated identical active failures update one persisted alert rather than creating many rows
+- recovery events resolve the matching active alert and create a success notification when the owning subsystem can prove recovery honestly
+- success/info notifications such as recording started/completed remain historical records, not active incidents
+
+Current limitations:
+
+- alerts are currently in-app only; there is no email/webhook delivery yet
+- playback-failure alerts intentionally use a threshold based on concurrent active viewer errors to avoid noisy per-session spam
+- alert metadata is operator-oriented and link-friendly, but it is not yet a full incident timeline or comment system
+
+Recommended next task:
+
+- add configurable outbound delivery targets for a small subset of critical alerts, starting with webhook delivery and operator-managed routing rules
 
 ## Player Architecture Overview
 

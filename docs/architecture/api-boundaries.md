@@ -79,6 +79,8 @@ Repositories must not:
   - login, logout, current-user session lookup, and session-version validation
 - `audit`
   - durable admin governance events for sensitive operational actions
+- `alerts`
+  - persisted operational alerts, in-app notification center state, alert deduplication, and active vs historical alert lifecycle
 - `channels`
   - logical channel catalog CRUD, browse lookups, channel ingest-mode metadata, manual quality variants, proxy-mode metadata, and playback-facing guide hints
 - `groups`
@@ -238,6 +240,19 @@ Keep those mappings stable unless the contract explicitly changes.
   - per-channel viewer counts
   - filterable structured logs
 - Failure classification should distinguish at least:
+
+## Alerts Foundation Rules
+
+- Operational alerts are not the same thing as structured logs:
+  - logs keep raw runtime event history
+  - alerts keep operator-facing, deduplicated issue state and high-value notifications
+- Alert persistence belongs in the `alerts` module, not inside diagnostics routes, pages, or ad-hoc in-memory maps.
+- Alert creation may be triggered by recordings, EPG import flows, stream/proxy delivery, or playback monitoring, but those domains should call into the `alerts` service instead of writing alert rows directly.
+- Active-vs-historical behavior must stay explicit:
+  - active alerts represent unresolved issues
+  - resolved, dismissed, and success/info notifications remain historical records
+- Recovery events should resolve the matching active alert when the owning subsystem can do so honestly.
+- Repeated identical operational failures should dedupe on a stable key rather than creating one row per retry or per segment fetch.
   - `network`
   - `playlist-fetch`
   - `invalid-playlist`

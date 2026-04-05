@@ -1,5 +1,68 @@
 # Codex Session Log
 
+## `2026-04-05T19:10:00+03:00`
+
+### Objective
+
+Add a real in-app operational notifications and alerts system so TV-Dash can surface meaningful failures, recoveries, recording lifecycle changes, and EPG/proxy issues without faking the experience through sample data or raw logs alone.
+
+### Work Completed
+
+- created the requested branch `027-notifications-and-alerts-system`
+- added a persisted `OperationalAlert` domain model plus shared enums for:
+  - type
+  - category
+  - severity
+  - status
+  - related entity type
+- added a dedicated backend `alerts` module with:
+  - alert listing
+  - summary counts
+  - acknowledge action
+  - resolve action
+  - dismiss action
+  - alert deduplication/update behavior for repeated active failures
+  - recovery linkage that resolves active alerts and emits success notifications
+- wired real alert generation into operational event sources:
+  - repeated proxy-master / synthetic-master channel failures and recovery
+  - shared relay and timeshift refresh failures and recovery
+  - recording started / completed / failed
+  - EPG import failed / parse failed / import succeeded
+  - repeated playback failures affecting multiple active viewer surfaces on one channel
+- kept the alert model operational rather than noisy:
+  - active alerts stay distinct from historical notifications
+  - repeated identical failures update one active alert with `occurrenceCount`
+  - recovery notifications only fire when the subsystem can honestly prove recovery
+- added an admin alert center at `/admin/alerts` with:
+  - summary cards
+  - filtering by view, severity, category, status, and search
+  - per-alert acknowledge / resolve / dismiss actions
+  - context inspection
+  - quick links back to related channels, recordings, EPG, or observability
+- added an unread/active badge for the admin alerts nav item in the app shell
+- added targeted coverage for:
+  - alert service dedupe and recovery linkage
+  - alert routes
+  - playback-failure alert threshold/recovery behavior
+  - alert-center page rendering and acknowledgement flow
+- updated architecture/testing/handoff docs for the alerts milestone
+
+### Verification Run
+
+- `npm run test`
+- `npm run lint`
+- `npm run build`
+
+### Remaining Risk
+
+- alerts are currently in-app only; there is no external delivery channel yet for email or webhooks
+- playback-failure alerts intentionally key off concurrent active viewer failures, which reduces noise but may miss lower-volume recurring quality issues
+- alert metadata is useful for operators today, but TV-Dash still does not provide a full incident timeline, notes, or assignment workflow
+
+### Exact Suggested Next Task
+
+Add configurable outbound delivery for a small subset of critical alerts, starting with webhooks and operator-managed routing rules, then layer in digest or escalation policy only after the outbound contract is proven.
+
 ## `2026-04-05T18:35:00+03:00`
 
 ### Objective
