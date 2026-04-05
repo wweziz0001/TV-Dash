@@ -5,12 +5,26 @@ const mockExpireStalePlaybackSessions = vi.fn();
 const mockFindPlaybackSessionsByIds = vi.fn();
 const mockMarkPlaybackSessionsEnded = vi.fn();
 const mockUpsertPlaybackSession = vi.fn();
+const mockCountActivePlaybackFailuresByChannel = vi.fn();
+const mockGetChannelById = vi.fn();
+const mockCreateOrUpdateActiveOperationalAlert = vi.fn();
+const mockResolveOperationalAlertByDedupeKey = vi.fn();
 
 vi.mock("./playback-session.repository.js", () => ({
+  countActivePlaybackFailuresByChannel: mockCountActivePlaybackFailuresByChannel,
   expireStalePlaybackSessions: mockExpireStalePlaybackSessions,
   findPlaybackSessionsByIds: mockFindPlaybackSessionsByIds,
   markPlaybackSessionsEnded: mockMarkPlaybackSessionsEnded,
   upsertPlaybackSession: mockUpsertPlaybackSession,
+}));
+
+vi.mock("../channels/channel.service.js", () => ({
+  getChannelById: mockGetChannelById,
+}));
+
+vi.mock("../alerts/alert.service.js", () => ({
+  createOrUpdateActiveOperationalAlert: mockCreateOrUpdateActiveOperationalAlert,
+  resolveOperationalAlertByDedupeKey: mockResolveOperationalAlertByDedupeKey,
 }));
 
 const {
@@ -23,6 +37,25 @@ const {
 describe("playback-session.service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCountActivePlaybackFailuresByChannel.mockResolvedValue(0);
+    mockGetChannelById.mockResolvedValue({
+      id: "22222222-2222-2222-2222-222222222222",
+      name: "Ops Channel",
+      slug: "ops-channel",
+      playbackMode: "PROXY",
+      sourceMode: "MASTER_PLAYLIST",
+      masterHlsUrl: null,
+      manualVariantCount: 0,
+      groupId: null,
+      group: null,
+      epgSourceId: null,
+      epgChannelId: null,
+      epgSource: null,
+      isActive: true,
+      sortOrder: 1,
+      createdAt: "2026-04-03T00:00:00.000Z",
+      updatedAt: "2026-04-03T00:00:00.000Z",
+    });
   });
 
   afterEach(() => {
@@ -175,5 +208,107 @@ describe("playback-session.service", () => {
 
     expect(mockMarkPlaybackSessionsEnded).toHaveBeenCalledTimes(1);
     expect(listStructuredLogs({ category: "playback" })[0]?.event).toBe("playback.session.ended");
+  });
+
+  it("raises and resolves a clustered playback alert when repeated failures clear", async () => {
+    mockFindPlaybackSessionsByIds.mockResolvedValueOnce([
+      {
+        id: "11111111-1111-1111-1111-111111111111",
+        surfaceId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        userId: "user-1",
+        channelId: "22222222-2222-2222-2222-222222222222",
+        sessionType: "SINGLE_VIEW",
+        playbackState: "playing",
+        playbackPositionState: "LIVE_EDGE",
+        liveOffsetSeconds: 0,
+        selectedQuality: "AUTO",
+        isMuted: false,
+        tileIndex: null,
+        failureKind: null,
+        startedAt: new Date("2026-04-03T12:00:00.000Z"),
+        lastSeenAt: new Date("2026-04-03T12:00:10.000Z"),
+        endedAt: null,
+      },
+    ]);
+    mockCountActivePlaybackFailuresByChannel.mockResolvedValueOnce(3);
+
+    await recordPlaybackSessionHeartbeat("user-1", {
+      sessions: [
+        {
+          sessionId: "11111111-1111-1111-1111-111111111111",
+          surfaceId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          channelId: "22222222-2222-2222-2222-222222222222",
+          sessionType: "SINGLE_VIEW",
+          playbackState: "error",
+          playbackPositionState: "BEHIND_LIVE",
+          liveOffsetSeconds: 27,
+          selectedQuality: "AUTO",
+          isMuted: false,
+          tileIndex: null,
+          failureKind: "network",
+        },
+      ],
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mockCreateOrUpdateActiveOperationalAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "PLAYBACK_FAILURE",
+        category: "PLAYBACK",
+        relatedEntityType: "PLAYBACK_CLUSTER",
+      }),
+    );
+
+    mockFindPlaybackSessionsByIds.mockResolvedValueOnce([
+      {
+        id: "11111111-1111-1111-1111-111111111111",
+        surfaceId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        userId: "user-1",
+        channelId: "22222222-2222-2222-2222-222222222222",
+        sessionType: "SINGLE_VIEW",
+        playbackState: "error",
+        playbackPositionState: "BEHIND_LIVE",
+        liveOffsetSeconds: 27,
+        selectedQuality: "AUTO",
+        isMuted: false,
+        tileIndex: null,
+        failureKind: "network",
+        startedAt: new Date("2026-04-03T12:00:00.000Z"),
+        lastSeenAt: new Date("2026-04-03T12:00:20.000Z"),
+        endedAt: null,
+      },
+    ]);
+    mockCountActivePlaybackFailuresByChannel.mockResolvedValueOnce(0);
+
+    await recordPlaybackSessionHeartbeat("user-1", {
+      sessions: [
+        {
+          sessionId: "11111111-1111-1111-1111-111111111111",
+          surfaceId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          channelId: "22222222-2222-2222-2222-222222222222",
+          sessionType: "SINGLE_VIEW",
+          playbackState: "playing",
+          playbackPositionState: "LIVE_EDGE",
+          liveOffsetSeconds: 0,
+          selectedQuality: "AUTO",
+          isMuted: false,
+          tileIndex: null,
+          failureKind: null,
+        },
+      ],
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mockResolveOperationalAlertByDedupeKey).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resolutionNotification: expect.objectContaining({
+          type: "PLAYBACK_RECOVERED",
+        }),
+      }),
+    );
   });
 });
