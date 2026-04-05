@@ -9,6 +9,7 @@ dotenv.config({ path: path.resolve(currentDir, "../../../../.env") });
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(16),
+  AUTH_CONFIG_ENCRYPTION_SECRET: z.string().min(32).optional(),
   API_PORT: z.coerce.number().int().positive().default(4000),
   CLIENT_URL: z.string().url().default("http://localhost:5173"),
   CLIENT_URLS: z.string().optional(),

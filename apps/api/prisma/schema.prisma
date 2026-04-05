@@ -12,6 +12,17 @@ enum UserRole {
   USER
 }
 
+enum AuthProviderType {
+  LDAP
+  OIDC
+}
+
+enum AuthProviderValidationStatus {
+  NEVER_VALIDATED
+  SUCCEEDED
+  FAILED
+}
+
 enum LayoutType {
   LAYOUT_1X1
   LAYOUT_2X2
@@ -161,9 +172,10 @@ model User {
   id               String            @id @default(uuid()) @db.Uuid
   email            String            @unique
   username         String            @unique
-  passwordHash     String
+  passwordHash     String?
   role             UserRole          @default(USER)
   sessionVersion   Int               @default(0)
+  externalIdentities ExternalIdentity[]
   favorites        Favorite[]
   savedLayouts     SavedLayout[]
   playbackSessions PlaybackSession[]
@@ -172,6 +184,46 @@ model User {
   auditEvents      AuditEvent[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
+}
+
+model AuthProvider {
+  id                   String                       @id @default(uuid()) @db.Uuid
+  type                 AuthProviderType            @unique
+  name                 String
+  isEnabled            Boolean                      @default(false)
+  isVisibleOnLogin     Boolean                      @default(true)
+  allowAutoProvision   Boolean                      @default(false)
+  autoLinkByEmail      Boolean                      @default(false)
+  autoLinkByUsername   Boolean                      @default(false)
+  defaultRole          UserRole                     @default(USER)
+  configurationJson    Json
+  secretCiphertext     String?
+  lastValidatedAt      DateTime?
+  lastValidationStatus AuthProviderValidationStatus @default(NEVER_VALIDATED)
+  lastValidationMessage String?
+  externalIdentities   ExternalIdentity[]
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+}
+
+model ExternalIdentity {
+  id                  String       @id @default(uuid()) @db.Uuid
+  userId              String       @db.Uuid
+  providerId          String       @db.Uuid
+  externalSubject     String
+  externalUsername    String?
+  externalEmail       String?
+  externalDisplayName String?
+  lastLoginAt         DateTime     @default(now())
+  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider            AuthProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@unique([providerId, externalSubject])
+  @@index([userId, providerId])
+  @@index([providerId, externalUsername])
+  @@index([providerId, externalEmail])
 }
 
 model ChannelGroup {

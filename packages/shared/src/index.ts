@@ -3,6 +3,9 @@ import { z } from "zod";
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 export const userRoleSchema = z.enum(["ADMIN", "USER"]);
+export const authProviderTypeSchema = z.enum(["LDAP", "OIDC"]);
+export const authProviderValidationStatusSchema = z.enum(["NEVER_VALIDATED", "SUCCEEDED", "FAILED"]);
+export const authSessionProviderTypeSchema = z.enum(["LOCAL", "LDAP", "OIDC"]);
 export const accessPermissionSchema = z.enum([
   "admin:access",
   "channels:read",
@@ -138,6 +141,32 @@ function isSafeConfiguredUrl(value: string) {
   }
 }
 
+function isSafeLdapUrl(value: string) {
+  try {
+    const url = new URL(value);
+
+    if (!["ldap:", "ldaps:"].includes(url.protocol)) {
+      return false;
+    }
+
+    if (url.username || url.password || url.hash) {
+      return false;
+    }
+
+    if (url.pathname && url.pathname !== "/") {
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isSafeRelativePath(value: string) {
+  return value.startsWith("/") && !value.startsWith("//");
+}
+
 const boundedOperationalStringSchema = z
   .string()
   .trim()
@@ -164,6 +193,34 @@ const optionalNullableUrlSchema = configuredUrlSchema
   .or(z.null())
   .optional()
   .transform((value) => (typeof value === "string" ? value || null : null));
+
+const ldapUrlSchema = z
+  .string()
+  .trim()
+  .refine((value) => isSafeLdapUrl(value), {
+    message: "LDAP URL must use ldap/ldaps without embedded credentials, fragments, or paths",
+  });
+
+const optionalSecretStringSchema = z
+  .string()
+  .max(2048)
+  .optional()
+  .transform((value) => {
+    if (typeof value !== "string") {
+      return undefined;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length === 0 ? undefined : trimmed;
+  });
+
+const optionalRelativePathSchema = z
+  .string()
+  .trim()
+  .refine((value) => isSafeRelativePath(value), {
+    message: "Path must start with / and stay relative to the current origin",
+  })
+  .optional();
 
 const optionalNullablePositiveIntegerSchema = z
   .number()
@@ -239,6 +296,95 @@ export const upstreamHeadersInputSchema = z
 export const loginInputSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
+});
+
+const externalLoginPasswordSchema = z.string().min(1).max(1024);
+
+export const ldapLoginInputSchema = z.object({
+  identifier: z.string().trim().min(1).max(160),
+  password: externalLoginPasswordSchema,
+});
+
+export const oidcStartQuerySchema = z.object({
+  returnTo: optionalRelativePathSchema,
+});
+
+export const ldapProviderConfigInputSchema = z.object({
+  name: z.string().trim().min(2).max(80).default("Enterprise LDAP"),
+  loginLabel: z.string().trim().min(2).max(80).default("Directory login"),
+  identifierLabel: z.string().trim().min(2).max(80).default("Username or email"),
+  identifierPlaceholder: z.string().trim().max(120).default("jane.doe"),
+  isEnabled: z.boolean().default(false),
+  isVisibleOnLogin: z.boolean().default(true),
+  allowAutoProvision: z.boolean().default(false),
+  autoLinkByEmail: z.boolean().default(false),
+  autoLinkByUsername: z.boolean().default(false),
+  defaultRole: userRoleSchema.default("USER"),
+  serverUrl: ldapUrlSchema,
+  bindDn: z.string().trim().max(255).nullable().optional().transform((value) => value || null),
+  bindPassword: optionalSecretStringSchema,
+  clearBindPassword: z.boolean().default(false),
+  userSearchBaseDn: z.string().trim().min(1).max(255),
+  userSearchFilter: z.string().trim().min(1).max(512),
+  userSearchScope: z.enum(["base", "one", "sub"]).default("sub"),
+  usernameAttribute: z.string().trim().min(1).max(80).default("uid"),
+  emailAttribute: z.string().trim().min(1).max(80).default("mail"),
+  displayNameAttribute: z.string().trim().min(1).max(80).default("cn"),
+  groupAttribute: z.string().trim().max(80).nullable().optional().transform((value) => value || null),
+  startTls: z.boolean().default(false),
+  rejectUnauthorized: z.boolean().default(true),
+  timeoutMs: z.number().int().min(1000).max(30000).default(5000),
+  connectTimeoutMs: z.number().int().min(1000).max(30000).default(5000),
+}).superRefine((value, context) => {
+  if (!value.userSearchFilter.includes("{identifier}")) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["userSearchFilter"],
+      message: "LDAP user search filter must include the {identifier} placeholder",
+    });
+  }
+
+  if (value.bindDn && value.clearBindPassword) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["clearBindPassword"],
+      message: "Cannot clear the bind password while a bind DN is configured in the same save",
+    });
+  }
+});
+
+export const ldapProviderTestInputSchema = z.object({
+  testIdentifier: z.string().trim().min(1).max(160).optional(),
+});
+
+export const oidcProviderConfigInputSchema = z.object({
+  name: z.string().trim().min(2).max(80).default("Enterprise SSO"),
+  loginLabel: z.string().trim().min(2).max(80).default("Continue with SSO"),
+  isEnabled: z.boolean().default(false),
+  isVisibleOnLogin: z.boolean().default(true),
+  allowAutoProvision: z.boolean().default(false),
+  autoLinkByEmail: z.boolean().default(false),
+  autoLinkByUsername: z.boolean().default(false),
+  defaultRole: userRoleSchema.default("USER"),
+  issuerUrl: configuredUrlSchema,
+  clientId: z.string().trim().min(1).max(255),
+  clientSecret: optionalSecretStringSchema,
+  clearClientSecret: z.boolean().default(false),
+  scopes: z.string().trim().min(1).max(255).default("openid profile email"),
+  usernameClaim: z.string().trim().min(1).max(80).default("preferred_username"),
+  emailClaim: z.string().trim().min(1).max(80).default("email"),
+  displayNameClaim: z.string().trim().min(1).max(80).default("name"),
+  groupsClaim: z.string().trim().max(80).nullable().optional().transform((value) => value || null),
+  postLogoutRedirectPath: z.string().trim().default("/login"),
+  requireVerifiedEmail: z.boolean().default(false),
+}).superRefine((value, context) => {
+  if (!isSafeRelativePath(value.postLogoutRedirectPath)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["postLogoutRedirectPath"],
+      message: "Post logout redirect path must stay relative to the frontend origin",
+    });
+  }
 });
 
 export const channelGroupInputSchema = z.object({
@@ -773,6 +919,9 @@ export function isSharedPlaybackMode(playbackMode: StreamPlaybackMode) {
 }
 
 export type UserRole = z.infer<typeof userRoleSchema>;
+export type AuthProviderType = z.infer<typeof authProviderTypeSchema>;
+export type AuthProviderValidationStatus = z.infer<typeof authProviderValidationStatusSchema>;
+export type AuthSessionProviderType = z.infer<typeof authSessionProviderTypeSchema>;
 export type AccessPermission = z.infer<typeof accessPermissionSchema>;
 export type LayoutType = z.infer<typeof layoutTypeSchema>;
 export type StreamPlaybackMode = z.infer<typeof streamPlaybackModeSchema>;
@@ -798,6 +947,11 @@ export type OperationalAlertStatus = z.infer<typeof operationalAlertStatusSchema
 export type OperationalAlertEntityType = z.infer<typeof operationalAlertEntityTypeSchema>;
 export type DiagnosticFailureKind = z.infer<typeof diagnosticFailureKindSchema>;
 export type LoginInput = z.infer<typeof loginInputSchema>;
+export type LdapLoginInput = z.infer<typeof ldapLoginInputSchema>;
+export type OidcStartQuery = z.infer<typeof oidcStartQuerySchema>;
+export type LdapProviderConfigInput = z.infer<typeof ldapProviderConfigInputSchema>;
+export type LdapProviderTestInput = z.infer<typeof ldapProviderTestInputSchema>;
+export type OidcProviderConfigInput = z.infer<typeof oidcProviderConfigInputSchema>;
 export type ChannelGroupInput = z.infer<typeof channelGroupInputSchema>;
 export type ChannelQualityVariantInput = z.infer<typeof channelQualityVariantInputSchema>;
 export type ChannelInput = z.infer<typeof channelInputSchema>;

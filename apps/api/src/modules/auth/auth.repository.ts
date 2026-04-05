@@ -1,6 +1,9 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
 
-const userSelection = {
+type PrismaClientLike = Prisma.TransactionClient | typeof prisma;
+
+export const userSelection = {
   id: true,
   email: true,
   username: true,
@@ -10,9 +13,19 @@ const userSelection = {
   updatedAt: true,
 } as const;
 
+function getClient(client?: PrismaClientLike) {
+  return client ?? prisma;
+}
+
 export function findUserByEmail(email: string) {
   return prisma.user.findUnique({
     where: { email },
+  });
+}
+
+export function findUserByUsername(username: string) {
+  return prisma.user.findUnique({
+    where: { username },
   });
 }
 
@@ -31,6 +44,21 @@ export function invalidateUserSessions(userId: string) {
         increment: 1,
       },
     },
+    select: userSelection,
+  });
+}
+
+export function createUser(
+  data: {
+    email: string;
+    username: string;
+    passwordHash?: string | null;
+    role: "ADMIN" | "USER";
+  },
+  client?: PrismaClientLike,
+) {
+  return getClient(client).user.create({
+    data,
     select: userSelection,
   });
 }
