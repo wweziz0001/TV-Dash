@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { env } from "../../config/env.js";
 import { writeStructuredLog } from "../../app/structured-log.js";
+import { createOperationalNotification } from "../alerts/alert.service.js";
 import { getChannelStreamDetails } from "../channels/channel.service.js";
 import {
   claimRecordingJobStart,
@@ -194,6 +195,23 @@ async function finalizeRecordingProcessExit(
         fileSizeBytes: fileStats.fileSizeBytes ? Number(fileStats.fileSizeBytes) : null,
       },
     });
+    await createOperationalNotification({
+      type: "RECORDING_COMPLETED",
+      category: "RECORDING",
+      severity: "SUCCESS",
+      sourceSubsystem: "recordings.runtime",
+      title: `${job.title} completed`,
+      message: `Recording completed successfully for ${job.channelNameSnapshot}.`,
+      relatedEntityType: "RECORDING_JOB",
+      relatedEntityId: job.id,
+      metadata: {
+        recordingTitle: job.title,
+        channelName: job.channelNameSnapshot,
+        channelSlug: job.channelSlugSnapshot,
+        durationSeconds,
+        fileSizeBytes: fileStats.fileSizeBytes ? Number(fileStats.fileSizeBytes) : null,
+      },
+    });
   } else {
     writeStructuredLog("warn", {
       event: "recording.job.failed",
@@ -205,6 +223,24 @@ async function finalizeRecordingProcessExit(
         reason: failureReason,
         exitCode,
         exitSignal,
+      },
+    });
+    await createOperationalNotification({
+      type: "RECORDING_FAILED",
+      category: "RECORDING",
+      severity: "ERROR",
+      sourceSubsystem: "recordings.runtime",
+      title: `${job.title} failed`,
+      message: failureReason ?? `Recording failed for ${job.channelNameSnapshot}.`,
+      relatedEntityType: "RECORDING_JOB",
+      relatedEntityId: job.id,
+      metadata: {
+        recordingTitle: job.title,
+        channelName: job.channelNameSnapshot,
+        channelSlug: job.channelSlugSnapshot,
+        exitCode,
+        exitSignal,
+        reason: failureReason ?? "Unknown recording failure",
       },
     });
   }
@@ -358,6 +394,23 @@ async function startRecordingJobExecution(recordingJobId: string) {
       ffmpegVersion: ffmpegCapabilities.version,
       supportsAllowedSegmentExtensions: ffmpegCapabilities.supportsAllowedSegmentExtensions,
       supportsExtensionPicky: ffmpegCapabilities.supportsExtensionPicky,
+    },
+  });
+  await createOperationalNotification({
+    type: "RECORDING_STARTED",
+    category: "RECORDING",
+    severity: "INFO",
+    sourceSubsystem: "recordings.runtime",
+    title: `${claimed.job.title} started`,
+    message: `Recording started for ${claimed.job.channelNameSnapshot}.`,
+    relatedEntityType: "RECORDING_JOB",
+    relatedEntityId: claimed.job.id,
+    metadata: {
+      recordingTitle: claimed.job.title,
+      channelName: claimed.job.channelNameSnapshot,
+      channelSlug: claimed.job.channelSlugSnapshot,
+      mode: claimed.job.mode,
+      ffmpegPid: childProcess.pid ?? null,
     },
   });
 }

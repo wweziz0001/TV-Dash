@@ -180,5 +180,23 @@ export function listActivePlaybackSessions(staleAfter: Date) {
   });
 }
 
+export function countActivePlaybackFailuresByChannel(params: {
+  channelId: string;
+  failureKind: DiagnosticFailureKind;
+  staleAfter: Date;
+}) {
+  return prisma.playbackSession.count({
+    where: {
+      endedAt: null,
+      channelId: params.channelId,
+      playbackState: "error",
+      failureKind: params.failureKind,
+      lastSeenAt: {
+        gte: params.staleAfter,
+      },
+    },
+  });
+}
+
 export type ExistingPlaybackSessionRecord = Awaited<ReturnType<typeof findPlaybackSessionsByIds>>[number];
 export type ActivePlaybackSessionRecord = Awaited<ReturnType<typeof listActivePlaybackSessions>>[number];

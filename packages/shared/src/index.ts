@@ -50,6 +50,38 @@ export const recordingWeekdaySchema = z.enum([
   "SATURDAY",
   "SUNDAY",
 ]);
+export const operationalAlertTypeSchema = z.enum([
+  "CHANNEL_STREAM_DOWN",
+  "CHANNEL_STREAM_RECOVERED",
+  "RECORDING_STARTED",
+  "RECORDING_COMPLETED",
+  "RECORDING_FAILED",
+  "EPG_IMPORT_FAILED",
+  "EPG_PARSE_FAILED",
+  "EPG_IMPORT_SUCCEEDED",
+  "PROXY_FAILURE",
+  "PROXY_RECOVERED",
+  "PLAYBACK_FAILURE",
+  "PLAYBACK_RECOVERED",
+  "SYSTEM_WARNING",
+]);
+export const operationalAlertCategorySchema = z.enum([
+  "PLAYBACK",
+  "RECORDING",
+  "EPG",
+  "PROXY",
+  "CHANNEL_HEALTH",
+  "SYSTEM_ADMIN",
+]);
+export const operationalAlertSeveritySchema = z.enum(["INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"]);
+export const operationalAlertStatusSchema = z.enum(["NEW", "ACKNOWLEDGED", "RESOLVED", "DISMISSED"]);
+export const operationalAlertEntityTypeSchema = z.enum([
+  "CHANNEL",
+  "RECORDING_JOB",
+  "EPG_SOURCE",
+  "PLAYBACK_CLUSTER",
+  "SYSTEM",
+]);
 export const diagnosticFailureKindSchema = z.enum([
   "network",
   "playlist-fetch",
@@ -759,6 +791,11 @@ export type RecordingJobStatus = z.infer<typeof recordingJobStatusSchema>;
 export type RecordingRunStatus = z.infer<typeof recordingRunStatusSchema>;
 export type RecordingRecurrenceType = z.infer<typeof recordingRecurrenceTypeSchema>;
 export type RecordingWeekday = z.infer<typeof recordingWeekdaySchema>;
+export type OperationalAlertType = z.infer<typeof operationalAlertTypeSchema>;
+export type OperationalAlertCategory = z.infer<typeof operationalAlertCategorySchema>;
+export type OperationalAlertSeverity = z.infer<typeof operationalAlertSeveritySchema>;
+export type OperationalAlertStatus = z.infer<typeof operationalAlertStatusSchema>;
+export type OperationalAlertEntityType = z.infer<typeof operationalAlertEntityTypeSchema>;
 export type DiagnosticFailureKind = z.infer<typeof diagnosticFailureKindSchema>;
 export type LoginInput = z.infer<typeof loginInputSchema>;
 export type ChannelGroupInput = z.infer<typeof channelGroupInputSchema>;

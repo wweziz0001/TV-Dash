@@ -3,6 +3,10 @@ import { isSharedPlaybackMode, isTvDashManagedPlaybackMode, type ChannelSourceMo
 import { env } from "../../config/env.js";
 import { writeStructuredLog } from "../../app/structured-log.js";
 import { buildUpstreamHeaders, type UpstreamRequestConfig } from "../../app/upstream-request.js";
+import {
+  createOrUpdateActiveOperationalAlert,
+  resolveOperationalAlertByDedupeKey,
+} from "../alerts/alert.service.js";
 import { getChannelStreamDetails } from "../channels/channel.service.js";
 import { parseMasterPlaylist } from "./playlist-parser.js";
 import { resolveUri, rewriteAttributeUris } from "./playlist-rewrite.js";
@@ -93,6 +97,7 @@ interface TimeshiftVariantState extends TimeshiftVariantDefinition {
 
 interface ChannelTimeshiftState {
   channelId: string;
+  channelName: string;
   channelSlug: string;
   playbackMode: StreamPlaybackMode;
   sourceMode: ChannelSourceMode;
@@ -109,6 +114,54 @@ interface ChannelTimeshiftState {
 }
 
 const timeshiftStates = new Map<string, ChannelTimeshiftState>();
+
+function buildTimeshiftAlertDedupeKey(channelId: string) {
+  return `timeshift:${channelId}`;
+}
+
+async function syncTimeshiftAlert(params: {
+  state: ChannelTimeshiftState;
+  status: "success" | "failure";
+  reason?: string | null;
+}) {
+  if (params.status === "failure") {
+    await createOrUpdateActiveOperationalAlert({
+      dedupeKey: buildTimeshiftAlertDedupeKey(params.state.channelId),
+      type: "PROXY_FAILURE",
+      category: "PROXY",
+      severity: "ERROR",
+      sourceSubsystem: "streams.timeshift",
+      title: `${params.state.channelName} DVR buffer failure`,
+      message: `TV-Dash failed to refresh the retained DVR buffer for ${params.state.channelName}.`,
+      relatedEntityType: "CHANNEL",
+      relatedEntityId: params.state.channelId,
+      metadata: {
+        channelName: params.state.channelName,
+        channelSlug: params.state.channelSlug,
+        reason: params.reason ?? "Unknown timeshift refresh failure",
+      },
+    });
+    return;
+  }
+
+  await resolveOperationalAlertByDedupeKey({
+    dedupeKey: buildTimeshiftAlertDedupeKey(params.state.channelId),
+    resolutionNotification: {
+      type: "PROXY_RECOVERED",
+      category: "PROXY",
+      severity: "SUCCESS",
+      sourceSubsystem: "streams.timeshift",
+      title: `${params.state.channelName} DVR buffer recovered`,
+      message: `TV-Dash resumed refreshing the retained DVR buffer for ${params.state.channelName}.`,
+      relatedEntityType: "CHANNEL",
+      relatedEntityId: params.state.channelId,
+      metadata: {
+        channelName: params.state.channelName,
+        channelSlug: params.state.channelSlug,
+      },
+    },
+  });
+}
 
 interface TimeshiftRangeBounds {
   availableFromAt: Date;
@@ -294,6 +347,7 @@ async function loadChannelTimeshiftState(channelId: string) {
 
   return {
     ...baseState,
+    channelName: channel.name,
     windowSeconds: getWindowSeconds(channel.timeshiftWindowMinutes ?? null),
     lastAccessAtMs: Date.now(),
     timer: null,
@@ -641,6 +695,7 @@ async function refreshChannelState(state: ChannelTimeshiftState, requestedVarian
   }
 
   state.refreshPromise = (async () => {
+    const hadErrorBeforeRefresh = Boolean(state.lastError);
     try {
       const variantsToRefresh = requestedVariants && requestedVariants.length > 0
         ? requestedVariants
@@ -648,6 +703,12 @@ async function refreshChannelState(state: ChannelTimeshiftState, requestedVarian
 
       await Promise.all(variantsToRefresh.map((variant) => refreshVariantState(state, variant)));
       state.lastError = null;
+      if (hadErrorBeforeRefresh) {
+        void syncTimeshiftAlert({
+          state,
+          status: "success",
+        }).catch(() => undefined);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown timeshift failure";
       state.lastError = message;
@@ -659,6 +720,11 @@ async function refreshChannelState(state: ChannelTimeshiftState, requestedVarian
           message,
         },
       });
+      void syncTimeshiftAlert({
+        state,
+        status: "failure",
+        reason: message,
+      }).catch(() => undefined);
     } finally {
       state.refreshPromise = null;
     }

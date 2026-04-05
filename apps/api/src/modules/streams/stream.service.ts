@@ -1,8 +1,12 @@
 import { isTvDashManagedPlaybackMode } from "@tv-dash/shared";
 import { writeStructuredLog, sanitizeUrl, summarizeUpstreamRequestConfig } from "../../app/structured-log.js";
 import { buildUpstreamHeaders, type UpstreamRequestConfig } from "../../app/upstream-request.js";
+import {
+  createOrUpdateActiveOperationalAlert,
+  resolveOperationalAlertByDedupeKey,
+} from "../alerts/alert.service.js";
 import { getChannelStreamDetails } from "../channels/channel.service.js";
-import { recordChannelObservation } from "../diagnostics/diagnostic.service.js";
+import { buildChannelDiagnosticsSnapshot, recordChannelObservation } from "../diagnostics/diagnostic.service.js";
 import { parseMasterPlaylist } from "./playlist-parser.js";
 import { classifyStreamFailure } from "./stream-diagnostics.js";
 import { isPlaylistResponse, rewritePlaylist } from "./playlist-rewrite.js";
@@ -10,6 +14,69 @@ import { createProxyToken, readProxyToken } from "./proxy-token.js";
 import { buildSyntheticMasterPlaylist } from "./synthetic-master.js";
 
 const RECORDING_PROXY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const CHANNEL_STREAM_ALERT_THRESHOLD = 2;
+
+function buildChannelStreamAlertDedupeKey(channelId: string, subsystem: "proxyMaster" | "syntheticMaster") {
+  return `channel-stream:${channelId}:${subsystem}`;
+}
+
+async function syncChannelStreamAlert(params: {
+  channel: NonNullable<Awaited<ReturnType<typeof getChannelStreamDetails>>>;
+  subsystem: "proxyMaster" | "syntheticMaster";
+  status: "success" | "failure";
+  consecutiveFailuresBefore: number;
+  consecutiveFailuresAfter: number;
+  failureKind?: string | null;
+  reason?: string | null;
+}) {
+  const sourceLabel = params.subsystem === "syntheticMaster" ? "synthetic playback master" : "playback master";
+  const dedupeKey = buildChannelStreamAlertDedupeKey(params.channel.id, params.subsystem);
+
+  if (params.status === "failure" && params.consecutiveFailuresAfter >= CHANNEL_STREAM_ALERT_THRESHOLD) {
+    await createOrUpdateActiveOperationalAlert({
+      dedupeKey,
+      type: "CHANNEL_STREAM_DOWN",
+      category: "CHANNEL_HEALTH",
+      severity: params.subsystem === "syntheticMaster" ? "ERROR" : "CRITICAL",
+      sourceSubsystem: params.subsystem === "syntheticMaster" ? "streams.synthetic-master" : "streams.proxy",
+      title: `${params.channel.name} stream unavailable`,
+      message: `TV-Dash failed to build or fetch the ${sourceLabel} ${params.consecutiveFailuresAfter} time(s) in a row.`,
+      relatedEntityType: "CHANNEL",
+      relatedEntityId: params.channel.id,
+      metadata: {
+        channelName: params.channel.name,
+        channelSlug: params.channel.slug,
+        sourceLabel,
+        consecutiveFailures: params.consecutiveFailuresAfter,
+        failureKind: params.failureKind ?? "unknown",
+        reason: params.reason ?? "Unknown stream failure",
+      },
+    });
+    return;
+  }
+
+  if (params.status === "success" && params.consecutiveFailuresBefore >= CHANNEL_STREAM_ALERT_THRESHOLD) {
+    await resolveOperationalAlertByDedupeKey({
+      dedupeKey,
+      resolutionNotification: {
+        type: "CHANNEL_STREAM_RECOVERED",
+        category: "CHANNEL_HEALTH",
+        severity: "SUCCESS",
+        sourceSubsystem: params.subsystem === "syntheticMaster" ? "streams.synthetic-master" : "streams.proxy",
+        title: `${params.channel.name} stream recovered`,
+        message: `TV-Dash can serve the ${sourceLabel} again after repeated failures.`,
+        relatedEntityType: "CHANNEL",
+        relatedEntityId: params.channel.id,
+        metadata: {
+          channelName: params.channel.name,
+          channelSlug: params.channel.slug,
+          sourceLabel,
+          previousConsecutiveFailures: params.consecutiveFailuresBefore,
+        },
+      },
+    });
+  }
+}
 
 function buildProxyAssetPath(channelId: string, target: string, options: { ttlMs?: number } = {}) {
   const token = createProxyToken({ channelId, target }, options.ttlMs ? { ttlMs: options.ttlMs } : undefined);
@@ -58,6 +125,9 @@ async function proxyStreamUrl(
     throw new Error("Channel not found");
   }
 
+  const relevantSubsystem = observationSource === "PROXY_MASTER" ? "proxyMaster" : null;
+  const snapshotBefore = relevantSubsystem ? buildChannelDiagnosticsSnapshot(channel) : null;
+
   try {
     const response = await fetchUpstream(targetUrl, mapChannelRequestConfig(channel));
     const contentType = response.headers.get("content-type");
@@ -78,6 +148,16 @@ async function proxyStreamUrl(
         },
       });
 
+      if (snapshotBefore && relevantSubsystem) {
+        void syncChannelStreamAlert({
+          channel,
+          subsystem: relevantSubsystem,
+          status: "success",
+          consecutiveFailuresBefore: snapshotBefore[relevantSubsystem].consecutiveFailures,
+          consecutiveFailuresAfter: 0,
+        }).catch(() => undefined);
+      }
+
       return {
         body: rewrittenPlaylist,
         contentType: contentType ?? "application/vnd.apple.mpegurl",
@@ -92,6 +172,16 @@ async function proxyStreamUrl(
         targetUrl: sanitizeUrl(targetUrl),
       },
     });
+
+    if (snapshotBefore && relevantSubsystem) {
+      void syncChannelStreamAlert({
+        channel,
+        subsystem: relevantSubsystem,
+        status: "success",
+        consecutiveFailuresBefore: snapshotBefore[relevantSubsystem].consecutiveFailures,
+        consecutiveFailuresAfter: 0,
+      }).catch(() => undefined);
+    }
 
     return {
       body: Buffer.from(await response.arrayBuffer()),
@@ -113,6 +203,19 @@ async function proxyStreamUrl(
         targetUrl: sanitizeUrl(targetUrl),
       },
     });
+
+    if (relevantSubsystem) {
+      const snapshotAfter = buildChannelDiagnosticsSnapshot(channel);
+      void syncChannelStreamAlert({
+        channel,
+        subsystem: relevantSubsystem,
+        status: "failure",
+        consecutiveFailuresBefore: snapshotBefore?.[relevantSubsystem].consecutiveFailures ?? 0,
+        consecutiveFailuresAfter: snapshotAfter[relevantSubsystem].consecutiveFailures,
+        failureKind: classification.failureKind,
+        reason: classification.message,
+      }).catch(() => undefined);
+    }
 
     writeStructuredLog("warn", {
       event: observationSource === "PROXY_MASTER" ? "stream.proxy.master.failed" : "stream.proxy.asset.failed",
@@ -175,6 +278,8 @@ export async function getChannelProxyMasterResponse(
   }
 
   if (channel.sourceMode === "MANUAL_VARIANTS") {
+    const snapshotBefore = buildChannelDiagnosticsSnapshot(channel);
+
     try {
       const assetTokenTtlMs = options.intent === "recording" ? RECORDING_PROXY_TOKEN_TTL_MS : undefined;
       const body = buildSyntheticMasterPlaylist(channel.qualityVariants, {
@@ -192,6 +297,14 @@ export async function getChannelProxyMasterResponse(
           playbackMode: channel.playbackMode,
         },
       });
+
+      void syncChannelStreamAlert({
+        channel,
+        subsystem: "syntheticMaster",
+        status: "success",
+        consecutiveFailuresBefore: snapshotBefore.syntheticMaster.consecutiveFailures,
+        consecutiveFailuresAfter: 0,
+      }).catch(() => undefined);
 
       return {
         body,
@@ -211,6 +324,17 @@ export async function getChannelProxyMasterResponse(
           playbackMode: channel.playbackMode,
         },
       });
+
+      const snapshotAfter = buildChannelDiagnosticsSnapshot(channel);
+      void syncChannelStreamAlert({
+        channel,
+        subsystem: "syntheticMaster",
+        status: "failure",
+        consecutiveFailuresBefore: snapshotBefore.syntheticMaster.consecutiveFailures,
+        consecutiveFailuresAfter: snapshotAfter.syntheticMaster.consecutiveFailures,
+        failureKind: classification.failureKind,
+        reason: classification.message,
+      }).catch(() => undefined);
 
       writeStructuredLog("error", {
         event: "stream.synthetic-master.failed",

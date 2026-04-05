@@ -109,6 +109,54 @@ enum RecordingRunStatus {
   CANCELED
 }
 
+enum OperationalAlertType {
+  CHANNEL_STREAM_DOWN
+  CHANNEL_STREAM_RECOVERED
+  RECORDING_STARTED
+  RECORDING_COMPLETED
+  RECORDING_FAILED
+  EPG_IMPORT_FAILED
+  EPG_PARSE_FAILED
+  EPG_IMPORT_SUCCEEDED
+  PROXY_FAILURE
+  PROXY_RECOVERED
+  PLAYBACK_FAILURE
+  PLAYBACK_RECOVERED
+  SYSTEM_WARNING
+}
+
+enum OperationalAlertCategory {
+  PLAYBACK
+  RECORDING
+  EPG
+  PROXY
+  CHANNEL_HEALTH
+  SYSTEM_ADMIN
+}
+
+enum OperationalAlertSeverity {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum OperationalAlertStatus {
+  NEW
+  ACKNOWLEDGED
+  RESOLVED
+  DISMISSED
+}
+
+enum OperationalAlertEntityType {
+  CHANNEL
+  RECORDING_JOB
+  EPG_SOURCE
+  PLAYBACK_CLUSTER
+  SYSTEM
+}
+
 model User {
   id               String            @id @default(uuid()) @db.Uuid
   email            String            @unique
@@ -462,6 +510,39 @@ model PlaybackSession {
   @@index([userId, endedAt, lastSeenAt])
   @@index([channelId, endedAt, lastSeenAt])
   @@index([channelId, playbackPositionState, endedAt, lastSeenAt])
+}
+
+model OperationalAlert {
+  id                  String                     @id @default(uuid()) @db.Uuid
+  type                OperationalAlertType
+  category            OperationalAlertCategory
+  severity            OperationalAlertSeverity
+  status              OperationalAlertStatus    @default(NEW)
+  sourceSubsystem     String
+  title               String
+  message             String
+  isActive            Boolean                    @default(true)
+  dedupeKey           String?
+  occurrenceCount     Int                        @default(1)
+  relatedEntityType   OperationalAlertEntityType?
+  relatedEntityId     String?
+  metadataJson        Json?
+  firstOccurredAt     DateTime                   @default(now())
+  lastOccurredAt      DateTime                   @default(now())
+  acknowledgedAt      DateTime?
+  acknowledgedByUserId String?                   @db.Uuid
+  resolvedAt          DateTime?
+  resolvedByUserId    String?                    @db.Uuid
+  dismissedAt         DateTime?
+  dismissedByUserId   String?                    @db.Uuid
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+
+  @@index([status, isActive, lastOccurredAt])
+  @@index([category, severity, lastOccurredAt])
+  @@index([relatedEntityType, relatedEntityId, lastOccurredAt])
+  @@index([dedupeKey, isActive, lastOccurredAt])
+  @@index([sourceSubsystem, lastOccurredAt])
 }
 
 model AuditEvent {

@@ -29,6 +29,11 @@ async function findGuideProgrammeMatch(params: {
   }
 
   const guide = await getResolvedGuideForChannel(
+    {
+      id: "00000000-0000-0000-0000-000000000000",
+      role: "ADMIN",
+      username: "system-recorder",
+    },
     params.channelId,
     new Date(params.occurrenceStartAt.getTime() - RECURRING_MATCH_WINDOW_PADDING_MS),
     new Date(params.occurrenceEndAt.getTime() + RECURRING_MATCH_WINDOW_PADDING_MS),

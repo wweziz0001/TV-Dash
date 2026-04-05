@@ -2,6 +2,7 @@ import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { env } from "../config/env.js";
 import { authPlugin } from "./plugins/auth.js";
+import { alertRoutes } from "../modules/alerts/alert.routes.js";
 import { auditRoutes } from "../modules/audit/audit.routes.js";
 import { createAllowedOrigins } from "./cors.js";
 import { configureStructuredLogger } from "./structured-log.js";
@@ -40,6 +41,7 @@ export async function buildServer() {
   await app.register(authPlugin);
   await app.register(healthRoutes, { prefix: "/api" });
   await app.register(authRoutes, { prefix: "/api" });
+  await app.register(alertRoutes, { prefix: "/api" });
   await app.register(auditRoutes, { prefix: "/api" });
   await app.register(groupRoutes, { prefix: "/api" });
   await app.register(channelRoutes, { prefix: "/api" });

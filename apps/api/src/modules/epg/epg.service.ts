@@ -9,6 +9,11 @@ import {
   summarizeUpstreamRequestConfig,
   writeStructuredLog,
 } from "../../app/structured-log.js";
+import {
+  createOperationalNotification,
+  createOrUpdateActiveOperationalAlert,
+  resolveOperationalAlertByDedupeKey,
+} from "../alerts/alert.service.js";
 import { buildUpstreamHeaders, normalizeUpstreamHeaders } from "../../app/upstream-request.js";
 import { getChannelsForEpgLookup } from "../channels/channel.service.js";
 import {
@@ -236,6 +241,7 @@ async function importXmltvDocumentForSource(params: {
   observationSource: "XMLTV_LOAD";
 }) {
   const importedAt = new Date();
+  const importAlertDedupeKey = `epg-import:${params.source.id}`;
 
   try {
     const document = parseXmltvDocument(params.xmlContent);
@@ -299,6 +305,49 @@ async function importXmltvDocumentForSource(params: {
       },
     });
 
+    await resolveOperationalAlertByDedupeKey({
+      dedupeKey: importAlertDedupeKey,
+      resolvedAt: importedAt,
+      resolutionNotification: {
+        type: "EPG_IMPORT_SUCCEEDED",
+        category: "EPG",
+        severity: "SUCCESS",
+        sourceSubsystem: "epg.import",
+        title: `${params.source.name} import succeeded`,
+        message: `Imported ${document.channels.length} channel(s) and ${document.programmes.length} programme(s) into ${params.source.name}.`,
+        relatedEntityType: "EPG_SOURCE",
+        relatedEntityId: params.source.id,
+        metadata: {
+          sourceName: params.source.name,
+          sourceSlug: params.source.slug,
+          channelCount: document.channels.length,
+          programmeCount: document.programmes.length,
+          uploadedFileName: params.uploadedFileName ?? null,
+        },
+      },
+    });
+
+    if (params.source.lastImportStatus !== "FAILED") {
+      await createOperationalNotification({
+        type: "EPG_IMPORT_SUCCEEDED",
+        category: "EPG",
+        severity: "SUCCESS",
+        sourceSubsystem: "epg.import",
+        title: `${params.source.name} import succeeded`,
+        message: `Imported ${document.channels.length} channel(s) and ${document.programmes.length} programme(s) into ${params.source.name}.`,
+        relatedEntityType: "EPG_SOURCE",
+        relatedEntityId: params.source.id,
+        metadata: {
+          sourceName: params.source.name,
+          sourceSlug: params.source.slug,
+          channelCount: document.channels.length,
+          programmeCount: document.programmes.length,
+          uploadedFileName: params.uploadedFileName ?? null,
+        },
+        occurredAt: importedAt,
+      });
+    }
+
     return mapEpgSource(importedSource);
   } catch (error) {
     const classification = classifyEpgFailure(error);
@@ -333,6 +382,27 @@ async function importXmltvDocumentForSource(params: {
           requestHeaders: normalizeUpstreamHeaders(params.source.requestHeaders),
         }),
       },
+    });
+    await createOrUpdateActiveOperationalAlert({
+      dedupeKey: importAlertDedupeKey,
+      type: classification.failureKind === "epg-parse" ? "EPG_PARSE_FAILED" : "EPG_IMPORT_FAILED",
+      category: "EPG",
+      severity: classification.failureKind === "epg-parse" ? "ERROR" : "WARNING",
+      sourceSubsystem: "epg.import",
+      title: `${params.source.name} import failed`,
+      message,
+      relatedEntityType: "EPG_SOURCE",
+      relatedEntityId: params.source.id,
+      metadata: {
+        sourceName: params.source.name,
+        sourceSlug: params.source.slug,
+        sourceType: params.source.sourceType,
+        uploadedFileName: params.uploadedFileName ?? null,
+        failureKind: classification.failureKind,
+        retryable: classification.retryable,
+        statusCode: classification.statusCode,
+      },
+      occurredAt: importedAt,
     });
     throw error;
   }

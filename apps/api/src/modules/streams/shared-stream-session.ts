@@ -3,6 +3,10 @@ import { isSharedPlaybackMode, type ChannelSourceMode } from "@tv-dash/shared";
 import { writeStructuredLog, sanitizeUrl } from "../../app/structured-log.js";
 import { buildUpstreamHeaders, type UpstreamRequestConfig } from "../../app/upstream-request.js";
 import { env } from "../../config/env.js";
+import {
+  createOrUpdateActiveOperationalAlert,
+  resolveOperationalAlertByDedupeKey,
+} from "../alerts/alert.service.js";
 import { getChannelStreamDetails } from "../channels/channel.service.js";
 import { recordChannelObservation } from "../diagnostics/diagnostic.service.js";
 import { parseMasterPlaylist } from "./playlist-parser.js";
@@ -49,6 +53,7 @@ export interface SharedStreamStatus {
 
 interface SharedStreamSessionState {
   channelId: string;
+  channelName: string;
   channelSlug: string;
   sourceMode: ChannelSourceMode;
   requestConfig: UpstreamRequestConfig;
@@ -70,6 +75,66 @@ export interface SharedStreamUpstreamResponse {
 }
 
 const sharedStreamSessions = new Map<string, SharedStreamSessionState>();
+
+function buildSharedProxyAlertDedupeKey(channelId: string, observationSource: SharedSessionObservationSource) {
+  return `shared-proxy:${channelId}:${observationSource}`;
+}
+
+async function syncSharedProxyAlert(params: {
+  session: SharedStreamSessionState;
+  observationSource: SharedSessionObservationSource;
+  status: "success" | "failure";
+  failureKind?: string | null;
+  reason?: string | null;
+}) {
+  if (params.observationSource === "SHARED_ASSET") {
+    return;
+  }
+
+  const sourceLabel = params.observationSource === "SHARED_TIMESHIFT" ? "shared DVR relay" : "shared playback relay";
+  const dedupeKey = buildSharedProxyAlertDedupeKey(params.session.channelId, params.observationSource);
+
+  if (params.status === "failure") {
+    await createOrUpdateActiveOperationalAlert({
+      dedupeKey,
+      type: "PROXY_FAILURE",
+      category: "PROXY",
+      severity: params.observationSource === "SHARED_TIMESHIFT" ? "ERROR" : "CRITICAL",
+      sourceSubsystem: params.observationSource === "SHARED_TIMESHIFT" ? "streams.shared-timeshift" : "streams.shared",
+      title: `${params.session.channelName} shared relay failure`,
+      message: `TV-Dash failed to serve the ${sourceLabel} for ${params.session.channelName}.`,
+      relatedEntityType: "CHANNEL",
+      relatedEntityId: params.session.channelId,
+      metadata: {
+        channelName: params.session.channelName,
+        channelSlug: params.session.channelSlug,
+        sourceLabel,
+        failureKind: params.failureKind ?? "unknown",
+        reason: params.reason ?? "Unknown shared relay failure",
+      },
+    });
+    return;
+  }
+
+  await resolveOperationalAlertByDedupeKey({
+    dedupeKey,
+    resolutionNotification: {
+      type: "PROXY_RECOVERED",
+      category: "PROXY",
+      severity: "SUCCESS",
+      sourceSubsystem: params.observationSource === "SHARED_TIMESHIFT" ? "streams.shared-timeshift" : "streams.shared",
+      title: `${params.session.channelName} shared relay recovered`,
+      message: `TV-Dash can serve the ${sourceLabel} again for ${params.session.channelName}.`,
+      relatedEntityType: "CHANNEL",
+      relatedEntityId: params.session.channelId,
+      metadata: {
+        channelName: params.session.channelName,
+        channelSlug: params.session.channelSlug,
+        sourceLabel,
+      },
+    },
+  });
+}
 
 function toIsoString(value: number | null) {
   return typeof value === "number" ? new Date(value).toISOString() : null;
@@ -221,6 +286,7 @@ async function createSharedSession(channelId: string) {
   const nowMs = Date.now();
   const session: SharedStreamSessionState = {
     channelId: channel.id,
+    channelName: channel.name,
     channelSlug: channel.slug,
     sourceMode: channel.sourceMode,
     requestConfig: mapChannelRequestConfig(channel),
@@ -265,6 +331,7 @@ async function resolveSharedUpstreamResponse(
   absoluteUrl: string,
   observationSource: SharedSessionObservationSource,
 ) {
+  const hadErrorBeforeRequest = Boolean(session.lastError);
   const cacheKind = isPlaylistResponse(null, absoluteUrl) ? "manifest" : "segment";
   const cached = session.cache.get(absoluteUrl, cacheKind);
 
@@ -309,6 +376,13 @@ async function resolveSharedUpstreamResponse(
 
         session.lastError = null;
         session.lastErrorAtMs = null;
+        if (hadErrorBeforeRequest) {
+          void syncSharedProxyAlert({
+            session,
+            observationSource,
+            status: "success",
+          }).catch(() => undefined);
+        }
         return sharedPayload;
       }
 
@@ -334,6 +408,13 @@ async function resolveSharedUpstreamResponse(
 
       session.lastError = null;
       session.lastErrorAtMs = null;
+      if (hadErrorBeforeRequest) {
+        void syncSharedProxyAlert({
+          session,
+          observationSource,
+          status: "success",
+        }).catch(() => undefined);
+      }
       return sharedPayload;
     } catch (error) {
       const classification = classifyStreamFailure(error, {
@@ -375,6 +456,14 @@ async function resolveSharedUpstreamResponse(
           targetUrl: sanitizeUrl(absoluteUrl),
         },
       });
+
+      void syncSharedProxyAlert({
+        session,
+        observationSource,
+        status: "failure",
+        failureKind: classification.failureKind,
+        reason: classification.message,
+      }).catch(() => undefined);
 
       throw error;
     }

@@ -91,6 +91,31 @@ export const auditEventsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
 
+export const alertListQuerySchema = z.object({
+  view: z.enum(["ACTIVE", "HISTORY", "ALL"]).optional(),
+  statuses: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => value?.split(",").map((part) => part.trim()).filter(Boolean) ?? [])
+    .pipe(z.array(z.enum(["NEW", "ACKNOWLEDGED", "RESOLVED", "DISMISSED"])).max(4)),
+  categories: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => value?.split(",").map((part) => part.trim()).filter(Boolean) ?? [])
+    .pipe(z.array(z.enum(["PLAYBACK", "RECORDING", "EPG", "PROXY", "CHANNEL_HEALTH", "SYSTEM_ADMIN"])).max(6)),
+  severities: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => value?.split(",").map((part) => part.trim()).filter(Boolean) ?? [])
+    .pipe(z.array(z.enum(["INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"])).max(5)),
+  sourceSubsystem: optionalTrimmedString,
+  search: optionalTrimmedString,
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+});
+
 export const recordingJobsQuerySchema = z.object({
   search: optionalTrimmedString,
   status: z

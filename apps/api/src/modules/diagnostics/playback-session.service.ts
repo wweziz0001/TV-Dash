@@ -1,9 +1,16 @@
 import type {
+  DiagnosticFailureKind,
   PlaybackSessionEndInput,
   PlaybackSessionHeartbeatInput,
 } from "@tv-dash/shared";
 import { writeStructuredLog } from "../../app/structured-log.js";
+import { getChannelById } from "../channels/channel.service.js";
 import {
+  createOrUpdateActiveOperationalAlert,
+  resolveOperationalAlertByDedupeKey,
+} from "../alerts/alert.service.js";
+import {
+  countActivePlaybackFailuresByChannel,
   expireStalePlaybackSessions,
   findPlaybackSessionsByIds,
   markPlaybackSessionsEnded,
@@ -12,9 +19,79 @@ import {
 } from "./playback-session.repository.js";
 
 export const ACTIVE_PLAYBACK_SESSION_TTL_MS = 45_000;
+const PLAYBACK_FAILURE_ALERT_THRESHOLD = 3;
+type PlaybackFailureKind = DiagnosticFailureKind;
 
 function getStalePlaybackSessionCutoff(now: Date) {
   return new Date(now.getTime() - ACTIVE_PLAYBACK_SESSION_TTL_MS);
+}
+
+function buildPlaybackFailureAlertDedupeKey(channelId: string, failureKind: string) {
+  return `playback-failure:${channelId}:${failureKind}`;
+}
+
+async function syncPlaybackFailureAlert(params: {
+  channelId: string;
+  failureKind: PlaybackFailureKind;
+  activeFailureCount: number;
+}) {
+  const channel = await getChannelById(params.channelId);
+
+  if (!channel) {
+    return;
+  }
+
+  if (params.activeFailureCount < PLAYBACK_FAILURE_ALERT_THRESHOLD) {
+    return;
+  }
+
+  await createOrUpdateActiveOperationalAlert({
+    dedupeKey: buildPlaybackFailureAlertDedupeKey(params.channelId, params.failureKind),
+    type: "PLAYBACK_FAILURE",
+    category: "PLAYBACK",
+    severity: params.activeFailureCount >= 5 ? "CRITICAL" : "ERROR",
+    sourceSubsystem: "playback.monitoring",
+    title: `${channel.name} playback failures affecting viewers`,
+    message: `${params.activeFailureCount} active viewer surface(s) are currently erroring with ${params.failureKind}.`,
+    relatedEntityType: "PLAYBACK_CLUSTER",
+    relatedEntityId: params.channelId,
+    metadata: {
+      channelName: channel.name,
+      channelSlug: channel.slug,
+      failureKind: params.failureKind,
+      activeFailureCount: params.activeFailureCount,
+    },
+  });
+}
+
+async function resolvePlaybackFailureAlert(params: {
+  channelId: string;
+  failureKind: PlaybackFailureKind;
+}) {
+  const channel = await getChannelById(params.channelId);
+
+  if (!channel) {
+    return;
+  }
+
+  await resolveOperationalAlertByDedupeKey({
+    dedupeKey: buildPlaybackFailureAlertDedupeKey(params.channelId, params.failureKind),
+    resolutionNotification: {
+      type: "PLAYBACK_RECOVERED",
+      category: "PLAYBACK",
+      severity: "SUCCESS",
+      sourceSubsystem: "playback.monitoring",
+      title: `${channel.name} playback recovered`,
+      message: `Active viewer playback failures cleared for ${channel.name}.`,
+      relatedEntityType: "PLAYBACK_CLUSTER",
+      relatedEntityId: params.channelId,
+      metadata: {
+        channelName: channel.name,
+        channelSlug: channel.slug,
+        failureKind: params.failureKind,
+      },
+    },
+  });
 }
 
 export async function cleanupStalePlaybackSessions(now = new Date()) {
@@ -130,6 +207,23 @@ export async function recordPlaybackSessionHeartbeat(userId: string, payload: Pl
           quality: session.selectedQuality,
         },
       });
+
+      if (session.channelId && session.failureKind) {
+        const failureKind = session.failureKind as PlaybackFailureKind;
+        void countActivePlaybackFailuresByChannel({
+          channelId: session.channelId,
+          failureKind,
+          staleAfter: getStalePlaybackSessionCutoff(observedAt),
+        })
+          .then((activeFailureCount) =>
+            syncPlaybackFailureAlert({
+              channelId: session.channelId,
+              failureKind,
+              activeFailureCount,
+            }),
+          )
+          .catch(() => undefined);
+      }
     }
 
     if (recoveredFromError) {
@@ -147,6 +241,27 @@ export async function recordPlaybackSessionHeartbeat(userId: string, payload: Pl
           liveOffsetSeconds: session.liveOffsetSeconds,
         },
       });
+
+      const previousFailureKind = previous.failureKind as PlaybackFailureKind | null;
+
+      if (session.channelId && previousFailureKind) {
+        void countActivePlaybackFailuresByChannel({
+          channelId: session.channelId,
+          failureKind: previousFailureKind,
+          staleAfter: getStalePlaybackSessionCutoff(observedAt),
+        })
+          .then((activeFailureCount) => {
+            if (activeFailureCount === 0) {
+              return resolvePlaybackFailureAlert({
+                channelId: session.channelId,
+                failureKind: previousFailureKind,
+              });
+            }
+
+            return undefined;
+          })
+          .catch(() => undefined);
+      }
     }
   }
 }
@@ -180,5 +295,28 @@ export async function endPlaybackSessionsForUser(userId: string, payload: Playba
           durationSeconds: Math.max(0, Math.round((endedAt.getTime() - session.startedAt.getTime()) / 1000)),
         },
     });
+
+    const failureKind = session.failureKind as PlaybackFailureKind | null;
+
+    const channelId = session.channelId;
+
+    if (channelId && session.playbackState === "error" && failureKind) {
+      void countActivePlaybackFailuresByChannel({
+        channelId,
+        failureKind,
+        staleAfter: getStalePlaybackSessionCutoff(endedAt),
+      })
+        .then((activeFailureCount) => {
+          if (activeFailureCount === 0) {
+            return resolvePlaybackFailureAlert({
+              channelId,
+              failureKind,
+            });
+          }
+
+          return undefined;
+        })
+        .catch(() => undefined);
+    }
   });
 }
