@@ -1,5 +1,62 @@
 # Codex Session Log
 
+## `2026-04-05T17:50:00+03:00`
+
+### Objective
+
+Turn the existing EPG, recordings, and retained-DVR foundations into a real Catch-up TV flow where previous programmes are only playable when TV-Dash can resolve an honest archive source.
+
+### Work Completed
+
+- created the requested branch `025-catchup-tv-and-previous-program-playback`
+- added an explicit catch-up availability model in the `epg` module:
+  - timing states for previous, live-now, and upcoming programmes
+  - playback states for watch-from-start, recording-backed catch-up, retained-window catch-up, dual-source availability, and unavailable previous programmes
+- implemented programme-to-playback resolution in the backend:
+  - linked recording match first
+  - otherwise a sufficiently overlapping recording candidate
+  - otherwise retained DVR-window coverage
+  - current-program `Watch from start` only when the retained window really covers the programme start
+- documented and enforced source priority:
+  - recording-backed playback is preferred over retained DVR-window playback
+- extended guide responses so resolved programmes now include explicit `catchup` metadata rather than making the frontend infer archive state
+- added a real playback endpoint:
+  - `GET /api/epg/channels/:channelId/programs/:programId/playback`
+  - returns recording-backed archive playback or retained-window playback only when a real source exists
+  - returns explicit failure instead of inventing a catch-up URL when a programme is not actually available
+- expanded timeshift/session status with `availableFromAt` and `availableUntilAt` so retained-window coverage is explicit
+- upgraded the watch page into a real catch-up surface:
+  - guide window now includes earlier programmes
+  - previous programmes show explicit badges and availability copy
+  - current programme can expose `Watch current from start`
+  - selecting a previous programme opens explicit catch-up playback
+  - `Return to live` restores the normal live player context
+- added a dedicated `ArchivePlayer` for archive playback so live DVR diagnostics and archive playback semantics stay distinct
+- added targeted coverage for:
+  - catch-up resolution and priority rules
+  - guide/playback route behavior
+  - frontend catch-up status helpers
+  - frontend API contracts
+  - frontend live-DVR fixtures updated for the richer retained-window contract
+- updated handoff and architecture docs for the Catch-up TV milestone
+
+### Verification Run
+
+- `npm run test -w apps/api -- src/modules/epg/program-catchup.test.ts src/modules/epg/epg.routes.test.ts src/modules/streams/stream.routes.test.ts`
+- `npm run test -w apps/web -- src/components/channels/channel-guide-state.test.ts src/player/hls-player.test.tsx src/player/multiview-tile-card.test.tsx src/player/timeshift-ui.test.ts src/components/channels/channel-program-catchup-state.test.ts src/services/api.test.ts`
+- `npm run lint -w apps/web`
+- `npm run build -w apps/web`
+
+### Remaining Risk
+
+- Catch-up/archive playback is now honest, but playback-session telemetry still models live viewing only, so archive sessions are intentionally not reported as fake live-edge or behind-live viewers.
+- Retained-window catch-up can still expire between browse time and playback time; the UI now reports this explicitly, but there is no durable reservation model.
+- Previous-program browsing is currently strongest on the single-view watch page. Broader archive/guide entry points are still future work.
+
+### Exact Suggested Next Task
+
+Add archive resume markers and continue-watching state for catch-up playback, then extend the same honest catch-up entry points into broader guide surfaces and route-level watch regression coverage.
+
 ## `2026-04-05T02:18:52+03:00`
 
 ### Objective

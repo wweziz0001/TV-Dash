@@ -23,6 +23,7 @@ The current operator milestone also adds:
 - a first real live-timeshift foundation with retained proxy-backed HLS buffers, rolling DVR windows, honest live-vs-buffered state, and per-channel timeshift enablement
 - a first shared channel restream / edge-cache foundation with channel-local shared sessions, local-origin playlist/segment serving, and cache reuse for repeated local viewers
 - a first integrated shared-session + live-DVR model where one shared local channel session can also back a retained rolling live buffer when DVR is enabled
+- a first real Catch-up TV milestone where previous programmes can be played from honest EPG-linked recording matches or still-retained DVR windows, with live vs archive playback kept explicit in the watch experience
 
 ## Current Architecture Summary
 
@@ -35,6 +36,7 @@ The current operator milestone also adds:
 - Backend stream handling now also includes a real first-version live-timeshift path that retains rolling HLS buffers on disk for eligible proxy channels and serves DVR manifests from the `streams` module
 - Backend stream handling now also includes a real first-version shared local-delivery path that keeps channel-local shared sessions plus manifest/segment edge caching in the `streams` module
 - Backend stream handling now also includes an integrated channel-session status layer that composes shared relay state with live-DVR state instead of treating them as unrelated operator concepts
+- Backend guide handling now also includes explicit catch-up availability resolution plus a programme-playback contract that turns guide rows into real recording-backed or retained-window playback only when those sources truly exist
 - Playback session tracking now persists real active player heartbeats in PostgreSQL so admin monitoring pages can show who is watching what now, including explicit per-viewer live-edge vs behind-live state for shared DVR sessions
 - Guide source imports, source-channel discovery, channel mappings, and persisted programme rows now also live in PostgreSQL
 - Frontend keeps app bootstrap in `app`, route screens in `pages`, shared UI in `components`, auth in `features`, request logic in `services`, and player-specific code in `player`
@@ -100,7 +102,7 @@ tests/
 - `auth`: login and current user lookup
 - `audit`: durable admin governance events and audit listing
 - `channels`: logical channel catalog CRUD, browse lookups, ingest-mode metadata, manual quality variants, playback-mode metadata, and playback-facing guide hints
-- `epg`: EPG source CRUD, XMLTV import, source-channel discovery, channel mapping, manual program entry, resolved guide windows, and now/next lookup
+- `epg`: EPG source CRUD, XMLTV import, source-channel discovery, channel mapping, manual program entry, resolved guide windows, now/next lookup, catch-up availability resolution, and programme-to-playback source selection
 - `groups`: category/group CRUD
 - `favorites`: per-user pinned channels
 - `layouts`: saved multi-view walls
@@ -156,6 +158,7 @@ Key relationship rules:
 ## Player Architecture Overview
 
 - `player/hls-player.tsx` owns one video element, one HLS.js instance, and the explicit in-player browser-control surface
+- `player/archive-player.tsx` owns archive/catch-up playback for recording files and retained-window HLS playback without reusing live-edge DVR chrome semantics
 - `player/timeshift-ui.ts` owns the shared live-DVR capability/state model used by player chrome, watch-page summaries, and multiview tile status copy
 - `player/live-dvr-timeline.tsx` owns the compact retained-buffer rail used for both the always-visible DVR state rail and the expanded control overlay
 - `player/browser-media.ts` owns browser capability detection plus clamped live-DVR seek helpers
@@ -198,6 +201,9 @@ Key relationship rules:
   - whether playback is live, near live, behind live, or paused
   - how much retained window is currently available
 - Single-view uses the same `HlsPlayer` overlay plus the existing sidebar controls for quality, fullscreen, and recording actions.
+- Single-view now splits playback honestly:
+  - `HlsPlayer` remains the live-channel surface with DVR chrome and live-edge diagnostics
+  - `ArchivePlayer` is used for catch-up playback and relies on native archive controls instead of pretending archive playback is live
 - Multiview tiles now get a compact version of the same controls inside each tile without breaking the one-audio-owner rule.
 - Multiview control density now scales by layout density:
   - `2x2` keeps compact controls
@@ -264,6 +270,58 @@ Key relationship rules:
   - the shared-timeshift model is still single-process; API restart clears hot shared-session and retained-buffer state until viewers attach again
 - Recommended next task:
   - add optional viewer resume/bookmark policy plus explicit focused-player keyboard shortcuts for `Go Live` / jump controls, then add route-level watch and multiview regression coverage around those flows
+
+## Catch-up TV And Previous-Program Playback
+
+- Catch-up availability is now explicit on guide programmes through a `catchup` summary returned with resolved guide rows.
+- Current guide/catch-up timing states:
+  - `PREVIOUS`
+  - `LIVE_NOW`
+  - `UPCOMING`
+- Current playback states:
+  - `LIVE_NOW`
+  - `LIVE_WATCH_FROM_START`
+  - `UPCOMING`
+  - `PREVIOUS_NOT_AVAILABLE`
+  - `PREVIOUS_RECORDING`
+  - `PREVIOUS_TIMESHIFT`
+  - `PREVIOUS_RECORDING_AND_TIMESHIFT`
+- Real playback-source resolution now works like this:
+  - linked recording match first
+  - otherwise a sufficiently overlapping recording match
+  - otherwise retained DVR-window coverage
+  - current-program `Watch from start` only when the retained window really covers the programme start
+- Current source-priority rule:
+  - prefer recording-backed playback over retained-window playback
+  - reason: recording is more stable, less ephemeral, and better aligned with explicit archive semantics
+- Current backend contracts:
+  - `/api/epg/channels/:channelId/guide`
+    - returns programmes with explicit catch-up availability/state
+  - `/api/epg/channels/:channelId/programs/:programId/playback`
+    - resolves one real playback source for that programme
+    - returns `409` when the programme exists but catch-up is not honestly available
+- Current watch-page behavior:
+  - the guide window now includes earlier programmes as well as upcoming items
+  - earlier programmes are visibly badged as live, next, earlier, recording-backed, DVR-window-backed, or not available
+  - the current programme now exposes `Watch current from start` when the retained window truly covers the programme start
+  - selecting a previous programme switches the page into explicit catch-up playback rather than silently reusing the live player state
+  - a `Return to live` action clears archive context and restores the live channel view
+- Current playback semantics:
+  - recording-backed catch-up uses archive playback with the resolved recording source
+  - retained-window catch-up uses the timeshift HLS path plus an explicit start offset into the real retained window
+  - archive playback context shows whether the user is watching:
+    - a recording
+    - a retained DVR window
+    - the current programme from its start
+- Current intentional limitation:
+  - playback-session heartbeats remain live-only today
+  - catch-up/archive playback does not send live-edge or behind-live telemetry, because that would blur live and archive semantics until a dedicated archive telemetry model exists
+- Remaining risk:
+  - retained-window catch-up remains inherently ephemeral and can expire between browsing and playback request
+  - current catch-up browsing is strongest on the single-view watch page; the broader grid/guide/archive surfaces are still future work
+  - there is still no durable continue-watching or resume-bookmark model for archive playback
+- Recommended next task:
+  - add archive resume markers and continue-watching policy for catch-up playback, then extend the richer catch-up entry points into broader guide surfaces and route-level watch regression coverage
 
 ## Shared Channel Restream And Edge Cache Foundation
 
@@ -342,6 +400,12 @@ Key relationship rules:
   - the live-edge relay path
   - the buffered DVR path
   - the default playback path currently chosen for the viewer
+- Guide-driven catch-up playback must resolve through the `epg` playback contract instead of assembling archive URLs in pages:
+  - previous programmes without a real source must stay unavailable
+  - recording-backed playback is preferred over retained DVR-window playback when both exist
+- Live-only playback telemetry and archive playback telemetry are intentionally different:
+  - current playback heartbeats remain a live-viewer contract
+  - catch-up/archive playback should not be reported as fake live-edge or behind-live activity
 - Public channel responses may intentionally hide raw upstream stream URLs when proxy mode is enabled.
 - Guide mapping and manual programme management belong to the `epg` module and admin EPG screen, not to channel CRUD routes.
 - Guide resolution follows one practical precedence rule:

@@ -23,6 +23,8 @@ That does not belong in:
 
 - `player/hls-player.tsx`
   - React wrapper around one `<video>` element, one HLS.js instance, explicit in-player controls, and browser media API integration
+- `player/archive-player.tsx`
+  - archive/catch-up playback wrapper for recording files and retained-window HLS playback with native archive controls plus initial archive seek support
 - `player/timeshift-ui.ts`
   - pure live-DVR state mapping for capability labels, live-edge vs behind-live status, retained-window copy, and `Go Live` affordance decisions
 - `player/live-dvr-timeline.tsx`
@@ -74,10 +76,12 @@ That does not belong in:
 - Frontend service helpers may choose the playback URL contract (`DIRECT` upstream URL vs `PROXY` gateway path vs `SHARED` local-origin path), but they do not own HLS lifecycle behavior.
 - `HlsPlayer` owns playback lifecycle, explicit player controls, browser media API integration, and emits status, diagnostics, mute, and quality callbacks upward.
 - `HlsPlayer` also owns the player-facing timeshift UX model, including the persistent DVR rail and capability-gated `Go Live` / jump controls.
+- `ArchivePlayer` owns archive/catch-up playback lifecycle for already-resolved archive sources; pages may choose it, but they must not reimplement recording-file or retained-window playback setup inline.
 - Multi-view pages own which tile is focused, reassigned, saved, or displayed.
 - Player-facing multiview UI components may live under `player/` when they wrap `HlsPlayer`, but pages still resolve playback URLs and persistence decisions.
 - Shared quality and tile decision logic lives in pure player helpers.
 - Route pages may store player diagnostics snapshots for operator-facing status panels, but they must not recreate HLS recovery logic themselves.
+- Route pages may orchestrate live-vs-catch-up mode, but they must keep those states explicit instead of flattening archive playback into the live player contract.
 
 ## Playback URL Selection Rules
 
@@ -87,9 +91,14 @@ That does not belong in:
 - Shared-delivery channels should resolve playback through the backend shared master path so multiple local viewers can reuse one channel-local cache/session where possible.
 - Page code should resolve playback URLs through a small service/helper seam rather than hard-coding `/api/streams/...` paths inline.
 - Pages should prefer `/api/streams/channels/:id/session/status` as the owning backend contract for integrated live-edge vs buffered playback decisions.
+- Pages should use `/api/epg/channels/:id/programs/:programId/playback` as the owning contract for guide-driven catch-up playback decisions.
 - Timeshift-enabled TV-Dash-managed channels should keep both concepts explicit:
   - live-edge path: shared master or proxy master, depending on delivery mode
   - buffered path: timeshift master, when the retained DVR window is supported
+- Catch-up selection rules should stay backend-owned and explicit:
+  - recording-backed playback is preferred over retained-window playback
+  - current-program `Watch from start` is only valid when the retained window really covers the programme start
+  - pages should not fabricate archive URLs or guess source priority
 - The default playback path may still point at the timeshift master once the retained window is ready so the player has one honest seekable source for pause/rewind behavior.
 - The player should receive a final URL or `null`; it should not know how channel proxy mode is decided.
 - The player should receive a final URL or `null`; it should not know how channel delivery mode is decided.
@@ -174,6 +183,10 @@ Do not add silent infinite retry loops. Any retry policy change must consider mu
 - player diagnostics may report paused, muted, PiP-active, fullscreen-active, and live-edge state so surrounding pages can explain the current browser/player state without reimplementing media APIs
 - player diagnostics should distinguish between normal in-page playback and native browser PiP so surrounding pages can explain the current mode without reimplementing media APIs
 - fullscreen and PiP capability detection belongs in player helpers, not route pages, because Chrome and Firefox diverge most in those browser-owned behaviors
+- Catch-up/archive playback should stay distinct from live DVR playback:
+  - archive playback should use native archive controls rather than fake live-edge chrome
+  - live-only diagnostics and heartbeat semantics should not be reused for archive playback
+  - retained-window catch-up may still use HLS transport, but it is archive playback once the page selects a past programme
 
 ## Picture-In-Picture And Media Session Policy
 

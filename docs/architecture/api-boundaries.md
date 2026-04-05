@@ -84,7 +84,7 @@ Repositories must not:
 - `groups`
   - channel grouping/catalog structure
 - `epg`
-  - EPG source CRUD, XMLTV import orchestration, source-channel discovery, channel mapping, manual program CRUD, guide resolution, and now/next response assembly
+  - EPG source CRUD, XMLTV import orchestration, source-channel discovery, channel mapping, manual program CRUD, guide resolution, now/next response assembly, catch-up availability resolution, and guide-program playback selection
 - `favorites`
   - per-user pinned channels
 - `layouts`
@@ -141,6 +141,17 @@ Repositories must not:
 - Imported and manual guide rows belong in durable `ProgramEntry` records.
 - Manual guide rows may override imported rows, but that precedence rule must be resolved inside the `epg` module rather than inside pages or channel repositories.
 - Guide import, mapping, and now/next assembly live behind the `epg` module boundary.
+- Catch-up availability and programme-to-playback resolution also live behind the `epg` module boundary:
+  - guide rows may expose explicit catch-up metadata
+  - programme playback resolution must return only real playable sources
+  - routes must not assemble recording or retained-window playback URLs inline
+- Current catch-up source policy is backend-owned:
+  - linked recording match first
+  - otherwise sufficiently overlapping recording coverage
+  - otherwise retained DVR-window coverage
+  - recording-backed playback is preferred over retained-window playback when both exist
+  - current-program `Watch from start` is only valid when the retained DVR window honestly covers the programme start
+- Previous programmes with no real source must fail explicitly instead of returning synthetic archive playback.
 - This milestone uses explicit admin-triggered imports plus durable storage. Background refresh scheduling remains future work and should be added inside the `epg` module, not bolted onto route handlers.
 
 ## Recording Foundation Rules
