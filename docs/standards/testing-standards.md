@@ -205,6 +205,8 @@ These areas are release-critical and should gain or maintain automated coverage 
 ### Auth And Governance
 
 - login, logout, and `me` flows when session lifecycle behavior changes
+- LDAP config validation, identity extraction, and first-login link/provision behavior when enterprise auth changes
+- OIDC config validation, discovery/callback seams, and provider enable/disable visibility when enterprise auth changes
 - stale or revoked session rejection for protected endpoints
 - admin-only endpoint rejection for non-admin/operator users
 - durable audit event creation for sensitive admin mutations

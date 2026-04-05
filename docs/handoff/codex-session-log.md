@@ -1,5 +1,77 @@
 # Codex Session Log
 
+## `2026-04-05T20:05:00+03:00`
+
+### Objective
+
+Add real enterprise authentication to TV-Dash so operators can sign in with LDAP and OIDC providers, configure those providers in-product, and map external identities onto durable local TV-Dash users without weakening the existing auth/session model.
+
+### Work Completed
+
+- created the requested branch `028-ldap-oidc-and-enterprise-auth-integration`
+- added durable enterprise auth persistence:
+  - `AuthProvider`
+  - `ExternalIdentity`
+  - new provider type and validation-status enums
+  - nullable local `passwordHash` so externally provisioned users can exist without fake local passwords
+- added enterprise auth provider configuration support in the backend:
+  - one LDAP provider config
+  - one OIDC provider config
+  - encrypted-at-rest provider secrets for LDAP bind passwords and OIDC client secrets
+  - saved provider validation status and message tracking
+- implemented real LDAP login behavior:
+  - configurable LDAP/LDAPS connection settings
+  - optional StartTLS
+  - configured bind/search lookup
+  - resolved-user DN bind for password verification
+  - username/email/display-name extraction for identity mapping
+- implemented real OIDC login behavior:
+  - issuer discovery
+  - authorization code flow with PKCE, state, and nonce
+  - backend-owned callback validation
+  - SPA session completion through short-lived signed cookies instead of query-token leakage
+  - practical Keycloak-compatible configuration path
+  - provider logout redirect when discovery exposes `end_session_endpoint`
+- implemented durable local identity mapping:
+  - provider + subject link reuse on repeat login
+  - optional email-based auto-link
+  - optional username-based auto-link
+  - optional first-login auto-provisioning with default role
+  - explicit conflict failure when an external email already belongs to a different local TV-Dash user
+- upgraded the frontend login experience:
+  - local login remains available
+  - optional LDAP login panel appears when enabled
+  - optional OIDC/SSO button appears when enabled
+  - dedicated OIDC callback page finalizes the browser session
+- added a new admin enterprise auth area at `/admin/auth`:
+  - enable/disable LDAP
+  - enable/disable OIDC
+  - save connection/provider settings
+  - test saved LDAP and OIDC configuration
+  - view provider validation status and whether secrets are stored
+- extended auth/session responses so the frontend now knows which auth provider established the active TV-Dash session
+- added targeted coverage for:
+  - public provider visibility logic
+  - LDAP identity-link and auto-provision behavior
+  - existing auth route login/me/logout behavior after the new enterprise auth additions
+- updated durable architecture/testing/handoff docs for the enterprise auth milestone
+
+### Verification Run
+
+- `npm run test`
+- `npm run lint -w apps/api`
+- `npm run lint -w apps/web`
+
+### Remaining Risk
+
+- role mapping groundwork exists, but LDAP groups and OIDC claims are not yet translated into TV-Dash roles automatically
+- enterprise auth currently supports one LDAP provider and one OIDC provider; multi-provider federation is future work
+- OIDC logout handling is practical for common providers like Keycloak, but it is not full standards-complete single logout across every vendor variation
+
+### Exact Suggested Next Task
+
+Add explicit external group/claim to TV-Dash role mapping with admin preview/validation tooling, starting with LDAP group names and OIDC claim values mapped onto `ADMIN` vs `USER` policy.
+
 ## `2026-04-05T19:10:00+03:00`
 
 ### Objective

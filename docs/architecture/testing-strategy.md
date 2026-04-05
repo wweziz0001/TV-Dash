@@ -9,6 +9,7 @@ As of `2026-04-02`, TV-Dash has:
 - representative tests for:
   - operational alert creation, deduplication, recovery linkage, and admin alert-route behavior
   - auth login/me/logout session-version handling
+  - enterprise auth provider visibility plus LDAP identity-link/provision behavior
   - API health server boot path
   - channel, group, favorite, layout, and stream route validation/contract behavior via Fastify `inject`
   - audit trail creation and admin audit-event listing
@@ -105,6 +106,7 @@ If a change touches one of those flows and no automated regression exists yet, e
 - diagnostics route coverage now exists for channel and EPG runtime inspection endpoints
 - monitoring route coverage now exists for admin observability snapshots
 - auth and audit route coverage now exists for session-version enforcement plus admin governance events
+- enterprise auth service coverage now exists for provider enablement visibility plus LDAP first-login link/provision behavior
 - next step is database-backed Fastify integration coverage for auth, channels, groups, layouts, favorites, and streams
 - introduce isolated database strategy for tests
 

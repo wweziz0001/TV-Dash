@@ -43,6 +43,18 @@ const mockPrisma = {
     updateMany: vi.fn(),
     upsert: vi.fn(),
   },
+  authProvider: {
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+    upsert: vi.fn(),
+    update: vi.fn(),
+  },
+  externalIdentity: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  },
   auditEvent: {
     create: vi.fn(),
     findMany: vi.fn(),
@@ -159,7 +171,8 @@ describe("authRoutes", () => {
       headers: createAuthHeaders(server, { role: "ADMIN", sessionVersion: 0 }),
     });
 
-    expect(response.statusCode).toBe(204);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ logoutUrl: null });
     expect(mockPrisma.user.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {

@@ -80,7 +80,7 @@ Repository input rule:
 
 Current stable module ownership:
 
-- `auth`: login and authenticated-user lookup
+- `auth`: local login/logout, LDAP login, OIDC login/callback/session exchange, authenticated-user lookup, enterprise auth provider configuration, and external-identity mapping
 - `audit`: durable admin governance events and audit listing
 - `alerts`: persisted operational alert state, deduplicated operator notifications, and alert lifecycle actions
 - `channels`: logical channel catalog CRUD, browse lookups, ingest-mode metadata, manual quality variants, playback-mode metadata, and playback-facing guide hints
@@ -153,6 +153,10 @@ Recording-specific expectations:
 - Protected routes must resolve the current authenticated user when session freshness matters; do not trust stale role claims in a token forever.
 - Admin-only endpoints that accept operationally dangerous inputs, such as arbitrary upstream URLs or request-header overrides, must stay admin-only on the server even if the frontend route is already admin-gated.
 - Logout should invalidate current authenticated sessions server-side, not only clear client storage.
+- Enterprise auth provider configuration must:
+  - keep bind credentials and client secrets out of normal response payloads
+  - validate provider settings server-side before enabling them
+  - create durable audit events for admin changes to provider state
 
 ## Audit Rules
 

@@ -76,7 +76,7 @@ Repositories must not:
 ## Module Ownership
 
 - `auth`
-  - login, logout, current-user session lookup, and session-version validation
+  - local login/logout, LDAP login, OIDC login/callback/session exchange, current-user session lookup, session-version validation, enterprise provider configuration, and external-identity mapping
 - `audit`
   - durable admin governance events for sensitive operational actions
 - `alerts`
@@ -197,6 +197,13 @@ Keep those mappings stable unless the contract explicitly changes.
   - validate the token
   - resolve the current user from persistence
   - reject stale or revoked sessions when the stored `sessionVersion` no longer matches
+- Enterprise auth still stays inside the `auth` module boundary:
+  - LDAP bind/search logic belongs in auth services/helpers, not in routes or generic utilities
+  - OIDC discovery, PKCE/state handling, callback validation, and temporary login handoff cookies belong in auth services/routes, not in frontend-only code
+  - external identities link back to durable local `User` rows; pages must not infer or synthesize identity links client-side
+- Auth-provider admin routes are security-sensitive admin surfaces:
+  - provider secrets must stay server-side, encrypted at rest, and redacted from API responses
+  - provider test actions must never echo stored secrets back to clients
 - Server-side permission checks are the source of truth for admin boundaries.
 - Frontend route guards may improve UX, but they must never be the only protection for admin pages or operational APIs.
 - Current role foundation:

@@ -26,12 +26,20 @@ The current operator milestone also adds:
 - a first real Catch-up TV milestone where previous programmes can be played from honest EPG-linked recording matches or still-retained DVR windows, with live vs archive playback kept explicit in the watch experience
 - a first program-aware archive/library milestone where channel history, catch-up availability, and the recordings library now share one explicit archive-status model and cross-navigation path
 - a first real operational alerts and notifications system with persisted alert state, in-app admin alert center UX, active-vs-historical lifecycle handling, and deduplicated operational event generation
+- a first real enterprise authentication milestone with admin-managed LDAP and OIDC provider configuration, Keycloak-compatible OIDC login, encrypted provider secrets, and durable external-identity mapping onto local TV-Dash users
 
 ## Current Architecture Summary
 
 - Monorepo with `apps/api`, `apps/web`, and `packages/shared`
 - Backend now follows explicit `routes -> services -> repositories -> prisma` boundaries inside `apps/api/src/modules`
 - Backend auth now resolves the current user for protected requests so stale or revoked sessions fail server-side instead of trusting old token claims indefinitely
+- Backend auth now also supports:
+  - local email/password login
+  - LDAP bind/search login against configured directories
+  - OIDC authorization-code login with PKCE and callback/session exchange
+  - Keycloak-compatible OIDC discovery/login/logout redirection
+  - durable external identities linked back to local `User` rows
+  - encrypted-at-rest provider secrets for LDAP bind passwords and OIDC client secrets
 - Backend observability now includes a dedicated `diagnostics` module for admin inspection endpoints plus shared structured-log helpers
 - Backend governance now also includes an `audit` module for durable admin action records with sanitized detail fields
 - Backend now also includes an `alerts` module for persisted operational alerts, alert deduplication, acknowledgement/dismissal/resolution, and in-app notification-center data
@@ -104,7 +112,7 @@ tests/
 
 ## Key Backend Modules
 
-- `auth`: login and current user lookup
+- `auth`: local login/logout, LDAP login, OIDC login/callback/session exchange, enterprise auth provider admin/config flows, external-identity mapping, and current user lookup
 - `audit`: durable admin governance events and audit listing
 - `alerts`: persisted operational alerts, in-app notification-center state, alert lifecycle actions, and dedupe/recovery handling
 - `channels`: logical channel catalog CRUD, browse lookups, ingest-mode metadata, manual quality variants, playback-mode metadata, and playback-facing guide hints
@@ -124,6 +132,8 @@ Prisma schema lives in `apps/api/prisma/schema.prisma`.
 Main models:
 
 - `User`
+- `AuthProvider`
+- `ExternalIdentity`
 - `AuditEvent`
 - `ChannelGroup`
 - `Channel`
@@ -161,6 +171,60 @@ Key relationship rules:
 - saved layouts are per-user and contain ordered tile items
 - each logical channel resolves to one player-facing master source plus optional upstream request metadata
 - users now carry a `sessionVersion` field so logout and future auth-sensitive changes can invalidate stale JWT-backed sessions server-side
+- users may now also have zero or more linked `ExternalIdentity` rows, one per external provider subject
+- auth providers are currently one LDAP config plus one OIDC config:
+  - both are admin-managed in-product
+  - both keep non-secret settings in `configurationJson`
+  - both keep secrets encrypted in `secretCiphertext`
+
+## Enterprise Authentication
+
+TV-Dash now supports three coherent login paths:
+
+- local email/password login
+- LDAP login against a configured enterprise directory
+- OIDC login against a configured identity provider, including Keycloak-compatible issuers
+
+### LDAP flow
+
+- admins configure one LDAP provider in `/admin/auth`
+- TV-Dash stores the bind password encrypted at rest when one is configured
+- on login, TV-Dash:
+  - connects to the configured LDAP server
+  - optionally upgrades with StartTLS
+  - performs the configured bind/search lookup
+  - resolves exactly one user entry
+  - binds as the resolved DN to verify the supplied password
+  - extracts username/email/display-name attributes for identity mapping
+
+### OIDC / Keycloak flow
+
+- admins configure one OIDC provider in `/admin/auth`
+- TV-Dash uses issuer discovery, authorization code flow, PKCE, state, and nonce validation
+- the backend owns the callback exchange and then hands the validated TV-Dash session back to the SPA through a short-lived signed cookie exchange
+- Keycloak should be configured with the callback URL:
+  - `${VITE_API_BASE_URL}/auth/oidc/callback`
+- logout now still invalidates the local TV-Dash session and will redirect to the provider `end_session_endpoint` when discovery exposes one and the request originated from the web app
+
+### Local user mapping
+
+- every external login resolves to one durable local `User`
+- mapping order is:
+  - existing `ExternalIdentity` by provider + subject
+  - optional admin-enabled email link
+  - optional admin-enabled username link
+  - optional first-login auto-provisioning with default role
+- conflicts fail explicitly instead of silently creating duplicate links when an email is already owned by a different local user
+
+### Current limitations
+
+- group-to-role mapping is groundwork only right now; group/claim values are extracted but not yet converted into TV-Dash permissions
+- enterprise auth currently supports one LDAP provider and one OIDC provider, not many providers of each type
+- OIDC logout alignment is practical but not full single logout across every provider variation
+
+Recommended next task:
+
+- add explicit external group/claim to TV-Dash role mapping, starting with default-role override rules for LDAP groups and OIDC claims plus admin preview tooling before enabling automatic promotion
 
 ## Operational Alerts And Notifications
 
