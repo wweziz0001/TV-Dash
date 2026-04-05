@@ -5,6 +5,7 @@ import {
   Clapperboard,
   Film,
   Grid2x2,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   RadioTower,
@@ -27,6 +28,7 @@ const primaryNav = [
 const adminNav = [
   { to: "/admin/alerts", label: "Alerts", icon: BellRing },
   { to: "/admin/observability", label: "Observability", icon: ActivitySquare },
+  { to: "/admin/auth", label: "Enterprise Auth", icon: KeyRound },
   { to: "/admin/channels", label: "Admin Channels", icon: LayoutDashboard },
   { to: "/admin/groups", label: "Admin Groups", icon: ShieldCheck },
   { to: "/admin/epg", label: "Admin EPG", icon: RadioTower },

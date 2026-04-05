@@ -4,7 +4,11 @@ import type {
   ChannelGroupInput,
   ChannelInput,
   EpgSourceInput,
+  LdapLoginInput,
+  LdapProviderConfigInput,
+  LdapProviderTestInput,
   LoginInput,
+  OidcProviderConfigInput,
   OperationalAlertCategory,
   OperationalAlertSeverity,
   OperationalAlertStatus,
@@ -31,13 +35,17 @@ import type {
   ChannelProgramPlayback,
   ChannelGuideWindow,
   ChannelStreamSessionStatus,
+  EnterpriseAuthSettings,
   EpgSourceChannel,
   EpgSource,
   EpgSourceDiagnostics,
   Favorite,
   LiveTimeshiftStatus,
+  LogoutResponse,
+  OidcAuthResponse,
   OperationalAlert,
   OperationalAlertSummary,
+  PublicAuthProviders,
   ProgramEntry,
   RecordingJob,
   RecordingQualityOption,
@@ -123,8 +131,54 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  me: (token: string) => request<{ user: User | null }>("/auth/me", { method: "GET" }, token),
-  logout: (token: string) => request<void>("/auth/logout", { method: "POST" }, token),
+  loginWithLdap: (payload: LdapLoginInput) =>
+    request<AuthResponse>("/auth/ldap/login", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  getPublicAuthProviders: () => request<{ providers: PublicAuthProviders }>("/auth/providers/public"),
+  beginOidcLogin: (returnTo?: string) => {
+    const params = new URLSearchParams();
+
+    if (returnTo) {
+      params.set("returnTo", returnTo);
+    }
+
+    window.location.assign(`${API_BASE_URL}/auth/oidc/start${params.size > 0 ? `?${params.toString()}` : ""}`);
+  },
+  consumeOidcLogin: () =>
+    request<OidcAuthResponse>("/auth/oidc/session", {
+      method: "GET",
+      credentials: "include",
+    }),
+  me: (token: string) => request<{ user: User | null; session: AuthResponse["session"] }>("/auth/me", { method: "GET" }, token),
+  logout: (token: string) => request<LogoutResponse>("/auth/logout", { method: "POST" }, token),
+  getEnterpriseAuthSettings: (token: string) =>
+    request<{ settings: EnterpriseAuthSettings }>("/auth/providers", {}, token),
+  updateLdapAuthSettings: (payload: LdapProviderConfigInput, token: string) =>
+    request<{ settings: EnterpriseAuthSettings["providers"]["ldap"] }>(
+      "/auth/providers/ldap",
+      { method: "PUT", body: JSON.stringify(payload) },
+      token,
+    ),
+  testLdapAuthSettings: (payload: LdapProviderTestInput, token: string) =>
+    request<{ result: { message: string; identity?: { username: string | null; email: string | null; displayName: string | null } } }>(
+      "/auth/providers/ldap/test",
+      { method: "POST", body: JSON.stringify(payload) },
+      token,
+    ),
+  updateOidcAuthSettings: (payload: OidcProviderConfigInput, token: string) =>
+    request<{ settings: EnterpriseAuthSettings["providers"]["oidc"] }>(
+      "/auth/providers/oidc",
+      { method: "PUT", body: JSON.stringify(payload) },
+      token,
+    ),
+  testOidcAuthSettings: (token: string) =>
+    request<{ result: { issuer: string; authorizationEndpoint: string; tokenEndpoint: string; endSessionEndpoint: string | null } }>(
+      "/auth/providers/oidc/test",
+      { method: "POST" },
+      token,
+    ),
   listChannels: (token: string | null, params?: URLSearchParams) =>
     request<{ channels: Channel[] }>(`/channels${params ? `?${params.toString()}` : ""}`, {}, token),
   getChannelConfig: (id: string, token: string) =>

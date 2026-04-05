@@ -1,4 +1,7 @@
 import type {
+  AuthProviderType,
+  AuthProviderValidationStatus,
+  AuthSessionProviderType,
   ChannelSourceMode,
   DiagnosticFailureKind,
   DiagnosticHealthState,
@@ -34,6 +37,12 @@ export interface User {
   role: UserRole;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface AuthSession {
+  providerType: AuthSessionProviderType;
+  providerId: string | null;
+  providerName: string | null;
 }
 
 export interface ChannelGroup {
@@ -492,6 +501,119 @@ export interface RecordingRule {
 export interface AuthResponse {
   token: string;
   user: User;
+  session: AuthSession;
+}
+
+export interface OidcAuthResponse extends AuthResponse {
+  nextPath: string;
+}
+
+export interface PublicAuthProviders {
+  local: {
+    enabled: boolean;
+    loginLabel: string;
+  };
+  ldap: {
+    name: string;
+    loginLabel: string;
+    identifierLabel: string;
+    identifierPlaceholder: string;
+  } | null;
+  oidc: {
+    name: string;
+    loginLabel: string;
+  } | null;
+}
+
+export interface LdapAuthProviderSettings {
+  id: string;
+  type: AuthProviderType;
+  name: string;
+  isEnabled: boolean;
+  isVisibleOnLogin: boolean;
+  allowAutoProvision: boolean;
+  autoLinkByEmail: boolean;
+  autoLinkByUsername: boolean;
+  defaultRole: UserRole;
+  lastValidatedAt: string | null;
+  lastValidationStatus: AuthProviderValidationStatus;
+  lastValidationMessage: string | null;
+  hasBindPassword: boolean;
+  config: {
+    name: string;
+    loginLabel: string;
+    identifierLabel: string;
+    identifierPlaceholder: string;
+    isEnabled: boolean;
+    isVisibleOnLogin: boolean;
+    allowAutoProvision: boolean;
+    autoLinkByEmail: boolean;
+    autoLinkByUsername: boolean;
+    defaultRole: UserRole;
+    serverUrl: string;
+    bindDn: string | null;
+    userSearchBaseDn: string;
+    userSearchFilter: string;
+    userSearchScope: "base" | "one" | "sub";
+    usernameAttribute: string;
+    emailAttribute: string;
+    displayNameAttribute: string;
+    groupAttribute: string | null;
+    startTls: boolean;
+    rejectUnauthorized: boolean;
+    timeoutMs: number;
+    connectTimeoutMs: number;
+  };
+}
+
+export interface OidcAuthProviderSettings {
+  id: string;
+  type: AuthProviderType;
+  name: string;
+  isEnabled: boolean;
+  isVisibleOnLogin: boolean;
+  allowAutoProvision: boolean;
+  autoLinkByEmail: boolean;
+  autoLinkByUsername: boolean;
+  defaultRole: UserRole;
+  lastValidatedAt: string | null;
+  lastValidationStatus: AuthProviderValidationStatus;
+  lastValidationMessage: string | null;
+  hasClientSecret: boolean;
+  config: {
+    name: string;
+    loginLabel: string;
+    isEnabled: boolean;
+    isVisibleOnLogin: boolean;
+    allowAutoProvision: boolean;
+    autoLinkByEmail: boolean;
+    autoLinkByUsername: boolean;
+    defaultRole: UserRole;
+    issuerUrl: string;
+    clientId: string;
+    scopes: string;
+    usernameClaim: string;
+    emailClaim: string;
+    displayNameClaim: string;
+    groupsClaim: string | null;
+    postLogoutRedirectPath: string;
+    requireVerifiedEmail: boolean;
+  };
+}
+
+export interface EnterpriseAuthSettings {
+  local: {
+    enabled: boolean;
+    loginLabel: string;
+  };
+  providers: {
+    ldap: LdapAuthProviderSettings;
+    oidc: OidcAuthProviderSettings;
+  };
+}
+
+export interface LogoutResponse {
+  logoutUrl: string | null;
 }
 
 export interface LiveTimeshiftStatus {

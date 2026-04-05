@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "@/components/layout/app-shell";
 import { RequireAdmin, RequireAuth } from "@/features/auth/auth-context";
 import { AdminAlertsPage } from "@/pages/admin-alerts-page";
+import { AdminAuthPage } from "@/pages/admin-auth-page";
 import { AdminChannelsPage } from "@/pages/admin-channels-page";
 import { AdminEpgSourcesPage } from "@/pages/admin-epg-sources-page";
 import { AdminGroupsPage } from "@/pages/admin-groups-page";
@@ -12,6 +13,7 @@ import { ForbiddenPage } from "@/pages/forbidden-page";
 import { LoginPage } from "@/pages/login-page";
 import { MultiViewPage } from "@/pages/multiview-page";
 import { NotFoundPage } from "@/pages/not-found-page";
+import { OidcCallbackPage } from "@/pages/oidc-callback-page";
 import { RecordingPlaybackPage } from "@/pages/recording-playback-page";
 import { RecordingsPage } from "@/pages/recordings-page";
 
@@ -20,6 +22,7 @@ export function AppRouter() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/login/oidc/callback" element={<OidcCallbackPage />} />
         <Route
           path="/"
           element={
@@ -39,6 +42,14 @@ export function AppRouter() {
             element={
               <RequireAdmin>
                 <AdminAlertsPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/auth"
+            element={
+              <RequireAdmin>
+                <AdminAuthPage />
               </RequireAdmin>
             }
           />
