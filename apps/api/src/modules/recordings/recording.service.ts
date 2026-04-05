@@ -10,6 +10,7 @@ import { getProgramEntryById } from "../epg/epg.service.js";
 import { recordAuditEvent } from "../audit/audit.service.js";
 import { getChannelById, getChannelStreamDetails } from "../channels/channel.service.js";
 import { createRecordingPlaybackToken, readRecordingPlaybackToken } from "./recording-playback-token.js";
+import { resolveRecordingArchiveContext, type RecordingArchiveContext } from "./recording-archive.js";
 import { listRecordingQualityOptions } from "./recording-quality.js";
 import { resolveRecordingRunProgress } from "./recording-progress.js";
 import { getWeekdayForDate } from "./recording-recurrence.js";
@@ -48,6 +49,7 @@ import {
 import { deleteRecordingFile } from "./recording-storage.js";
 import { generateRecordingThumbnail } from "./recording-thumbnail.js";
 import { pokeRecordingRuntime, stopActiveRecordingJob } from "./recording-runtime.js";
+import { getChannelTimeshiftCatchupWindow } from "../streams/timeshift-buffer.js";
 
 interface RecordingViewer {
   id: string;
@@ -258,7 +260,27 @@ function mapRecordingRuleJobSummary(job: RecordingJobRecord | null) {
   };
 }
 
-async function mapRecordingJob(record: RecordingJobRecord) {
+async function buildRecordingArchiveContextMap(records: RecordingJobRecord[]) {
+  const channelIds = Array.from(new Set(records.map((record) => record.channelId).filter((value): value is string => Boolean(value))));
+  const timeshiftEntries = await Promise.all(
+    channelIds.map(async (channelId) => [channelId, await getChannelTimeshiftCatchupWindow(channelId)] as const),
+  );
+  const timeshiftByChannelId = new Map(timeshiftEntries);
+  const now = new Date();
+
+  return new Map(
+    records.map((record) => [
+      record.id,
+      resolveRecordingArchiveContext({
+        recording: record,
+        now,
+        timeshiftWindow: record.channelId ? (timeshiftByChannelId.get(record.channelId) ?? null) : null,
+      }),
+    ]),
+  );
+}
+
+async function mapRecordingJob(record: RecordingJobRecord, archiveContext: RecordingArchiveContext | null = null) {
   const latestRun = await resolveRecordingRunProgress(record);
   const assetAccess = record.asset ? buildRecordingAssetAccess(record.id, record.asset.id) : null;
 
@@ -322,6 +344,7 @@ async function mapRecordingJob(record: RecordingJobRecord) {
           role: record.createdByUser.role,
         }
       : null,
+    archiveContext,
     latestRun,
     asset: record.asset
       ? {
@@ -495,8 +518,9 @@ export async function listRecordingJobsForViewer(
     recordedBefore: filters.recordedBefore,
     sort: filters.sort,
   });
+  const archiveContextMap = await buildRecordingArchiveContextMap(jobs);
 
-  return Promise.all(jobs.map(mapRecordingJob));
+  return Promise.all(jobs.map((job) => mapRecordingJob(job, archiveContextMap.get(job.id) ?? null)));
 }
 
 export async function getRecordingJobForViewer(viewer: RecordingViewer, recordingJobId: string) {
@@ -506,7 +530,9 @@ export async function getRecordingJobForViewer(viewer: RecordingViewer, recordin
     throw new Error("Recording job not found");
   }
 
-  return mapRecordingJob(job);
+  const archiveContextMap = await buildRecordingArchiveContextMap([job]);
+
+  return mapRecordingJob(job, archiveContextMap.get(job.id) ?? null);
 }
 
 export async function listRecordingRulesForViewer(viewer: RecordingViewer, filters: RecordingRuleViewerFilters) {

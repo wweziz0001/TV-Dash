@@ -1,4 +1,11 @@
-export type GuideProgramTimingState = "PREVIOUS" | "LIVE_NOW" | "UPCOMING";
+import {
+  resolveProgramArchiveAvailability,
+  type GuideProgramTimingState,
+  type ProgramArchiveAccess,
+  type ProgramArchiveStatus,
+  type ProgramCatchupPlaybackState,
+} from "./program-archive.js";
+
 export type CatchupSourceType = "RECORDING" | "TIMESHIFT";
 export type RecordingMatchType = "LINKED" | "OVERLAP";
 
@@ -27,14 +34,11 @@ export interface ProgramCatchupSourceSummary {
 
 export interface ProgramCatchupSummary {
   timingState: GuideProgramTimingState;
-  playbackState:
-    | "LIVE_NOW"
-    | "LIVE_WATCH_FROM_START"
-    | "UPCOMING"
-    | "PREVIOUS_NOT_AVAILABLE"
-    | "PREVIOUS_RECORDING"
-    | "PREVIOUS_TIMESHIFT"
-    | "PREVIOUS_RECORDING_AND_TIMESHIFT";
+  playbackState: ProgramCatchupPlaybackState;
+  archiveStatus: ProgramArchiveStatus;
+  archiveAccess: ProgramArchiveAccess;
+  hasRecordingSource: boolean;
+  hasTimeshiftSource: boolean;
   isCatchupPlayable: boolean;
   watchFromStartAvailable: boolean;
   preferredSourceType: CatchupSourceType | null;
@@ -175,6 +179,23 @@ export function resolveProgramCatchupSummary(params: {
   recordingCandidates: RecordingCatchupCandidate[];
   timeshiftWindow: TimeshiftCatchupWindow | null;
 }) {
+  function buildSummary(playbackState: ProgramCatchupPlaybackState, base: Omit<ProgramCatchupSummary, "timingState" | "playbackState" | "archiveStatus" | "archiveAccess" | "hasRecordingSource" | "hasTimeshiftSource">) {
+    const archiveAvailability = resolveProgramArchiveAvailability({
+      timingState,
+      playbackState,
+    });
+
+    return {
+      timingState,
+      playbackState,
+      archiveStatus: archiveAvailability.archiveStatus,
+      archiveAccess: archiveAvailability.archiveAccess,
+      hasRecordingSource: archiveAvailability.hasRecordingSource,
+      hasTimeshiftSource: archiveAvailability.hasTimeshiftSource,
+      ...base,
+    } satisfies ProgramCatchupSummary;
+  }
+
   const timingState = getProgramTimingState(params.program, params.now);
   const preferredRecording = selectPreferredRecordingCatchupCandidate(params.program, params.recordingCandidates);
   const timeshiftPlayable = isTimeshiftWindowPlayable(params.program, params.timeshiftWindow);
@@ -203,21 +224,17 @@ export function resolveProgramCatchupSummary(params: {
   }
 
   if (timingState === "UPCOMING") {
-    return {
-      timingState,
-      playbackState: "UPCOMING" as const,
+    return buildSummary("UPCOMING", {
       isCatchupPlayable: false,
       watchFromStartAvailable: false,
       preferredSourceType: null,
       availableUntilAt: null,
       sources: [],
-    } satisfies ProgramCatchupSummary;
+    });
   }
 
   if (timingState === "LIVE_NOW") {
-    return {
-      timingState,
-      playbackState: watchFromStartAvailable ? "LIVE_WATCH_FROM_START" : "LIVE_NOW",
+    return buildSummary(watchFromStartAvailable ? "LIVE_WATCH_FROM_START" : "LIVE_NOW", {
       isCatchupPlayable: false,
       watchFromStartAvailable,
       preferredSourceType: watchFromStartAvailable ? "TIMESHIFT" : null,
@@ -232,31 +249,30 @@ export function resolveProgramCatchupSummary(params: {
             },
           ]
         : [],
-    } satisfies ProgramCatchupSummary;
+    });
   }
 
   const hasRecording = Boolean(preferredRecording);
   const hasTimeshift = timeshiftPlayable;
   const preferredSourceType = hasRecording ? "RECORDING" : hasTimeshift ? "TIMESHIFT" : null;
 
-  return {
-    timingState,
-    playbackState:
-      hasRecording && hasTimeshift
-        ? "PREVIOUS_RECORDING_AND_TIMESHIFT"
-        : hasRecording
-          ? "PREVIOUS_RECORDING"
-          : hasTimeshift
-            ? "PREVIOUS_TIMESHIFT"
-            : "PREVIOUS_NOT_AVAILABLE",
-    isCatchupPlayable: hasRecording || hasTimeshift,
-    watchFromStartAvailable: false,
-    preferredSourceType,
-    availableUntilAt:
-      preferredSourceType === "RECORDING"
-        ? preferredRecording?.candidate.endsAt.toISOString() ?? null
-        : params.timeshiftWindow?.availableUntilAt.toISOString() ?? null,
-    sources,
-  } satisfies ProgramCatchupSummary;
+  return buildSummary(
+    hasRecording && hasTimeshift
+      ? "PREVIOUS_RECORDING_AND_TIMESHIFT"
+      : hasRecording
+        ? "PREVIOUS_RECORDING"
+        : hasTimeshift
+          ? "PREVIOUS_TIMESHIFT"
+          : "PREVIOUS_NOT_AVAILABLE",
+    {
+      isCatchupPlayable: hasRecording || hasTimeshift,
+      watchFromStartAvailable: false,
+      preferredSourceType,
+      availableUntilAt:
+        preferredSourceType === "RECORDING"
+          ? preferredRecording?.candidate.endsAt.toISOString() ?? null
+          : params.timeshiftWindow?.availableUntilAt.toISOString() ?? null,
+      sources,
+    },
+  );
 }
-

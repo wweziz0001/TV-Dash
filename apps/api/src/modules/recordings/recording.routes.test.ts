@@ -292,15 +292,20 @@ describe("recordingRoutes", () => {
     mockPrisma.programEntry.findUnique.mockResolvedValue({
       id: "44444444-4444-4444-4444-444444444444",
       sourceKind: "IMPORTED",
-      channelId: null,
+      channelId: "22222222-2222-2222-2222-222222222222",
       title: "Morning News",
       subtitle: null,
       description: null,
       category: "News",
       imageUrl: null,
-      startAt: new Date("2026-04-05T12:00:00.000Z"),
-      endAt: new Date("2026-04-05T13:00:00.000Z"),
-      channel: null,
+      startAt: new Date("2026-04-06T12:00:00.000Z"),
+      endAt: new Date("2026-04-06T13:00:00.000Z"),
+      channel: {
+        id: "22222222-2222-2222-2222-222222222222",
+        name: "TV Dash Live",
+        slug: "tv-dash-live",
+        isActive: true,
+      },
       sourceChannel: {
         id: "source-channel-1",
         externalId: "news",
@@ -320,12 +325,12 @@ describe("recordingRoutes", () => {
         status: "SCHEDULED",
         programEntryId: "44444444-4444-4444-4444-444444444444",
         programTitleSnapshot: "Morning News",
-        programStartAt: new Date("2026-04-05T12:00:00.000Z"),
-        programEndAt: new Date("2026-04-05T13:00:00.000Z"),
+        programStartAt: new Date("2026-04-06T12:00:00.000Z"),
+        programEndAt: new Date("2026-04-06T13:00:00.000Z"),
         paddingBeforeMinutes: 2,
         paddingAfterMinutes: 5,
-        startAt: new Date("2026-04-05T11:58:00.000Z"),
-        endAt: new Date("2026-04-05T13:05:00.000Z"),
+        startAt: new Date("2026-04-06T11:58:00.000Z"),
+        endAt: new Date("2026-04-06T13:05:00.000Z"),
       }),
     );
 
@@ -388,6 +393,68 @@ describe("recordingRoutes", () => {
           status: "RECORDING",
         },
       ],
+    });
+  });
+
+  it("returns program-aware archive context for recording library entries", async () => {
+    mockPrisma.recordingJob.findMany.mockResolvedValue([
+      buildRecordingJobRecord({
+        status: "COMPLETED",
+        programEntryId: "44444444-4444-4444-4444-444444444444",
+        programStartAt: new Date("2026-04-04T12:00:00.000Z"),
+        programEndAt: new Date("2026-04-04T13:00:00.000Z"),
+        actualStartAt: new Date("2026-04-04T11:58:00.000Z"),
+        actualEndAt: new Date("2026-04-04T13:05:00.000Z"),
+        programEntry: {
+          id: "44444444-4444-4444-4444-444444444444",
+          sourceKind: "IMPORTED",
+          title: "Morning News",
+          description: "Daily headlines",
+          category: "News",
+          imageUrl: null,
+          startAt: new Date("2026-04-04T12:00:00.000Z"),
+          endAt: new Date("2026-04-04T13:00:00.000Z"),
+        },
+        asset: {
+          id: "asset-1",
+          recordingJobId: "33333333-3333-3333-3333-333333333333",
+          recordingRunId: "run-1",
+          channelId: "22222222-2222-2222-2222-222222222222",
+          channelNameSnapshot: "TV Dash Live",
+          channelSlugSnapshot: "tv-dash-live",
+          title: "Morning News",
+          storagePath: "recordings/2026/04/04/morning-news.mp4",
+          fileName: "morning-news.mp4",
+          mimeType: "video/mp4",
+          containerFormat: "mp4",
+          startedAt: new Date("2026-04-04T11:58:00.000Z"),
+          endedAt: new Date("2026-04-04T13:05:00.000Z"),
+          durationSeconds: 4020,
+          fileSizeBytes: BigInt(1024),
+          thumbnailPath: null,
+          thumbnailMimeType: null,
+          thumbnailGeneratedAt: null,
+          createdAt: new Date("2026-04-04T13:05:00.000Z"),
+          updatedAt: new Date("2026-04-04T13:05:00.000Z"),
+        },
+      }),
+    ]);
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/recordings?status=COMPLETED",
+      headers: createAuthHeaders(server, { role: "ADMIN" }),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().jobs[0].archiveContext).toMatchObject({
+      programId: "44444444-4444-4444-4444-444444444444",
+      hasProgramLink: true,
+      catchup: {
+        archiveStatus: "AIRED_RECORDED",
+        hasRecordingSource: true,
+        hasTimeshiftSource: false,
+      },
     });
   });
 
