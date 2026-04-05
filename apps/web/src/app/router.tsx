@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "@/components/layout/app-shell";
 import { RequireAdmin, RequireAuth } from "@/features/auth/auth-context";
+import { AdminAlertsPage } from "@/pages/admin-alerts-page";
 import { AdminChannelsPage } from "@/pages/admin-channels-page";
 import { AdminEpgSourcesPage } from "@/pages/admin-epg-sources-page";
 import { AdminGroupsPage } from "@/pages/admin-groups-page";
@@ -33,6 +34,14 @@ export function AppRouter() {
           <Route path="recordings" element={<RecordingsPage />} />
           <Route path="recordings/:id" element={<RecordingPlaybackPage />} />
           <Route path="forbidden" element={<ForbiddenPage />} />
+          <Route
+            path="admin/alerts"
+            element={
+              <RequireAdmin>
+                <AdminAlertsPage />
+              </RequireAdmin>
+            }
+          />
           <Route
             path="admin/observability"
             element={

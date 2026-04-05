@@ -6,6 +6,11 @@ import type {
   EpgSourceType,
   LiveTimeshiftBufferState,
   LayoutType,
+  OperationalAlertCategory,
+  OperationalAlertEntityType,
+  OperationalAlertSeverity,
+  OperationalAlertStatus,
+  OperationalAlertType,
   RecordingJobStatus,
   RecordingMode,
   RecordingRecurrenceType,
@@ -631,6 +636,48 @@ export interface AuditEvent {
   } | null;
   detail: Record<string, string | number | boolean | null | undefined> | null;
   createdAt: string;
+}
+
+export interface OperationalAlertSummary {
+  generatedAt: string;
+  totalCount: number;
+  newCount: number;
+  activeCount: number;
+  acknowledgedCount: number;
+  criticalCount: number;
+  errorCount: number;
+  resolvedCount: number;
+  dismissedCount: number;
+}
+
+export interface OperationalAlert {
+  id: string;
+  type: OperationalAlertType;
+  category: OperationalAlertCategory;
+  severity: OperationalAlertSeverity;
+  severityLabel: string;
+  status: OperationalAlertStatus;
+  sourceSubsystem: string;
+  title: string;
+  message: string;
+  isActive: boolean;
+  dedupeKey: string | null;
+  occurrenceCount: number;
+  relatedEntityType: OperationalAlertEntityType | null;
+  relatedEntityId: string | null;
+  relatedEntityLabel: string | null;
+  relatedEntityPath: string | null;
+  metadata: Record<string, string | number | boolean | null | undefined> | null;
+  firstOccurredAt: string;
+  lastOccurredAt: string;
+  acknowledgedAt: string | null;
+  acknowledgedByUserId: string | null;
+  resolvedAt: string | null;
+  resolvedByUserId: string | null;
+  dismissedAt: string | null;
+  dismissedByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type { RecordingJobStatus, RecordingMode, RecordingRecurrenceType, RecordingRunStatus, RecordingWeekday };

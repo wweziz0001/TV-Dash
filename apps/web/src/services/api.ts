@@ -5,6 +5,9 @@ import type {
   ChannelInput,
   EpgSourceInput,
   LoginInput,
+  OperationalAlertCategory,
+  OperationalAlertSeverity,
+  OperationalAlertStatus,
   PlaybackSessionEndInput,
   PlaybackSessionHeartbeatInput,
   RecordingJobInput,
@@ -33,6 +36,8 @@ import type {
   EpgSourceDiagnostics,
   Favorite,
   LiveTimeshiftStatus,
+  OperationalAlert,
+  OperationalAlertSummary,
   ProgramEntry,
   RecordingJob,
   RecordingQualityOption,
@@ -132,6 +137,22 @@ export const api = {
     request<{ diagnostics: ChannelDiagnostics }>(`/diagnostics/channels/${id}`, {}, token),
   getAdminMonitoring: (token: string) =>
     request<{ monitoring: AdminMonitoringSnapshot }>("/diagnostics/monitoring", {}, token),
+  getAlertSummary: (token: string) =>
+    request<{ summary: OperationalAlertSummary }>("/alerts/summary", {}, token),
+  listAlerts: (
+    token: string,
+    params?: URLSearchParams,
+  ) => request<{ alerts: OperationalAlert[]; summary: OperationalAlertSummary }>(
+    `/alerts${params ? `?${params.toString()}` : ""}`,
+    {},
+    token,
+  ),
+  acknowledgeAlert: (id: string, token: string) =>
+    request<{ alert: OperationalAlert }>(`/alerts/${id}/acknowledge`, { method: "POST" }, token),
+  resolveAlert: (id: string, token: string) =>
+    request<{ alert: OperationalAlert }>(`/alerts/${id}/resolve`, { method: "POST" }, token),
+  dismissAlert: (id: string, token: string) =>
+    request<{ alert: OperationalAlert }>(`/alerts/${id}/dismiss`, { method: "POST" }, token),
   listAdminLogs: (token: string, params?: URLSearchParams) =>
     request<{ logs: AdminLogEntry[] }>(`/diagnostics/logs${params ? `?${params.toString()}` : ""}`, {}, token),
   listAuditEvents: (token: string, params?: URLSearchParams) =>
@@ -351,4 +372,27 @@ export function resolveApiUrl(path: string) {
 
   const apiOrigin = API_BASE_URL.replace(/\/api$/, "");
   return `${apiOrigin}${path}`;
+}
+
+export function appendAlertFilterParams(
+  params: URLSearchParams,
+  filters: {
+    statuses?: OperationalAlertStatus[];
+    categories?: OperationalAlertCategory[];
+    severities?: OperationalAlertSeverity[];
+  },
+) {
+  if (filters.statuses?.length) {
+    params.set("statuses", filters.statuses.join(","));
+  }
+
+  if (filters.categories?.length) {
+    params.set("categories", filters.categories.join(","));
+  }
+
+  if (filters.severities?.length) {
+    params.set("severities", filters.severities.join(","));
+  }
+
+  return params;
 }

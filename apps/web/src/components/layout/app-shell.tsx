@@ -1,6 +1,7 @@
 import {
   ActivitySquare,
   BarChart3,
+  BellRing,
   Clapperboard,
   Film,
   Grid2x2,
@@ -10,9 +11,11 @@ import {
   ShieldCheck,
   Star,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "@/features/auth/auth-context";
 import { cn } from "@/lib/utils";
+import { api } from "@/services/api";
 import { roleHasPermission } from "@tv-dash/shared";
 
 const primaryNav = [
@@ -22,6 +25,7 @@ const primaryNav = [
 ];
 
 const adminNav = [
+  { to: "/admin/alerts", label: "Alerts", icon: BellRing },
   { to: "/admin/observability", label: "Observability", icon: ActivitySquare },
   { to: "/admin/channels", label: "Admin Channels", icon: LayoutDashboard },
   { to: "/admin/groups", label: "Admin Groups", icon: ShieldCheck },
@@ -29,7 +33,19 @@ const adminNav = [
 ];
 
 export function AppShell() {
-  const { logout, user } = useAuth();
+  const { logout, token, user } = useAuth();
+  const alertSummaryQuery = useQuery({
+    queryKey: ["admin-alert-summary", token],
+    queryFn: async () => {
+      if (!token) {
+        throw new Error("Missing admin session");
+      }
+
+      return (await api.getAlertSummary(token)).summary;
+    },
+    enabled: Boolean(token && user && roleHasPermission(user.role, "admin:access")),
+    refetchInterval: 15_000,
+  });
 
   return (
     <div className="min-h-screen bg-dashboard-grid bg-[size:28px_28px]">
@@ -68,7 +84,19 @@ export function AppShell() {
                 <p className="px-1 text-[11px] uppercase tracking-[0.24em] text-slate-500 lg:px-2">Admin</p>
                 <nav className="mt-2 flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-1.5 lg:overflow-visible lg:pb-0">
                   {adminNav.map((item) => (
-                    <NavItem key={item.to} to={item.to} label={item.label} icon={item.icon} />
+                    <NavItem
+                      badge={item.to === "/admin/alerts"
+                        ? alertSummaryQuery.data?.newCount
+                          ? String(alertSummaryQuery.data.newCount)
+                          : alertSummaryQuery.data?.activeCount
+                            ? String(alertSummaryQuery.data.activeCount)
+                            : null
+                        : null}
+                      key={item.to}
+                      to={item.to}
+                      label={item.label}
+                      icon={item.icon}
+                    />
                   ))}
                 </nav>
               </div>
@@ -115,11 +143,13 @@ function NavItem({
   label,
   icon: Icon,
   end,
+  badge,
 }: {
   to: string;
   label: string;
   icon: typeof LayoutDashboard;
   end?: boolean;
+  badge?: string | null;
 }) {
   return (
     <NavLink
@@ -134,6 +164,11 @@ function NavItem({
     >
       <Icon className="h-4 w-4" />
       <span>{label}</span>
+      {badge ? (
+        <span className="ml-auto rounded-full border border-cyan-400/30 bg-cyan-500/15 px-2 py-0.5 text-[11px] font-semibold text-cyan-100">
+          {badge}
+        </span>
+      ) : null}
     </NavLink>
   );
 }
