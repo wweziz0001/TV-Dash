@@ -143,6 +143,7 @@ Repositories must not:
 - Guide import, mapping, and now/next assembly live behind the `epg` module boundary.
 - Catch-up availability and programme-to-playback resolution also live behind the `epg` module boundary:
   - guide rows may expose explicit catch-up metadata
+  - guide rows may also expose explicit archive-status metadata so the frontend does not infer whether a previous programme is recorded, catch-up-playable, or unavailable
   - programme playback resolution must return only real playable sources
   - routes must not assemble recording or retained-window playback URLs inline
 - Current catch-up source policy is backend-owned:
@@ -165,6 +166,7 @@ Repositories must not:
   - storage-backed media delivery
   - retention/protection updates for library items
   - thumbnail delivery for recorded media previews
+  - program-aware archive context that links a recording back to a channel/programme history view when that context can be resolved honestly
 - Recording execution state belongs in dedicated recording entities such as:
   - `RecordingJob`
   - `RecordingRule`

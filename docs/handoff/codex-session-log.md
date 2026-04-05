@@ -1,5 +1,65 @@
 # Codex Session Log
 
+## `2026-04-05T18:35:00+03:00`
+
+### Objective
+
+Turn recordings, guide history, and catch-up playback into one coherent archive experience where recorded programmes feel like part of channel history instead of disconnected media files.
+
+### Work Completed
+
+- created the requested branch `026-program-aware-recordings-library-and-channel-archive`
+- added an explicit archive-status model in the EPG layer:
+  - `LIVE_NOW`
+  - `LIVE_RESTARTABLE`
+  - `UPCOMING`
+  - `AIRED_UNAVAILABLE`
+  - `AIRED_CATCHUP`
+  - `AIRED_RECORDED`
+  - `AIRED_ARCHIVED`
+- extended programme catch-up summaries so guide rows now expose:
+  - archive status
+  - archive access mode
+  - explicit recording-source vs retained-window flags
+- added a program-aware recording archive mapper:
+  - recordings now resolve archive context from linked programme data when present
+  - otherwise they fall back to the captured recording window honestly
+  - recording responses now surface whether the same content is also still inside the retained window
+- upgraded the single-view watch page into a clearer channel archive surface:
+  - added a dedicated channel archive panel
+  - grouped earlier programmes by day
+  - added archive search and practical filters for playable, recorded, retained-window, and unavailable history
+  - preserved archive-day context in the watch route so archive navigation is less lossy
+- upgraded the recordings library into a program-aware archive library:
+  - grouped recordings by day
+  - surfaced archive-status badges and archive-copy alongside recording metadata
+  - added filters for linked-programme and catch-up-overlap views
+  - added direct links from recordings back to the originating channel archive day
+- upgraded the recording playback page so it now also exposes archive context and channel-archive navigation
+- added targeted coverage for:
+  - archive-status resolution
+  - recording-to-archive mapping
+  - archive grouping/filtering helpers
+  - recording-library archive link generation
+  - existing recordings route behavior still passing after the new response mapping
+- updated durable architecture/handoff docs for the program-aware archive milestone
+
+### Verification Run
+
+- `npm run test -w apps/api -- src/modules/epg/program-archive.test.ts src/modules/epg/program-catchup.test.ts src/modules/recordings/recording-archive.test.ts src/modules/recordings/recording.routes.test.ts`
+- `npm run test -w apps/web -- src/components/channels/channel-program-catchup-state.test.ts src/components/channels/channel-archive-state.test.ts src/components/recordings/recording-library-state.test.ts`
+- `npm run build -w apps/web`
+
+### Remaining Risk
+
+- Channel archive browsing is now coherent, but it still depends on whichever historical guide rows TV-Dash currently retains. It is not yet a deep long-horizon archive index independent of guide retention.
+- Recordings without durable guide linkage now fall back to honest recording-window archive context, but they still do not gain richer programme metadata after the source guide row disappears.
+- The archive/library milestone does not yet add resume markers, continue-watching state, or a cross-channel “recent archive playback” shelf.
+
+### Exact Suggested Next Task
+
+Add durable archive resume markers plus a recent-archive shelf so users can continue playback across recordings and catch-up entries without manually re-finding the same programme.
+
 ## `2026-04-05T17:50:00+03:00`
 
 ### Objective

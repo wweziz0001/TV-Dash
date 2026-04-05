@@ -82,6 +82,7 @@ That does not belong in:
 - Shared quality and tile decision logic lives in pure player helpers.
 - Route pages may store player diagnostics snapshots for operator-facing status panels, but they must not recreate HLS recovery logic themselves.
 - Route pages may orchestrate live-vs-catch-up mode, but they must keep those states explicit instead of flattening archive playback into the live player contract.
+- Route pages may also preserve archive-browsing context such as the selected archive day or programme history selection, but that context must stay page-owned and must not leak live-edge semantics into archive playback.
 
 ## Playback URL Selection Rules
 

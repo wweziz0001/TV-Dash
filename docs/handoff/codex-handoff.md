@@ -24,6 +24,7 @@ The current operator milestone also adds:
 - a first shared channel restream / edge-cache foundation with channel-local shared sessions, local-origin playlist/segment serving, and cache reuse for repeated local viewers
 - a first integrated shared-session + live-DVR model where one shared local channel session can also back a retained rolling live buffer when DVR is enabled
 - a first real Catch-up TV milestone where previous programmes can be played from honest EPG-linked recording matches or still-retained DVR windows, with live vs archive playback kept explicit in the watch experience
+- a first program-aware archive/library milestone where channel history, catch-up availability, and the recordings library now share one explicit archive-status model and cross-navigation path
 
 ## Current Architecture Summary
 
@@ -37,8 +38,10 @@ The current operator milestone also adds:
 - Backend stream handling now also includes a real first-version shared local-delivery path that keeps channel-local shared sessions plus manifest/segment edge caching in the `streams` module
 - Backend stream handling now also includes an integrated channel-session status layer that composes shared relay state with live-DVR state instead of treating them as unrelated operator concepts
 - Backend guide handling now also includes explicit catch-up availability resolution plus a programme-playback contract that turns guide rows into real recording-backed or retained-window playback only when those sources truly exist
+- Backend guide handling now also includes an explicit archive-status model for programme history, so guide rows say whether they are live, restartable, upcoming, recorded, catch-up-only, dual-source archived, or unavailable without the frontend reverse-engineering those states
 - Playback session tracking now persists real active player heartbeats in PostgreSQL so admin monitoring pages can show who is watching what now, including explicit per-viewer live-edge vs behind-live state for shared DVR sessions
 - Guide source imports, source-channel discovery, channel mappings, and persisted programme rows now also live in PostgreSQL
+- Recording responses now also expose program-aware archive context when TV-Dash can resolve it, including programme timing, guide linkage, and whether the same content is also still inside the retained catch-up window
 - Frontend keeps app bootstrap in `app`, route screens in `pages`, shared UI in `components`, auth in `features`, request logic in `services`, and player-specific code in `player`
 - Shared API validation contracts live in `packages/shared`
 
@@ -175,6 +178,10 @@ Key relationship rules:
   - shared relay only
   - proxy relay + DVR
   - shared relay + DVR
+- watch pages now also keep archive browsing explicit:
+  - the single-view page can browse channel archive history by day
+  - archive entries keep recorded vs retained-window vs unavailable states explicit
+  - selecting archive playback preserves archive-day context instead of flattening the experience into a generic player
 - supported multi-view layouts live in `player/layouts.ts`
 - tile defaults and one-active-audio rules live in `player/multiview-layout.ts`
 - saved multi-view serialization/hydration helpers live in `player/multiview-state.ts`
@@ -204,6 +211,10 @@ Key relationship rules:
 - Single-view now splits playback honestly:
   - `HlsPlayer` remains the live-channel surface with DVR chrome and live-edge diagnostics
   - `ArchivePlayer` is used for catch-up playback and relies on native archive controls instead of pretending archive playback is live
+- The watch surface now also keeps archive context visible around playback:
+  - selected archive entries stay attached to the channel history they came from
+  - archive playback state explains whether the source is a recording or the retained window
+  - recordings pages can link straight back into the matching channel archive day when that context exists
 - Multiview tiles now get a compact version of the same controls inside each tile without breaking the one-audio-owner rule.
 - Multiview control density now scales by layout density:
   - `2x2` keeps compact controls
@@ -226,6 +237,49 @@ Key relationship rules:
   - the retained-window rail is still a compact operator-first control; it does not yet expose bookmarks, thumbnails, or a long-horizon DVR history model
   - browser PiP richness still varies by browser even though TV-Dash exposes the same launch point and state handling
   - browser-native PiP does not allow TV-Dash to force its custom HTML controls into the PiP window
+- Archive/library limitations that still remain:
+  - channel archive browsing currently depends on the retained guide/programme history that TV-Dash still has available; it does not guarantee deep historical recovery after guide data churn
+  - recordings without durable programme linkage still fall back to recording-window snapshots rather than a richer normalized archive entity
+  - the archive/library milestone does not yet add resume markers, continue-watching state, or a global archive search across every channel
+
+## Program-Aware Archive Model
+
+TV-Dash now keeps one explicit archive-status model across guide history and recording-linked archive context:
+
+- `LIVE_NOW`
+- `LIVE_RESTARTABLE`
+- `UPCOMING`
+- `AIRED_UNAVAILABLE`
+- `AIRED_CATCHUP`
+- `AIRED_RECORDED`
+- `AIRED_ARCHIVED`
+
+The intent is:
+
+- guide history can explain why a previous programme is or is not playable
+- recordings can explain whether they are guide-linked archive items or only snapshot-derived archive entries
+- the UI can show the same recorded/catch-up/unavailable language in watch and recordings surfaces without inventing a second interpretation layer
+
+## Current Archive Experience
+
+User-facing archive behavior now includes:
+
+- the single-view watch page exposes a dedicated channel archive panel with:
+  - archive-day chips
+  - title/category search
+  - filters for playable, recording-backed, retained-window, or unavailable history
+  - per-day grouping such as `Earlier today` and prior days
+- recordings library entries now surface:
+  - archive-status badges
+  - programme timing window
+  - guide-link awareness
+  - whether catch-up overlap still exists
+  - a direct link back to the matching channel archive context
+- recording playback pages now also show archive-state context and can jump back into the original channel archive day
+
+## Exact Suggested Next Task
+
+Add durable archive resume/continue-watching markers plus a small cross-channel archive shelf so users can return to recent archive playback without re-finding the same programme manually.
 - Recommended future enhancements:
   - add focused-player keyboard shortcuts for `Go Live`, jump back, jump forward, play/pause, mute, PiP, and fullscreen that integrate cleanly with the existing multiview shortcut model
   - add optional channel artwork to Media Session metadata once stable image URLs are available
