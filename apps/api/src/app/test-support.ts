@@ -5,6 +5,9 @@ interface AuthTokenPayload {
   email?: string;
   role?: "ADMIN" | "USER";
   sessionVersion?: number;
+  authProviderType?: "LOCAL" | "LDAP" | "OIDC";
+  authProviderId?: string | null;
+  authProviderName?: string | null;
 }
 
 export function createAuthHeaders(
@@ -14,6 +17,9 @@ export function createAuthHeaders(
     email,
     role = "USER",
     sessionVersion = 0,
+    authProviderType = "LOCAL",
+    authProviderId = null,
+    authProviderName = null,
   }: AuthTokenPayload = {},
 ) {
   const resolvedSub =
@@ -24,6 +30,9 @@ export function createAuthHeaders(
     email: resolvedEmail,
     role,
     sessionVersion,
+    authProviderType,
+    authProviderId,
+    authProviderName,
   });
 
   return {

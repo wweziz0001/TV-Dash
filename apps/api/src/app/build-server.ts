@@ -6,6 +6,7 @@ import { alertRoutes } from "../modules/alerts/alert.routes.js";
 import { auditRoutes } from "../modules/audit/audit.routes.js";
 import { createAllowedOrigins } from "./cors.js";
 import { configureStructuredLogger } from "./structured-log.js";
+import { authProviderRoutes } from "../modules/auth/auth-provider.routes.js";
 import { authRoutes } from "../modules/auth/auth.routes.js";
 import { channelRoutes } from "../modules/channels/channel.routes.js";
 import { diagnosticRoutes } from "../modules/diagnostics/diagnostic.routes.js";
@@ -41,6 +42,7 @@ export async function buildServer() {
   await app.register(authPlugin);
   await app.register(healthRoutes, { prefix: "/api" });
   await app.register(authRoutes, { prefix: "/api" });
+  await app.register(authProviderRoutes, { prefix: "/api" });
   await app.register(alertRoutes, { prefix: "/api" });
   await app.register(auditRoutes, { prefix: "/api" });
   await app.register(groupRoutes, { prefix: "/api" });

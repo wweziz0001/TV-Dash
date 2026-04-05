@@ -1,5 +1,6 @@
 import fp from "fastify-plugin";
 import fastifyJwt from "@fastify/jwt";
+import fastifyCookie from "@fastify/cookie";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { env } from "../../config/env.js";
 
@@ -10,6 +11,9 @@ declare module "@fastify/jwt" {
       email: string;
       role: "ADMIN" | "USER";
       sessionVersion: number;
+      authProviderType?: "LOCAL" | "LDAP" | "OIDC";
+      authProviderId?: string | null;
+      authProviderName?: string | null;
     };
   }
 }
@@ -33,6 +37,10 @@ declare module "fastify" {
 }
 
 export const authPlugin = fp(async (fastify) => {
+  await fastify.register(fastifyCookie, {
+    secret: env.JWT_SECRET,
+  });
+
   await fastify.register(fastifyJwt, {
     secret: env.JWT_SECRET,
   });
