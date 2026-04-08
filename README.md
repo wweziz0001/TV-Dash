@@ -135,7 +135,14 @@ tests/           Reserved for future cross-workspace regression suites
 ```
 
 ## Local Run
-
+0. all 
+  - `sudo apt install -y ffmpeg`
+  - `cp .env.example .env`
+  - `npm install`
+  - `npm run db:generate`
+  - `npm run db:migrate`
+  - `npm run db:seed`
+  - `npm run dev`
 1. Copy the root env file:
    - `cp .env.example .env`
 2. Ensure PostgreSQL is available at the `DATABASE_URL` in `.env`.
